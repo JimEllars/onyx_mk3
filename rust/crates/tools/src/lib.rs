@@ -1343,7 +1343,7 @@ fn run_task_create(input: TaskCreateInput) -> Result<String, String> {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-fn run_task_packet(input: TaskPacket) -> Result<String, String> {
+pub fn run_task_packet(input: TaskPacket) -> Result<String, String> {
     let registry = global_task_registry();
     let task = registry
         .create_from_packet(input)
@@ -3539,9 +3539,29 @@ fn agent_permission_policy() -> PermissionPolicy {
 fn write_agent_manifest(manifest: &AgentOutput) -> Result<(), String> {
     let mut normalized = manifest.clone();
     normalized.lane_events = dedupe_superseded_commit_events(&normalized.lane_events);
+    let output = serde_json::to_string_pretty(&normalized).map_err(|error| error.to_string())?;
+
+    // Also append the latest lane event to .claw/lane-events.jsonl
+    if let Some(latest_event) = normalized.lane_events.last() {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let state_dir = cwd.join(".claw");
+        let _ = std::fs::create_dir_all(&state_dir);
+        let events_path = state_dir.join("lane-events.jsonl");
+        if let Ok(event_json) = serde_json::to_string(latest_event) {
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&events_path)
+            {
+                let _ = writeln!(file, "{}", event_json);
+            }
+        }
+    }
+
     std::fs::write(
         &normalized.manifest_file,
-        serde_json::to_string_pretty(&normalized).map_err(|error| error.to_string())?,
+        output,
     )
     .map_err(|error| error.to_string())
 }

@@ -45,6 +45,15 @@
     ]
   },
   {
+    "name": "axim_policy_bash_restricted_cmd",
+    "category": "permissions-axim",
+    "description": "Validates bash command blocked by AXiM deny policy (rm -rf /)",
+    "parity_refs": [
+      "AXiM Security: Bash command deny patterns enforced",
+      "Permission enforcement across tool paths"
+    ]
+  },
+  {
     "name": "multi_tool_turn_roundtrip",
     "category": "multi-tool-turns",
     "description": "Executes read_file and grep_search in the same assistant turn before the final reply.",
@@ -104,6 +113,42 @@
     "description": "Confirms usage token counts and estimated_cost appear in JSON output.",
     "parity_refs": [
       "Token counting / cost tracking accuracy"
+    ]
+  },
+  {
+    "name": "task_packet_ingestion",
+    "category": "axim-headless",
+    "description": "Validates TaskPacket JSON structure accepted and queued via POST /tasks",
+    "parity_refs": [
+      "AXiM Headless Mode: Task Packet Ingestion",
+      "Onyx serve-headless HTTP listener validation"
+    ]
+  },
+  {
+    "name": "task_packet_validation_error",
+    "category": "axim-headless",
+    "description": "Confirms invalid TaskPacket returns 400 with detailed validation errors",
+    "parity_refs": [
+      "AXiM Headless Mode: Validation Error Handling",
+      "Task packet validation contract"
+    ]
+  },
+  {
+    "name": "state_file_emission",
+    "category": "axim-headless",
+    "description": "Validates worker state transitions written to .claw/worker-state.json",
+    "parity_refs": [
+      "AXiM Headless Mode: File-based State Surface",
+      "Observability contract for external orchestrators"
+    ]
+  },
+  {
+    "name": "worker_ready_handshake",
+    "category": "axim-headless",
+    "description": "Validates WorkerStatus state machine reaches ready_for_prompt before task ingestion",
+    "parity_refs": [
+      "AXiM Headless Mode: Worker Boot Protocol",
+      "Ready-handshake lifecycle for headless workers"
     ]
   }
 ]

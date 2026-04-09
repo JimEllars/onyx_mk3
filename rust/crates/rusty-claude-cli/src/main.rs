@@ -45,6 +45,7 @@ use render::{MarkdownStreamState, Spinner, TerminalRenderer};
 use runtime::{
     check_base_commit, clear_oauth_credentials, format_stale_base_warning, format_usd,
     generate_pkce_pair, generate_state, load_oauth_credentials, load_system_prompt,
+    TaskPacket,
     parse_oauth_callback_request_target, pricing_for_model, resolve_expected_base,
     resolve_sandbox_status, save_oauth_credentials, ApiClient, ApiRequest, AssistantEvent,
     CompactionConfig, ConfigLoader, ConfigSource, ContentBlock, ConversationMessage,
@@ -59,7 +60,7 @@ use tools::{
     execute_tool, mvp_tool_specs, GlobalToolRegistry, RuntimeToolDefinition, ToolSearchOutput,
 };
 
-const DEFAULT_MODEL: &str = "claude-opus-4-6";
+const DEFAULT_MODEL: &str = "axim-default";
 fn max_tokens_for_model(model: &str) -> u32 {
     if model.contains("opus") {
         32_000
@@ -246,12 +247,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         } => run_repl(model, allowed_tools, permission_mode, base_commit)?,
         CliAction::HelpTopic(topic) => print_help_topic(topic),
         CliAction::Help { output_format } => print_help(output_format)?,
+        CliAction::ServeHeadless { port } => run_serve_headless(port)?,
     }
     Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CliAction {
+    ServeHeadless {
+        port: u16,
+    },
     DumpManifests {
         output_format: CliOutputFormat,
     },
@@ -561,6 +566,19 @@ fn parse_args(args: &[String]) -> Result<CliAction, String> {
         "logout" => Ok(CliAction::Logout { output_format }),
         "init" => Ok(CliAction::Init { output_format }),
         "export" => parse_export_args(&rest[1..], output_format),
+        "serve-headless" => {
+            let mut port = 4711;
+            let mut i = 1;
+            while i < rest.len() {
+                if rest[i] == "--port" && i + 1 < rest.len() {
+                    port = rest[i + 1].parse().map_err(|_| "Invalid port number")?;
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            Ok(CliAction::ServeHeadless { port })
+        }
         "prompt" => {
             let prompt = rest[1..].join(" ");
             if prompt.trim().is_empty() {
@@ -1372,6 +1390,116 @@ fn run_worker_state(output_format: CliOutputFormat) -> Result<(), Box<dyn std::e
 }
 
 /// the same surface the in-process agent loop uses.
+use axum::{
+    extract::{Path as AxumPath, State},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, post},
+    Json, Router,
+};
+
+#[derive(Clone)]
+struct AppState {}
+
+async fn health_check() -> impl IntoResponse {
+    Json(json!({"status": "ok"}))
+}
+
+async fn get_state(State(_state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(json!({"workers": []}))
+}
+
+async fn get_worker_state(
+    AxumPath(worker_id): AxumPath<String>,
+    State(_state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let state_path = cwd.join(".claw/worker-state.json");
+    if let Ok(contents) = std::fs::read_to_string(&state_path) {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&contents) {
+            if val.get("worker_id").and_then(|v| v.as_str()) == Some(&worker_id) {
+                return (StatusCode::OK, Json(val)).into_response();
+            }
+        }
+    }
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({"error": "worker not found"})),
+    )
+        .into_response()
+}
+
+async fn ingest_task_packet(
+    State(_state): State<Arc<AppState>>,
+    Json(task_json): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let task: TaskPacket = match serde_json::from_value(task_json) {
+        Ok(t) => t,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": format!("invalid task packet: {}", e)})),
+            ).into_response();
+        }
+    };
+
+    match runtime::validate_packet(task) {
+        Ok(validated) => {
+            let packet = validated.into_inner();
+            match tools::run_task_packet(packet.clone()) {
+                Ok(res) => {
+                    let parsed = serde_json::from_str::<serde_json::Value>(&res)
+                        .unwrap_or_else(|_| json!({"message": res}));
+                    (StatusCode::ACCEPTED, Json(parsed)).into_response()
+                }
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": e.to_string()})),
+                )
+                    .into_response(),
+            }
+        }
+        Err(validation_err) => {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "status": "rejected",
+                    "error": validation_err.to_string(),
+                    "details": validation_err.errors()
+                })),
+            ).into_response()
+        }
+    }
+}
+
+async fn stream_events(State(_state): State<Arc<AppState>>) -> impl IntoResponse {
+    "event: heartbeat\ndata: {}\n\n"
+}
+
+fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+
+    runtime.block_on(async move {
+        let app_state = Arc::new(AppState {});
+
+        let app = Router::new()
+            .route("/state", get(get_state))
+            .route("/state/:worker_id", get(get_worker_state))
+            .route("/tasks", post(ingest_task_packet))
+            .route("/events", get(stream_events))
+            .route("/health", get(health_check))
+            .with_state(app_state);
+
+        let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
+        println!("Onyx headless server listening on port {}", port);
+
+        axum::serve(listener, app).await?;
+        Ok(())
+    })
+}
+
 fn run_mcp_serve() -> Result<(), Box<dyn std::error::Error>> {
     let tools = mvp_tool_specs()
         .into_iter()
@@ -3153,7 +3281,51 @@ impl RuntimeMcpState {
 fn build_runtime_mcp_state(
     runtime_config: &runtime::RuntimeConfig,
 ) -> Result<RuntimePluginStateBuildOutput, Box<dyn std::error::Error>> {
-    let Some((mcp_state, discovery)) = RuntimeMcpState::new(runtime_config)? else {
+    let mut config_clone = runtime_config.clone();
+
+    // Inject AXiM internal APIs as MCP servers if env config is present
+    if let Ok(axim_mcp_token) = std::env::var("AXIM_MCP_TOKEN") {
+        let mut servers = std::collections::BTreeMap::new();
+
+        let stdio_config = runtime::McpStdioServerConfig {
+            command: "/path/to/axim-core-mcp-server".to_string(),
+            args: vec!["--auth-token".to_string(), axim_mcp_token.clone()],
+            env: std::collections::BTreeMap::new(),
+            tool_call_timeout_ms: None,
+        };
+        servers.insert("axim-core".to_string(), runtime::ScopedMcpServerConfig {
+            scope: runtime::ConfigSource::Local,
+            config: runtime::McpServerConfig::Stdio(stdio_config),
+        });
+
+        let mut headers = std::collections::BTreeMap::new();
+        headers.insert("Authorization".to_string(), format!("Bearer {}", axim_mcp_token));
+        let http_config = runtime::McpRemoteServerConfig {
+            url: "https://internal.axim.systems/mcp".to_string(),
+            headers,
+            headers_helper: None,
+            oauth: None,
+        };
+        servers.insert("axim-internal-api".to_string(), runtime::ScopedMcpServerConfig {
+            scope: runtime::ConfigSource::Local,
+            config: runtime::McpServerConfig::Http(http_config),
+        });
+
+        let bash_config = runtime::McpStdioServerConfig {
+            command: "uvx".to_string(),
+            args: vec!["bash-mcp-server".to_string()],
+            env: std::collections::BTreeMap::new(),
+            tool_call_timeout_ms: None,
+        };
+        servers.insert("bash".to_string(), runtime::ScopedMcpServerConfig {
+            scope: runtime::ConfigSource::Local,
+            config: runtime::McpServerConfig::Stdio(bash_config),
+        });
+
+        config_clone = config_clone.with_mcp_servers(servers);
+    }
+
+    let Some((mcp_state, discovery)) = RuntimeMcpState::new(&config_clone)? else {
         return Ok((None, Vec::new()));
     };
 

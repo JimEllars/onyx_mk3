@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "rules": {
+      "bash.execute": {
+        "mode": "require-approval",
+        "sandbox": true,
+        "allowlist": ["git", "cargo", "npm", "python", "rustc"],
+        "denylist": ["rm -rf /", "sudo", "chmod 777"]
+      },
+      "file.write": {
+        "mode": "log-and-allow",
+        "scope": "${WORKSPACE_ROOT}/**",
+        "denylist": ["~/.ssh/**", "/etc/**", "/root/**"]
+      },
+      "file.read": {
+        "mode": "log-and-allow",
+        "denylist": ["~/.ssh/**", "/etc/passwd", "~/.aws/credentials"]
+      },
+      "bash.web-fetch": {
+        "mode": "require-approval",
+        "timeout": 5000
+      }
+    }
+  }
+}
