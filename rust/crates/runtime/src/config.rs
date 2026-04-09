@@ -336,6 +336,14 @@ impl RuntimeConfig {
     }
 
     #[must_use]
+    pub fn with_mcp_servers(mut self, servers: BTreeMap<String, ScopedMcpServerConfig>) -> Self {
+        for (k, v) in servers {
+            self.feature_config.mcp.servers.insert(k, v);
+        }
+        self
+    }
+
+    #[must_use]
     pub fn merged(&self) -> &BTreeMap<String, JsonValue> {
         &self.merged
     }

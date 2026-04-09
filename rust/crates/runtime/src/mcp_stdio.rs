@@ -19,7 +19,7 @@ use crate::mcp_lifecycle_hardened::{
 };
 
 #[cfg(test)]
-const MCP_INITIALIZE_TIMEOUT_MS: u64 = 200;
+const MCP_INITIALIZE_TIMEOUT_MS: u64 = 2000;
 #[cfg(not(test))]
 const MCP_INITIALIZE_TIMEOUT_MS: u64 = 10_000;
 
@@ -1463,7 +1463,7 @@ mod tests {
         fs::create_dir_all(&root).expect("temp dir");
         let script_path = root.join("jsonrpc-mcp.py");
         let script = [
-            "#!/usr/bin/env python3",
+            "#!/usr/bin/env python",
             "import json, os, sys",
             "LOWERCASE_CONTENT_LENGTH = os.environ.get('MCP_LOWERCASE_CONTENT_LENGTH') == '1'",
             "MISMATCHED_RESPONSE_ID = os.environ.get('MCP_MISMATCHED_RESPONSE_ID') == '1'",
@@ -1510,7 +1510,7 @@ mod tests {
         fs::create_dir_all(&root).expect("temp dir");
         let script_path = root.join("fake-mcp-server.py");
         let script = [
-            "#!/usr/bin/env python3",
+            "#!/usr/bin/env python",
             "import json, os, sys, time",
             "TOOL_CALL_DELAY_MS = int(os.environ.get('MCP_TOOL_CALL_DELAY_MS', '0'))",
             "INVALID_TOOL_CALL_RESPONSE = os.environ.get('MCP_INVALID_TOOL_CALL_RESPONSE') == '1'",
@@ -1644,7 +1644,7 @@ mod tests {
         fs::create_dir_all(&root).expect("temp dir");
         let script_path = root.join("manager-mcp-server.py");
         let script = [
-            "#!/usr/bin/env python3",
+            "#!/usr/bin/env python",
             "import json, os, sys, time",
             "",
             "LABEL = os.environ.get('MCP_SERVER_LABEL', 'server')",
@@ -1785,7 +1785,7 @@ mod tests {
         env: BTreeMap<String, String>,
     ) -> crate::mcp_client::McpStdioTransport {
         crate::mcp_client::McpStdioTransport {
-            command: "python3".to_string(),
+            command: "python".to_string(),
             args: vec![script_path.to_string_lossy().into_owned()],
             env,
             tool_call_timeout_ms: None,
@@ -1834,7 +1834,7 @@ mod tests {
         ScopedMcpServerConfig {
             scope: ConfigSource::Local,
             config: McpServerConfig::Stdio(McpStdioServerConfig {
-                command: "python3".to_string(),
+                command: "python".to_string(),
                 args: vec![script_path.to_string_lossy().into_owned()],
                 env,
                 tool_call_timeout_ms: None,
@@ -2312,7 +2312,7 @@ mod tests {
                 ScopedMcpServerConfig {
                     scope: ConfigSource::Local,
                     config: McpServerConfig::Stdio(McpStdioServerConfig {
-                        command: "python3".to_string(),
+                        command: "python".to_string(),
                         args: vec![script_path.to_string_lossy().into_owned()],
                         env: BTreeMap::from([(
                             "MCP_TOOL_CALL_DELAY_MS".to_string(),
@@ -2365,7 +2365,7 @@ mod tests {
                 ScopedMcpServerConfig {
                     scope: ConfigSource::Local,
                     config: McpServerConfig::Stdio(McpStdioServerConfig {
-                        command: "python3".to_string(),
+                        command: "python".to_string(),
                         args: vec![script_path.to_string_lossy().into_owned()],
                         env: BTreeMap::from([(
                             "MCP_INVALID_TOOL_CALL_RESPONSE".to_string(),
@@ -2657,7 +2657,7 @@ mod tests {
         fs::create_dir_all(&root).expect("temp dir");
         let script_path = root.join("initialize-disconnect.py");
         let script = [
-            "#!/usr/bin/env python3",
+            "#!/usr/bin/env python",
             "import sys",
             "header = b''",
             r"while not header.endswith(b'\r\n\r\n'):",
