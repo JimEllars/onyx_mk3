@@ -1,0 +1,40 @@
+{
+  "agentId": "agent-1775778966382275017",
+  "name": "verify-the-branch",
+  "description": "Verify the branch",
+  "subagentType": "Explore",
+  "model": "claude-opus-4-6",
+  "status": "failed",
+  "outputFile": "/app/rust/.onyxd-agents/agent-1775778966382275017.md",
+  "manifestFile": "/app/rust/.onyxd-agents/agent-1775778966382275017.json",
+  "createdAt": "1775778966",
+  "startedAt": "1775778966",
+  "completedAt": "1775778966",
+  "laneEvents": [
+    {
+      "event": "lane.started",
+      "status": "running",
+      "emittedAt": "1775778966"
+    },
+    {
+      "event": "lane.blocked",
+      "status": "blocked",
+      "emittedAt": "1775778966",
+      "failureClass": "infra",
+      "detail": "api returned 401 Unauthorized (authentication_error) [trace req_011CZu6qdNSYYL44ZxRVs2rG]: Invalid bearer token"
+    },
+    {
+      "event": "lane.failed",
+      "status": "failed",
+      "emittedAt": "1775778966",
+      "failureClass": "infra",
+      "detail": "api returned 401 Unauthorized (authentication_error) [trace req_011CZu6qdNSYYL44ZxRVs2rG]: Invalid bearer token"
+    }
+  ],
+  "currentBlocker": {
+    "failureClass": "infra",
+    "detail": "api returned 401 Unauthorized (authentication_error) [trace req_011CZu6qdNSYYL44ZxRVs2rG]: Invalid bearer token"
+  },
+  "derivedState": "truly_idle",
+  "error": "api returned 401 Unauthorized (authentication_error) [trace req_011CZu6qdNSYYL44ZxRVs2rG]: Invalid bearer token"
+}

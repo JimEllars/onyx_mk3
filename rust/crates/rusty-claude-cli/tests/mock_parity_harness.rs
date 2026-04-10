@@ -193,7 +193,7 @@ fn clean_env_cli_reaches_mock_anthropic_service_across_scripted_parity_scenarios
                 workspace.setup_fresh_session();
             },
             assert: |workspace, _run| {
-                let state_file = workspace.root.join(".claw").join("worker-state.json");
+                let state_file = workspace.root.join(".onyx").join("worker-state.json");
                 assert!(
                     state_file.exists(),
                     "state file should be emitted at {:?}",
@@ -217,7 +217,7 @@ fn clean_env_cli_reaches_mock_anthropic_service_across_scripted_parity_scenarios
                 workspace.setup_fresh_session();
             },
             assert: |workspace, _run| {
-                let state_file = workspace.root.join(".claw").join("worker-state.json");
+                let state_file = workspace.root.join(".onyx").join("worker-state.json");
                 let contents = std::fs::read_to_string(&state_file)
                     .expect("state file should be readable");
                 let value: serde_json::Value = serde_json::from_str(&contents)
@@ -321,8 +321,8 @@ impl HarnessWorkspace {
     }
 
     fn setup_fresh_session(&self) {
-        let claw_dir = self.root.join(".claw");
-        fs::create_dir_all(&claw_dir).expect("create .claw dir");
+        let onyx_dir = self.root.join(".onyx");
+        fs::create_dir_all(&onyx_dir).expect("create .onyx dir");
         let state_json = serde_json::json!({
             "worker_id": "test-worker",
             "status": "ready_for_prompt",
@@ -339,7 +339,7 @@ impl HarnessWorkspace {
             "seconds_since_update": 0
         });
         fs::write(
-            claw_dir.join("worker-state.json"),
+            onyx_dir.join("worker-state.json"),
             serde_json::to_string(&state_json).unwrap()
         ).expect("write worker state");
     }
@@ -378,7 +378,7 @@ fn run_case(case: ScenarioCase, workspace: &HarnessWorkspace, base_url: &str) ->
         .env_clear()
         .env("ANTHROPIC_API_KEY", "test-parity-key")
         .env("ANTHROPIC_BASE_URL", base_url)
-        .env("CLAW_CONFIG_HOME", &workspace.config_home)
+        .env("ONYX_CONFIG_HOME", &workspace.config_home)
         .env("HOME", &workspace.home)
         .env("NO_COLOR", "1")
         .env("PATH", "/usr/bin:/bin")
@@ -409,16 +409,16 @@ fn run_case(case: ScenarioCase, workspace: &HarnessWorkspace, base_url: &str) ->
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .expect("claw should launch");
+            .expect("onyx should launch");
         child
             .stdin
             .as_mut()
             .expect("stdin should be piped")
             .write_all(stdin.as_bytes())
             .expect("stdin should write");
-        child.wait_with_output().expect("claw should finish")
+        child.wait_with_output().expect("onyx should finish")
     } else {
-        command.output().expect("claw should launch")
+        command.output().expect("onyx should launch")
     };
 
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -459,7 +459,7 @@ fn run_case(case: ScenarioCase, workspace: &HarnessWorkspace, base_url: &str) ->
 
 #[allow(dead_code)]
 fn prepare_auto_compact_fixture(workspace: &HarnessWorkspace) {
-    let sessions_dir = workspace.root.join(".claw").join("sessions");
+    let sessions_dir = workspace.root.join(".onyx").join("sessions");
     fs::create_dir_all(&sessions_dir).expect("sessions dir should exist");
 
     // Write a pre-seeded session with 6 messages so auto-compact can remove them
@@ -993,7 +993,7 @@ fn unique_temp_dir(label: &str) -> PathBuf {
         .as_millis();
     let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!(
-        "claw-mock-parity-{label}-{}-{millis}-{counter}",
+        "onyx-mock-parity-{label}-{}-{millis}-{counter}",
         std::process::id()
     ))
 }

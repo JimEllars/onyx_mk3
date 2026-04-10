@@ -1,0 +1,71 @@
+{"event":"lane.started","status":"running","emittedAt":"1775777891"}
+{"event":"lane.commit.created","status":"completed","emittedAt":"1775777891","detail":"commit abc1234","data":{"branch":"jules-10753065619410493029-d0e563db","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+{"event":"lane.started","status":"running","emittedAt":"1775777891"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775777891","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+{"event":"lane.started","status":"running","emittedAt":"1775777891"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775777891","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+{"event":"lane.started","status":"running","emittedAt":"1775777891"}
+{"event":"lane.started","status":"running","emittedAt":"1775777891"}
+{"event":"lane.started","status":"running","emittedAt":"1775777891"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775777891","failureClass":"infra","detail":"api returned 401 Unauthorized (authentication_error) [trace req_011CZu5UNneRMx851Vso2GQp]: Invalid bearer token"}
+{"event":"lane.started","status":"running","emittedAt":"1775778456"}
+{"event":"lane.commit.created","status":"completed","emittedAt":"1775778456","detail":"commit abc1234","data":{"branch":"jules-10753065619410493029-d0e563db","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+{"event":"lane.started","status":"running","emittedAt":"1775778456"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775778456","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+{"event":"lane.started","status":"running","emittedAt":"1775778456"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775778456","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+{"event":"lane.started","status":"running","emittedAt":"1775778456"}
+{"event":"lane.started","status":"running","emittedAt":"1775778456"}
+{"event":"lane.started","status":"running","emittedAt":"1775778456"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775778456","failureClass":"infra","detail":"api returned 401 Unauthorized (authentication_error) [trace req_011CZu6C1pk9E2fqxaQpga7c]: Invalid bearer token"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775778456","failureClass":"infra","detail":"api returned 401 Unauthorized (authentication_error) [trace req_011CZu6C24PWdstrwcSRLSgx]: Invalid bearer token"}
+{"event":"lane.started","status":"running","emittedAt":"1775778966"}
+{"event":"lane.commit.created","status":"completed","emittedAt":"1775778966","detail":"commit abc1234","data":{"branch":"jules-10753065619410493029-d0e563db","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+{"event":"lane.started","status":"running","emittedAt":"1775778966"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775778966","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+{"event":"lane.started","status":"running","emittedAt":"1775778966"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775778966","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+{"event":"lane.started","status":"running","emittedAt":"1775778966"}
+{"event":"lane.started","status":"running","emittedAt":"1775778966"}
+{"event":"lane.started","status":"running","emittedAt":"1775778966"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775778966","failureClass":"infra","detail":"api returned 401 Unauthorized (authentication_error) [trace req_011CZu6qdNSYYL44ZxRVs2rG]: Invalid bearer token"}
+{"event":"lane.started","status":"running","emittedAt":"1775779693"}
+{"event":"lane.started","status":"running","emittedAt":"1775779693"}
+{"event":"lane.started","status":"running","emittedAt":"1775779693"}
+{"event":"lane.started","status":"running","emittedAt":"1775779693"}
+{"event":"lane.commit.created","status":"completed","emittedAt":"1775779693","detail":"commit abc1234","data":{"branch":"jules-10753065619410493029-d0e563db","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+{"event":"lane.started","status":"running","emittedAt":"1775779693"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775779693","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+{"event":"lane.started","status":"running","emittedAt":"1775779693"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775779693","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+{"event":"lane.started","status":"running","emittedAt":"1775780872"}
+{"event":"lane.commit.created","status":"completed","emittedAt":"1775780872","detail":"commit abc1234","data":{"branch":"jules-10753065619410493029-d0e563db","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+{"event":"lane.started","status":"running","emittedAt":"1775780872"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775780872","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+{"event":"lane.started","status":"running","emittedAt":"1775780872"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775780872","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+{"event":"lane.started","status":"running","emittedAt":"1775780872"}
+{"event":"lane.started","status":"running","emittedAt":"1775780872"}
+{"event":"lane.started","status":"running","emittedAt":"1775780872"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775780872","failureClass":"infra","detail":"api returned 401 Unauthorized (authentication_error) [trace req_011CZu9G8eixR6Gyy3TRy87W]: Invalid bearer token"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775780872","failureClass":"infra","detail":"api returned 401 Unauthorized (authentication_error) [trace req_011CZu9G8qt9y2PrAY7F6bUU]: Invalid bearer token"}
+{"event":"lane.started","status":"running","emittedAt":"1775781300"}
+{"event":"lane.started","status":"running","emittedAt":"1775781300"}
+{"event":"lane.started","status":"running","emittedAt":"1775781300"}
+{"event":"lane.started","status":"running","emittedAt":"1775781300"}
+{"event":"lane.commit.created","status":"completed","emittedAt":"1775781300","detail":"commit abc1234","data":{"branch":"jules-10753065619410493029-d0e563db","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+{"event":"lane.started","status":"running","emittedAt":"1775781300"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775781300","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+{"event":"lane.started","status":"running","emittedAt":"1775781300"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775781300","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+{"event":"lane.started","status":"running","emittedAt":"1775790481"}
+{"event":"lane.commit.created","status":"completed","emittedAt":"1775790481","detail":"commit abc1234","data":{"branch":"jules-10753065619410493029-d0e563db","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+{"event":"lane.started","status":"running","emittedAt":"1775790481"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775790481","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+{"event":"lane.started","status":"running","emittedAt":"1775790481"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775790481","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+{"event":"lane.started","status":"running","emittedAt":"1775790481"}
+{"event":"lane.started","status":"running","emittedAt":"1775790481"}
+{"event":"lane.started","status":"running","emittedAt":"1775790481"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775790482","failureClass":"infra","detail":"api returned 401 Unauthorized (authentication_error) [trace req_011CZuMUVpvimbvx4DVvR3Gv]: Invalid bearer token"}
+{"event":"lane.failed","status":"failed","emittedAt":"1775790482","failureClass":"infra","detail":"api returned 401 Unauthorized (authentication_error) [trace req_011CZuMUVyMU6vxbm6PvoEie]: Invalid bearer token"}
