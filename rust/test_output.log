@@ -1,0 +1,940 @@
+   Compiling rusty-claude-cli v0.1.0 (/app/rust/crates/rusty-claude-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.39s
+     Running unittests src/lib.rs (target/debug/deps/api-6cada227b8b5a5ed)
+
+running 109 tests
+test client::tests::resolves_existing_and_grok_aliases ... ok
+test client::tests::provider_detection_prefers_model_family ... ok
+test error::tests::classifies_provider_context_window_errors ... ok
+test error::tests::detects_generic_fatal_wrapper_and_classifies_it_as_provider_internal ... ok
+test error::tests::missing_credentials_with_hint_appends_the_hint_after_base_message ... ok
+test error::tests::json_deserialize_error_includes_provider_model_and_truncated_body_snippet ... ok
+test client::tests::dashscope_model_uses_dashscope_config_not_openai ... ok
+test error::tests::missing_credentials_without_hint_renders_the_canonical_message ... ok
+test error::tests::retries_exhausted_preserves_nested_request_id_and_failure_class ... ok
+test error::tests::truncate_body_snippet_caps_long_bodies_at_max_chars ... ok
+test error::tests::truncate_body_snippet_does_not_split_multibyte_characters ... ok
+test error::tests::truncate_body_snippet_keeps_short_bodies_intact ... ok
+test http_client::tests::build_http_client_returns_error_for_invalid_unified_proxy_url ... ok
+test http_client::tests::build_http_client_returns_http_error_for_invalid_proxy_url ... ok
+test http_client::tests::build_http_client_succeeds_when_no_proxy_is_configured ... ok
+test http_client::tests::build_http_client_succeeds_with_unified_proxy_url ... ok
+test http_client::tests::from_proxy_url_sets_unified_field_and_leaves_per_scheme_empty ... ok
+test http_client::tests::proxy_config_falls_back_to_lowercase_keys ... ok
+test http_client::tests::proxy_config_is_empty_when_no_env_vars_are_set ... ok
+test http_client::tests::build_http_client_succeeds_with_valid_http_and_https_proxies ... ok
+test http_client::tests::proxy_config_prefers_uppercase_over_lowercase_when_both_set ... ok
+test http_client::tests::proxy_config_reads_uppercase_http_https_and_no_proxy ... ok
+test http_client::tests::proxy_config_treats_empty_strings_as_unset ... ok
+test prompt_cache::tests::changed_prompt_marks_break_as_expected ... ok
+test http_client::tests::proxy_url_takes_precedence_over_per_scheme_fields ... ok
+test prompt_cache::tests::path_builder_sanitizes_session_identifier ... ok
+test prompt_cache::tests::request_fingerprint_drives_unexpected_break_detection ... ok
+test prompt_cache::tests::request_hashes_are_versioned_and_stable ... ok
+test prompt_cache::tests::sanitize_path_caps_long_values ... ok
+test providers::anthropic::tests::auth_source_applies_headers ... ok
+test providers::anthropic::tests::auth_source_from_env_combines_api_key_and_bearer_token ... ok
+test providers::anthropic::tests::auth_source_from_saved_oauth_when_env_absent ... ok
+test prompt_cache::tests::completion_cache_round_trip_persists_recent_response ... ok
+test providers::anthropic::tests::backoff_doubles_until_maximum ... ok
+test providers::anthropic::tests::default_retry_policy_matches_exponential_schedule ... ok
+test providers::anthropic::tests::enrich_bearer_auth_error_appends_sk_ant_hint_on_401_with_pure_bearer_token ... ok
+test providers::anthropic::tests::enrich_bearer_auth_error_ignores_401_when_auth_source_has_no_bearer ... ok
+test providers::anthropic::tests::enrich_bearer_auth_error_ignores_401_when_bearer_token_is_not_sk_ant ... ok
+test providers::anthropic::tests::enrich_bearer_auth_error_passes_non_api_errors_through_unchanged ... ok
+test providers::anthropic::tests::enrich_bearer_auth_error_leaves_non_401_errors_unchanged ... ok
+test providers::anthropic::tests::enrich_bearer_auth_error_skips_hint_when_api_key_header_is_also_present ... ok
+test providers::anthropic::tests::message_request_stream_helper_sets_stream_true ... ok
+test prompt_cache::tests::distinct_requests_do_not_collide_in_completion_cache ... ok
+test providers::anthropic::tests::jittered_backoff_stays_within_additive_bounds_and_varies ... ok
+test providers::anthropic::tests::oauth_token_expiry_uses_expires_at_timestamp ... ok
+test providers::anthropic::tests::oauth_token_maps_to_bearer_auth_source ... ok
+test providers::anthropic::tests::read_api_key_prefers_api_key_env ... ok
+test providers::anthropic::tests::read_api_key_requires_non_empty_value ... ok
+test providers::anthropic::tests::read_api_key_requires_presence ... ok
+test prompt_cache::tests::expired_completion_entries_are_not_reused ... ok
+test providers::anthropic::tests::read_auth_token_reads_auth_token_env ... ok
+test providers::anthropic::tests::request_id_uses_primary_or_fallback_header ... ok
+test providers::anthropic::tests::rendered_request_body_strips_betas_for_standard_messages_endpoint ... ok
+test providers::anthropic::tests::resolve_saved_oauth_token_refreshes_expired_credentials ... ok
+test providers::anthropic::tests::retryable_statuses_are_detected ... ok
+test providers::anthropic::tests::strip_does_not_add_empty_stop_sequences ... ok
+test providers::anthropic::tests::strip_removes_openai_only_fields_and_converts_stop ... ok
+test providers::anthropic::tests::strip_unsupported_beta_body_fields_is_a_noop_when_betas_absent ... ok
+test providers::anthropic::tests::strip_unsupported_beta_body_fields_removes_betas_array ... ok
+test providers::anthropic::tests::tool_delta_variant_round_trips ... ok
+test providers::openai_compat::tests::endpoint_builder_accepts_base_urls_and_full_endpoints ... ok
+test providers::openai_compat::tests::grok_3_mini_is_reasoning_model ... ok
+test providers::openai_compat::tests::missing_xai_api_key_is_provider_specific ... ok
+test providers::openai_compat::tests::normalizes_stop_reasons ... ok
+test providers::openai_compat::tests::openai_streaming_requests_include_usage_opt_in ... ok
+test providers::openai_compat::tests::parses_tool_arguments_fallback ... ok
+test providers::openai_compat::tests::qwen_reasoning_variants_are_detected ... ok
+test providers::openai_compat::tests::reasoning_effort_is_included_when_set ... ok
+test providers::openai_compat::tests::reasoning_effort_omitted_when_not_set ... ok
+test providers::openai_compat::tests::reasoning_model_strips_tuning_params ... ok
+test providers::openai_compat::tests::request_translation_uses_openai_compatible_shape ... ok
+test providers::openai_compat::tests::tool_choice_translation_supports_required_function ... ok
+test providers::openai_compat::tests::tool_schema_object_gets_strict_fields_for_responses_endpoint ... ok
+test providers::openai_compat::tests::tuning_params_included_in_payload_when_set ... ok
+test providers::anthropic::tests::resolve_saved_oauth_token_preserves_refresh_token_when_refresh_response_omits_it ... ok
+test providers::openai_compat::tests::tuning_params_omitted_from_payload_when_none ... ok
+test providers::openai_compat::tests::xai_streaming_requests_skip_openai_specific_usage_opt_in ... ok
+test providers::tests::anthropic_missing_credentials_builds_error_with_canonical_env_vars_and_no_hint_when_clean ... ok
+test providers::tests::anthropic_missing_credentials_builds_error_with_hint_when_openai_key_is_set ... ok
+test providers::tests::anthropic_missing_credentials_hint_detects_dashscope_api_key ... ok
+test providers::tests::anthropic_missing_credentials_hint_detects_openai_api_key_and_recommends_openai_prefix ... ok
+test providers::tests::anthropic_missing_credentials_hint_ignores_empty_string_values ... ok
+test providers::tests::anthropic_missing_credentials_hint_detects_xai_api_key ... ok
+test providers::anthropic::tests::resolve_startup_auth_source_errors_when_refreshable_token_lacks_config ... ok
+test providers::tests::anthropic_missing_credentials_hint_is_none_when_no_foreign_creds_present ... ok
+test providers::tests::anthropic_missing_credentials_hint_prefers_openai_when_multiple_foreign_creds_set ... ok
+test providers::tests::detects_provider_from_model_name_first ... ok
+test providers::anthropic::tests::resolve_startup_auth_source_uses_saved_oauth_without_loading_config ... ok
+test providers::tests::keeps_existing_max_token_heuristic ... ok
+test providers::tests::max_tokens_for_model_with_override_falls_back_when_plugin_unset ... ok
+test providers::tests::openai_namespaced_model_routes_to_openai_not_anthropic ... ok
+test providers::tests::parse_dotenv_extracts_keys_handles_comments_quotes_and_export_prefix ... ok
+test providers::tests::load_dotenv_file_reads_keys_from_disk_and_returns_none_when_missing ... ok
+test providers::tests::qwen_prefix_routes_to_dashscope_not_anthropic ... ok
+test providers::tests::resolves_grok_aliases ... ok
+test providers::tests::returns_context_window_metadata_for_supported_models ... ok
+test sse::tests::given_message_delta_frame_with_empty_usage_when_parsed_then_usage_defaults_to_zero ... ok
+test providers::tests::plugin_config_max_output_tokens_overrides_model_default ... ok
+test sse::tests::ignores_data_less_event_frames ... ok
+test sse::tests::ignores_ping_and_done ... ok
+test providers::tests::preflight_skips_unknown_models ... ok
+test sse::tests::parses_chunked_stream ... ok
+test sse::tests::parses_split_json_across_data_lines ... ok
+test sse::tests::parses_single_frame ... ok
+test sse::tests::parses_thinking_content_block_start ... ok
+test types::tests::usage_total_tokens_includes_cache_tokens ... ok
+test sse::tests::parses_thinking_related_deltas ... ok
+test types::tests::message_response_estimates_cost_from_model_usage ... ok
+test providers::tests::preflight_blocks_requests_that_exceed_the_model_context_window ... ok
+
+test result: ok. 109 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests/client_integration.rs (target/debug/deps/client_integration-c0b8c7cab063b25e)
+
+running 13 tests
+test live_stream_smoke_test ... ignored, requires ANTHROPIC_API_KEY and network access
+test given_empty_usage_object_when_send_message_parses_response_then_usage_defaults_to_zero ... ok
+test provider_client_dispatches_anthropic_requests ... ok
+test send_message_applies_request_profile_and_records_telemetry ... ok
+test retries_retryable_failures_before_succeeding ... ok
+test send_message_parses_prompt_cache_token_usage_from_response ... ok
+test send_message_posts_json_and_parses_response ... ok
+test send_message_reuses_recent_completion_cache_entries ... ok
+test send_message_tracks_unexpected_prompt_cache_breaks ... ok
+test stream_message_parses_sse_events_with_tool_use ... ok
+test surfaces_retry_exhaustion_for_persistent_retryable_errors ... ok
+test retries_multiple_retryable_failures_with_exponential_backoff_and_jitter ... ok
+test send_message_blocks_oversized_requests_before_the_http_call ... ok
+
+test result: ok. 12 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/openai_compat_integration.rs (target/debug/deps/openai_compat_integration-172ead8a659da43a)
+
+running 6 tests
+test send_message_accepts_full_chat_completions_endpoint_override ... ok
+test provider_client_dispatches_xai_requests_from_env ... ok
+test openai_streaming_requests_opt_into_usage_chunks ... ok
+test send_message_uses_openai_compatible_endpoint_and_auth ... ok
+test stream_message_normalizes_text_and_multiple_tool_calls ... ok
+test send_message_blocks_oversized_xai_requests_before_the_http_call ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/provider_client_integration.rs (target/debug/deps/provider_client_integration-b00e57de247c692a)
+
+running 4 tests
+test provider_client_reports_missing_xai_credentials_for_grok_models ... ok
+test provider_client_uses_explicit_anthropic_auth_without_env_lookup ... ok
+test read_xai_base_url_prefers_env_override ... ok
+test provider_client_routes_grok_aliases_through_xai ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/proxy_integration.rs (target/debug/deps/proxy_integration-ee32dbbc4886b8bb)
+
+running 7 tests
+test build_client_with_proxy_url_config_succeeds ... ok
+test build_client_with_env_proxy_config_succeeds ... ok
+test proxy_config_from_env_prefers_uppercase_over_lowercase ... ok
+test proxy_config_from_env_is_empty_when_no_vars_set ... ok
+test proxy_config_from_env_reads_lowercase_proxy_vars ... ok
+test proxy_config_from_env_reads_uppercase_proxy_vars ... ok
+test proxy_config_from_env_treats_empty_values_as_unset ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/commands-c8c21724078e3632)
+
+running 36 tests
+test tests::accepts_skills_invocation_arguments_for_prompt_dispatch ... ok
+test tests::agents_and_skills_usage_support_help_and_unexpected_args ... ok
+test tests::compacts_sessions_via_slash_command ... ok
+test tests::ignores_unknown_or_runtime_bound_slash_commands ... ok
+test tests::help_command_is_non_mutating ... ok
+test tests::discovers_omc_skills_from_project_and_user_compatibility_roots ... ok
+test tests::lists_agents_from_project_and_user_roots ... ok
+test tests::installs_skill_into_user_registry_and_preserves_nested_files ... ok
+test tests::lists_auto_installed_bundled_plugins_with_status ... ok
+test tests::mcp_usage_supports_help_and_unexpected_args ... ok
+test tests::parses_history_command_with_numeric_count ... ok
+test tests::parses_history_command_without_count ... ok
+test tests::parses_quoted_skill_frontmatter_values ... ok
+test tests::parses_supported_slash_commands ... ok
+test tests::installs_plugin_from_path_and_lists_it ... ok
+test tests::rejects_history_with_extra_arguments ... ok
+test tests::rejects_invalid_argument_values ... ok
+test tests::rejects_invalid_agents_arguments ... ok
+test tests::lists_skills_from_project_and_user_roots ... ok
+test tests::rejects_invalid_mcp_arguments ... ok
+test tests::rejects_missing_required_arguments ... ok
+test tests::rejects_invalid_session_and_plugin_shapes ... ok
+test tests::rejects_unexpected_arguments_for_no_arg_commands ... ok
+test tests::renders_agents_reports_as_json ... ok
+test tests::enables_and_disables_plugin_by_name ... ok
+test tests::renders_mcp_reports_as_json ... ok
+test tests::renders_per_command_help_detail ... ok
+test tests::renders_per_command_help_detail_for_mcp ... ok
+test tests::renders_plugins_report_with_name_version_and_status ... ok
+test tests::renders_help_from_shared_specs ... ok
+test tests::resolves_project_skills_and_legacy_commands_from_shared_registry ... ok
+test tests::renders_mcp_reports_from_loaded_config ... ok
+test tests::validate_slash_command_input_rejects_extra_single_value_arguments ... ok
+test tests::renders_skills_reports_as_json ... ok
+test tests::suggests_closest_slash_commands_for_typos_and_aliases ... ok
+test tests::renders_help_with_grouped_categories_and_keyboard_shortcuts ... ok
+
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running unittests src/lib.rs (target/debug/deps/compat_harness-7856a3c246cca5c6)
+
+running 3 tests
+test tests::detects_known_upstream_command_symbols ... ok
+test tests::detects_known_upstream_tool_symbols ... ok
+test tests::extracts_non_empty_manifests_from_upstream_repo ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/mock_anthropic_service-b1a71ac5e41c3191)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/mock_anthropic_service-5f1d2b6575cf2dc1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/plugins-e8fe06c9e751160f)
+
+running 35 tests
+test hooks::tests::generated_hook_scripts_are_executable ... ok
+test tests::aggregates_and_executes_plugin_tools ... ok
+test tests::auto_installs_bundled_plugins_into_the_registry ... ok
+test tests::bundled_sync_prunes_removed_bundled_registry_entries ... ok
+test tests::default_bundled_root_loads_repo_bundles_as_installed_plugins ... ok
+test tests::discovers_builtin_and_bundled_plugins ... ok
+test tests::installed_plugin_discovery_keeps_registry_entries_outside_install_root ... ok
+test tests::installed_plugin_discovery_prunes_stale_registry_entries ... ok
+test hooks::tests::collects_and_runs_hooks_from_enabled_plugins ... ok
+test tests::installed_plugin_registry_report_collects_load_failures_from_install_root ... ok
+test tests::list_installed_plugins_scans_install_root_without_registry_entries ... ok
+test tests::list_installed_plugins_scans_packaged_manifests_in_install_root ... ok
+test tests::load_plugin_from_directory_accumulates_multiple_validation_errors ... ok
+test tests::load_plugin_from_directory_defaults_optional_fields ... ok
+test tests::load_plugin_from_directory_reads_root_manifest_and_validates_entries ... ok
+test tests::load_plugin_from_directory_rejects_claude_code_manifest_contracts_with_guidance ... ok
+test tests::load_plugin_from_directory_rejects_directory_command_paths ... ok
+test tests::load_plugin_from_directory_rejects_duplicate_permissions_and_commands ... ok
+test tests::load_plugin_from_directory_rejects_invalid_permissions ... ok
+test tests::load_plugin_from_directory_rejects_invalid_tool_required_permission ... ok
+test tests::load_plugin_from_directory_rejects_missing_lifecycle_paths ... ok
+test tests::load_plugin_from_directory_rejects_missing_tool_or_command_paths ... ok
+test tests::load_plugin_from_directory_supports_packaged_manifest_path ... ok
+test tests::load_plugin_from_directory_validates_required_fields ... ok
+test tests::installs_enables_updates_and_uninstalls_external_plugins ... ok
+test tests::persists_bundled_plugin_disable_state_across_reloads ... ok
+test tests::persists_bundled_plugin_enable_state_across_reloads ... ok
+test tests::plugin_registry_report_collects_load_failures_without_dropping_valid_plugins ... ok
+test tests::plugin_registry_tracks_enabled_state_and_lookup ... ok
+test tests::plugin_registry_runs_initialize_and_shutdown_for_enabled_plugins ... ok
+test tests::rejects_plugin_sources_with_missing_failure_hook_paths ... ok
+test tests::rejects_plugin_sources_with_missing_hook_paths ... ok
+test tests::validates_plugin_source_before_install ... ok
+test hooks::tests::propagates_plugin_hook_failures ... ok
+test hooks::tests::pre_tool_use_denies_when_plugin_hook_exits_two ... ok
+
+test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running unittests src/lib.rs (target/debug/deps/runtime-c078c1d2eb48b62e)
+
+running 430 tests
+test bash::truncation_tests::exact_boundary_unchanged ... ok
+test bash::truncation_tests::long_output_truncated ... ok
+test bash::truncation_tests::short_output_unchanged ... ok
+test bash_validation::tests::allows_git_status_in_read_only ... ok
+test bash::truncation_tests::one_over_boundary_truncated ... ok
+test bash_validation::tests::allows_read_commands_in_read_only ... ok
+test bash_validation::tests::allows_rm_in_workspace_write ... ok
+test bash_validation::tests::allows_safe_commands ... ok
+test bash_validation::tests::allows_sed_stdout_in_read_only ... ok
+test bash_validation::tests::blocks_git_push_in_read_only ... ok
+test bash_validation::tests::blocks_package_install_in_read_only ... ok
+test bash_validation::tests::blocks_rm_in_read_only ... ok
+test bash_validation::tests::blocks_sed_inplace_in_read_only ... ok
+test bash_validation::tests::blocks_sudo_write_in_read_only ... ok
+test bash_validation::tests::blocks_write_redirections_in_read_only ... ok
+test bash_validation::tests::classifies_destructive_commands ... ok
+test bash_validation::tests::classifies_git_push_as_write ... ok
+test bash_validation::tests::classifies_git_status_as_read_only ... ok
+test bash_validation::tests::classifies_network_commands ... ok
+test bash_validation::tests::classifies_read_only_commands ... ok
+test bash_validation::tests::classifies_sed_inplace_as_write ... ok
+test bash_validation::tests::classifies_sed_stdout_as_read_only ... ok
+test bash_validation::tests::classifies_write_commands ... ok
+test bash_validation::tests::extracts_command_from_env_prefix ... ok
+test bash_validation::tests::extracts_plain_command ... ok
+test bash_validation::tests::pipeline_allows_safe_read_in_read_only ... ok
+test bash_validation::tests::pipeline_blocks_write_in_read_only ... ok
+test bash_validation::tests::pipeline_warns_destructive_in_write_mode ... ok
+test bash_validation::tests::warns_directory_traversal ... ok
+test bash_validation::tests::warns_fork_bomb ... ok
+test bash_validation::tests::warns_home_directory_reference ... ok
+test bash_validation::tests::warns_rm_rf_home ... ok
+test bash_validation::tests::warns_rm_rf_root ... ok
+test bash_validation::tests::warns_shred ... ok
+test bash_validation::tests::workspace_write_allows_local_writes ... ok
+test bash_validation::tests::workspace_write_warns_system_paths ... ok
+test bootstrap::tests::claude_code_default_covers_each_phase_once ... ok
+test bootstrap::tests::from_phases_deduplicates_while_preserving_order ... ok
+test branch_lock::tests::detects_nested_module_scope_collisions ... ok
+test branch_lock::tests::detects_same_branch_same_module_collisions ... ok
+test branch_lock::tests::ignores_different_branches ... ok
+test compact::tests::extracts_key_files_from_message_content ... ok
+test compact::tests::formats_compact_summary_like_upstream ... ok
+test compact::tests::ignores_existing_compacted_summary_when_deciding_to_recompact ... ok
+test compact::tests::infers_pending_work_from_recent_messages ... ok
+test compact::tests::compacts_older_messages_into_a_system_summary ... ok
+test compact::tests::leaves_small_sessions_unchanged ... ok
+test compact::tests::keeps_previous_compacted_context_when_compacting_again ... ok
+test compact::tests::truncates_long_blocks_in_summary ... ok
+test config::tests::deep_merge_objects_merges_nested_maps ... ok
+test config::tests::empty_settings_file_loads_defaults ... ok
+test config::tests::hook_config_merge_preserves_uniques ... ok
+test config::tests::infers_http_mcp_servers_from_url_only_config ... ok
+test config::tests::parses_plugin_config ... ok
+test config::tests::loads_and_merges_claude_code_config_files_by_precedence ... ok
+test config::tests::parses_plugin_config_from_enabled_plugins ... ok
+test config::tests::parses_provider_fallbacks_chain_with_primary_and_ordered_fallbacks ... ok
+test config::tests::parses_sandbox_config ... ok
+test config::tests::parses_trusted_roots_from_settings ... ok
+test config::tests::parses_typed_mcp_and_oauth_config ... ok
+test config::tests::permission_mode_aliases_resolve_to_expected_modes ... ok
+test config::tests::plugin_state_falls_back_to_default_for_unknown_plugin ... ok
+test config::tests::provider_fallbacks_default_is_empty_when_unset ... ok
+test config::tests::parses_user_defined_model_aliases_from_settings ... ok
+test config::tests::rejects_invalid_hook_entries_before_merge ... ok
+test bash::tests::executes_simple_command ... ok
+test config::tests::rejects_non_object_settings_files ... ok
+test config::tests::rejects_invalid_mcp_server_shapes ... ok
+test config::tests::trusted_roots_default_is_empty_when_unset ... ok
+test config::tests::unknown_top_level_key_suggests_closest_match ... ok
+test config::tests::validates_deprecated_top_level_keys_with_replacement_guidance ... ok
+test config_validate::tests::check_unsupported_format_allows_json ... ok
+test config_validate::tests::check_unsupported_format_rejects_toml ... ok
+test config_validate::tests::detects_deprecated_enabled_plugins ... ok
+test config_validate::tests::detects_deprecated_permission_mode ... ok
+test config::tests::validates_wrong_type_for_known_field_with_field_path ... ok
+test config::tests::validates_unknown_top_level_keys_with_line_and_field_name ... ok
+test config_validate::tests::detects_unknown_top_level_key ... ok
+test config_validate::tests::detects_wrong_type_for_model ... ok
+test config_validate::tests::display_format_deprecated_with_line ... ok
+test config_validate::tests::display_format_unknown_key_with_line ... ok
+test config_validate::tests::display_format_wrong_type_with_line ... ok
+test config_validate::tests::format_diagnostics_includes_all_entries ... ok
+test config_validate::tests::reports_line_number_for_wrong_type ... ok
+test config_validate::tests::reports_line_number_for_unknown_key ... ok
+test config_validate::tests::suggests_close_field_name ... ok
+test config_validate::tests::valid_config_produces_no_diagnostics ... ok
+test config_validate::tests::validates_nested_hooks_keys ... ok
+test config_validate::tests::validates_nested_oauth_keys ... ok
+test config_validate::tests::validates_nested_permissions_keys ... ok
+test config_validate::tests::validates_nested_plugins_keys ... ok
+test config_validate::tests::wrong_type_in_nested_sandbox_field ... ok
+test config_validate::tests::validates_nested_sandbox_keys ... ok
+test conversation::tests::auto_compaction_threshold_defaults_and_parses_values ... ok
+test conversation::tests::auto_compacts_when_cumulative_input_threshold_is_crossed ... ok
+test conversation::tests::build_assistant_message_requires_content ... ok
+test conversation::tests::build_assistant_message_requires_message_stop_event ... ok
+test conversation::tests::compacts_session_after_turns ... ok
+test bash::tests::disables_sandbox_when_requested ... ok
+test conversation::tests::appends_post_tool_use_failure_hook_feedback_to_tool_result ... ok
+test conversation::tests::forks_runtime_session_without_mutating_original ... ok
+test conversation::tests::persists_conversation_turn_messages_to_jsonl_session ... ok
+test conversation::tests::reconstructs_usage_tracker_from_restored_session ... ok
+test conversation::tests::denies_tool_use_when_pre_tool_hook_blocks ... ok
+test conversation::tests::records_denied_tool_results_when_prompt_rejects ... ok
+test conversation::tests::records_runtime_session_trace_events ... ok
+test conversation::tests::run_turn_errors_when_max_iterations_is_exceeded ... ok
+test conversation::tests::run_turn_propagates_api_errors ... ok
+test conversation::tests::runs_user_to_tool_to_result_loop_end_to_end_and_tracks_usage ... ok
+test conversation::tests::static_tool_executor_rejects_unknown_tools ... ok
+test conversation::tests::skips_auto_compaction_below_threshold ... ok
+test file_ops::tests::detects_symlink_escape ... ok
+test file_ops::tests::edits_file_contents ... ok
+test file_ops::tests::enforces_workspace_boundary ... ok
+test file_ops::tests::globs_and_greps_directory ... ok
+test file_ops::tests::rejects_binary_files ... ok
+test file_ops::tests::reads_and_writes_files ... ok
+test file_ops::tests::rejects_oversized_writes ... ok
+test git_context::tests::detects_branch_name_and_commits ... ok
+test git_context::tests::detects_staged_files ... ok
+test git_context::tests::render_formats_all_sections ... ok
+test git_context::tests::render_omits_empty_sections ... ok
+test git_context::tests::returns_none_for_non_git_directory ... ok
+test green_contract::tests::given_higher_level_when_checking_requirement_then_it_still_satisfies_contract ... ok
+test green_contract::tests::given_lower_level_when_evaluating_contract_then_it_is_unsatisfied ... ok
+test green_contract::tests::given_matching_level_when_evaluating_contract_then_it_is_satisfied ... ok
+test green_contract::tests::given_no_green_level_when_evaluating_contract_then_contract_is_unsatisfied ... ok
+test conversation::tests::denies_tool_use_when_pre_tool_hook_fails ... ok
+test conversation::tests::appends_post_tool_hook_feedback_to_tool_result ... ok
+test hooks::tests::abort_signal_cancels_long_running_hook_and_reports_progress ... ok
+test git_context::tests::limits_to_five_recent_commits ... ok
+test hooks::tests::allows_exit_code_zero_and_captures_stdout ... ok
+test hooks::tests::denies_exit_code_two ... ok
+test hooks::tests::parses_pre_hook_permission_override_and_updated_input ... ok
+test hooks::tests::propagates_other_non_zero_statuses_as_failures ... ok
+test hooks::tests::runs_post_tool_use_failure_hooks ... ok
+test json::tests::escapes_control_characters ... ok
+test json::tests::renders_and_parses_json_values ... ok
+test lane_events::tests::blocked_and_failed_events_reuse_blocker_details ... ok
+test lane_events::tests::canonical_lane_event_names_serialize_to_expected_wire_values ... ok
+test lane_events::tests::commit_events_can_carry_worktree_and_supersession_metadata ... ok
+test lane_events::tests::dedupes_superseded_commit_events_by_canonical_commit ... ok
+test lane_events::tests::failure_classes_cover_canonical_taxonomy_wire_values ... ok
+test lsp_client::tests::add_diagnostics_missing_language_errors ... ok
+test lsp_client::tests::clear_diagnostics_missing_language_errors ... ok
+test lsp_client::tests::disconnects_server ... ok
+test lsp_client::tests::dispatch_diagnostics_without_path_aggregates ... ok
+test lsp_client::tests::dispatch_disconnected_server_error_payload ... ok
+test lsp_client::tests::dispatch_no_server_for_path_errors ... ok
+test lsp_client::tests::dispatch_non_diagnostics_requires_path ... ok
+test lsp_client::tests::dispatches_diagnostics_action ... ok
+test lsp_client::tests::dispatches_hover_action ... ok
+test lsp_client::tests::find_server_for_all_extensions ... ok
+test lsp_client::tests::find_server_for_path_no_extension ... ok
+test lsp_client::tests::finds_server_by_file_extension ... ok
+test lsp_client::tests::get_diagnostics_across_servers ... ok
+test lsp_client::tests::get_missing_server_returns_none ... ok
+test lsp_client::tests::list_servers_with_multiple ... ok
+test lsp_client::tests::lsp_action_from_str_all_aliases ... ok
+test lsp_client::tests::lsp_server_status_display_all_variants ... ok
+test lsp_client::tests::manages_diagnostics ... ok
+test lsp_client::tests::registers_and_retrieves_server ... ok
+test lsp_client::tests::rejects_action_on_disconnected_server ... ok
+test lsp_client::tests::rejects_unknown_action ... ok
+test mcp::tests::computes_signatures_for_stdio_and_remote_servers ... ok
+test mcp::tests::normalizes_server_names_for_mcp_tooling ... ok
+test mcp::tests::scoped_hash_ignores_scope_but_tracks_config_content ... ok
+test mcp::tests::unwraps_ccr_proxy_urls_for_signature_matching ... ok
+test mcp_client::tests::bootstraps_remote_servers_with_oauth_auth ... ok
+test mcp_client::tests::bootstraps_stdio_servers_into_transport_targets ... ok
+test mcp_client::tests::bootstraps_websocket_and_sdk_transports_without_oauth ... ok
+test mcp_lifecycle_hardened::tests::error_surface_display_includes_phase_server_and_recoverable_flag ... ok
+test mcp_lifecycle_hardened::tests::given_each_phase_when_failure_is_recorded_then_error_is_tracked_per_phase ... ok
+test mcp_lifecycle_hardened::tests::given_failure_during_resource_discovery_when_shutting_down_then_cleanup_still_succeeds ... ok
+test mcp_lifecycle_hardened::tests::given_invalid_transition_when_running_phase_then_structured_failure_is_recorded ... ok
+test mcp_lifecycle_hardened::tests::given_nonrecoverable_failure_when_returning_to_ready_then_validator_rejects_resume ... ok
+test mcp_lifecycle_hardened::tests::given_partial_server_health_when_building_degraded_report_then_missing_tools_are_reported ... ok
+test mcp_lifecycle_hardened::tests::given_recoverable_failure_when_returning_to_ready_then_validator_allows_resume ... ok
+test mcp_lifecycle_hardened::tests::given_spawn_connect_timeout_when_recorded_then_waited_duration_is_preserved ... ok
+test mcp_lifecycle_hardened::tests::given_startup_path_when_running_to_cleanup_then_each_control_transition_succeeds ... ok
+test mcp_lifecycle_hardened::tests::given_tool_discovery_when_resource_discovery_is_skipped_then_ready_is_still_allowed ... ok
+test mcp_lifecycle_hardened::tests::phase_display_matches_serde_name ... ok
+test mcp_lifecycle_hardened::tests::validates_expected_phase_transitions ... ok
+test mcp_server::tests::dispatch_initialize_returns_server_info ... ok
+test mcp_server::tests::dispatch_tools_call_surfaces_handler_error ... ok
+test mcp_server::tests::dispatch_tools_call_wraps_handler_output ... ok
+test mcp_server::tests::dispatch_tools_list_returns_registered_tools ... ok
+test mcp_server::tests::dispatch_unknown_method_returns_method_not_found ... ok
+test mcp_stdio::tests::direct_spawn_uses_transport_env ... ok
+test hooks::tests::stops_running_failure_hooks_after_failure ... ok
+test hooks::tests::executes_hooks_in_configured_order ... ok
+test hooks::tests::stops_running_hooks_after_failure ... ok
+test mcp_stdio::tests::given_lowercase_content_length_when_initialize_then_response_parses ... ok
+test mcp_stdio::tests::given_mismatched_response_id_when_initialize_then_invalid_data_is_returned ... ok
+test mcp_stdio::tests::given_child_exits_after_discovery_when_calling_twice_then_second_call_succeeds_after_reset ... ok
+test mcp_stdio::tests::lists_tools_calls_tool_and_reads_resources_over_jsonrpc ... ok
+test mcp_stdio::tests::manager_discovers_tools_from_stdio_config ... ok
+test mcp_stdio::tests::given_tool_call_disconnects_once_when_calling_twice_then_manager_resets_and_next_call_succeeds ... ok
+test mcp_stdio::tests::manager_records_unsupported_non_stdio_servers_without_panicking ... ok
+test mcp_stdio::tests::manager_reports_unknown_qualified_tool_name ... ok
+test mcp_stdio::tests::manager_lists_and_reads_resources_from_stdio_servers ... ok
+test mcp_stdio::tests::manager_reuses_spawned_server_between_discovery_and_call ... ok
+test mcp_stdio::tests::manager_shutdown_terminates_spawned_children_and_is_idempotent ... ok
+test mcp_stdio::tests::manager_routes_tool_calls_to_correct_server ... ok
+test mcp_stdio::tests::manager_surfaces_parse_errors_from_tool_calls ... ok
+test mcp_stdio::tests::rejects_non_stdio_bootstrap ... ok
+test mcp_stdio::tests::manager_times_out_slow_tool_calls ... ok
+test mcp_stdio::tests::round_trips_initialize_request_and_response_over_stdio_frames ... ok
+test mcp_stdio::tests::spawns_stdio_process_and_round_trips_io ... ok
+test mcp_stdio::tests::manager_discovery_report_keeps_healthy_servers_when_one_server_fails ... ok
+test mcp_stdio::tests::write_jsonrpc_request_emits_content_length_frame ... ok
+test mcp_tool_bridge::tests::disconnect_missing_returns_none ... ok
+test mcp_tool_bridge::tests::get_server_returns_none_for_missing ... ok
+test mcp_stdio::tests::surfaces_jsonrpc_errors_from_tool_calls ... ok
+test mcp_tool_bridge::tests::given_connected_server_without_manager_when_calling_tool_then_it_errors ... ok
+test mcp_tool_bridge::tests::len_and_is_empty_transitions ... ok
+test mcp_tool_bridge::tests::list_servers_returns_all_registered ... ok
+test mcp_tool_bridge::tests::list_tools_from_connected_server ... ok
+test mcp_tool_bridge::tests::list_tools_rejects_disconnected_server ... ok
+test mcp_tool_bridge::tests::list_tools_rejects_missing_server ... ok
+test mcp_tool_bridge::tests::lists_resources_from_connected_server ... ok
+test mcp_tool_bridge::tests::mcp_connection_status_display_all_variants ... ok
+test mcp_tool_bridge::tests::reads_specific_resource ... ok
+test mcp_tool_bridge::tests::registers_and_retrieves_server ... ok
+test mcp_tool_bridge::tests::rejects_operations_on_missing_server ... ok
+test mcp_tool_bridge::tests::rejects_resource_listing_for_disconnected_server ... ok
+test mcp_tool_bridge::tests::rejects_tool_call_on_disconnected_server ... ok
+test mcp_tool_bridge::tests::sets_auth_and_disconnects ... ok
+test mcp_tool_bridge::tests::upsert_overwrites_existing_server ... ok
+test oauth::tests::builds_authorize_url_and_form_requests ... ok
+test oauth::tests::generates_pkce_pair_and_state ... ok
+test oauth::tests::oauth_credentials_round_trip_and_clear_preserves_other_fields ... ok
+test oauth::tests::parses_callback_query_and_target ... ok
+test oauth::tests::s256_challenge_matches_expected_vector ... ok
+test permission_enforcer::tests::active_mode_returns_policy_mode ... ok
+test permission_enforcer::tests::allow_mode_permits_everything ... ok
+test permission_enforcer::tests::bash_heuristic_empty_command ... ok
+test permission_enforcer::tests::bash_heuristic_full_path_prefix ... ok
+test permission_enforcer::tests::bash_heuristic_in_place_flag_blocks ... ok
+test permission_enforcer::tests::bash_heuristic_redirects_block_read_only_commands ... ok
+test permission_enforcer::tests::check_denied_payload_contains_tool_and_modes ... ok
+test permission_enforcer::tests::danger_full_access_permits_file_writes_and_bash ... ok
+test permission_enforcer::tests::prompt_mode_check_bash_denied_payload_fields ... ok
+test permission_enforcer::tests::prompt_mode_denies_without_prompter ... ok
+test permission_enforcer::tests::read_only_allows_read_commands ... ok
+test permission_enforcer::tests::read_only_check_file_write_denied_payload ... ok
+test permission_enforcer::tests::read_only_command_heuristic ... ok
+test permission_enforcer::tests::read_only_denies_write_commands ... ok
+test permission_enforcer::tests::read_only_denies_writes ... ok
+test permission_enforcer::tests::workspace_boundary_check ... ok
+test permission_enforcer::tests::workspace_root_equality ... ok
+test permission_enforcer::tests::workspace_root_with_trailing_slash ... ok
+test permission_enforcer::tests::workspace_write_allows_within_workspace ... ok
+test permission_enforcer::tests::workspace_write_denies_outside_workspace ... ok
+test permission_enforcer::tests::workspace_write_relative_path_resolved ... ok
+test permissions::tests::allows_tools_when_active_mode_meets_requirement ... ok
+test permissions::tests::applies_rule_based_denials_and_allows ... ok
+test permissions::tests::ask_rules_force_prompt_even_when_mode_allows ... ok
+test permissions::tests::denies_read_only_escalations_without_prompt ... ok
+test permissions::tests::honors_prompt_rejection_reason ... ok
+test permissions::tests::hook_allow_still_respects_ask_rules ... ok
+test permissions::tests::hook_ask_forces_prompt ... ok
+test permissions::tests::hook_deny_short_circuits_permission_flow ... ok
+test permissions::tests::prompts_for_workspace_write_to_danger_full_access_escalation ... ok
+test plugin_lifecycle::tests::complete_failure_when_all_servers_fail ... ok
+test plugin_lifecycle::tests::degraded_server_status_keeps_server_usable ... ok
+test plugin_lifecycle::tests::degraded_startup_when_one_of_three_servers_fails ... ok
+test plugin_lifecycle::tests::full_lifecycle_happy_path ... ok
+test plugin_lifecycle::tests::graceful_shutdown ... ok
+test policy_engine::tests::combinators_handle_empty_cases_and_nested_chains ... ok
+test policy_engine::tests::completed_lane_rule_closes_out_and_cleans_up ... ok
+test policy_engine::tests::matching_rules_are_returned_in_priority_order_with_stable_ties ... ok
+test policy_engine::tests::merge_to_dev_rule_fires_for_green_scoped_reviewed_lane ... ok
+test policy_engine::tests::non_reconciled_lane_does_not_trigger_reconcile_rule ... ok
+test policy_engine::tests::reconcile_reason_variants_are_distinct ... ok
+test policy_engine::tests::reconciled_context_has_correct_defaults ... ok
+test policy_engine::tests::reconciled_lane_emits_reconcile_and_cleanup ... ok
+test policy_engine::tests::stale_branch_rule_fires_at_threshold ... ok
+test policy_engine::tests::startup_blocked_rule_recovers_then_escalates ... ok
+test prompt::tests::dedupes_identical_instruction_content_across_scopes ... ok
+test mcp_stdio::tests::given_initialize_hangs_once_when_discover_tools_then_manager_retries_and_succeeds ... ok
+test prompt::tests::discover_with_git_includes_diff_snapshot_for_tracked_changes ... ok
+test mcp_tool_bridge::tests::call_tool_payload_structure ... ok
+test prompt::tests::discovers_dot_claude_instructions_markdown ... ok
+test prompt::tests::discovers_instruction_files_from_ancestor_chain ... ok
+test prompt::tests::displays_context_paths_compactly ... ok
+test prompt::tests::discover_with_git_includes_recent_commits_and_renders_them ... ok
+test prompt::tests::normalizes_and_collapses_blank_lines ... ok
+test prompt::tests::renders_claude_code_style_sections_with_project_context ... ok
+test prompt::tests::renders_instruction_file_metadata ... ok
+test prompt::tests::truncates_instruction_content_to_budget ... ok
+test prompt::tests::truncates_large_instruction_content_for_rendering ... ok
+test recovery_recipes::tests::each_scenario_has_a_matching_recipe ... ok
+test recovery_recipes::tests::emitted_events_include_structured_attempt_data ... ok
+test recovery_recipes::tests::escalation_after_max_attempts_exceeded ... ok
+test recovery_recipes::tests::failure_scenario_display_all_variants ... ok
+test recovery_recipes::tests::first_step_failure_escalates_immediately ... ok
+test recovery_recipes::tests::mcp_handshake_recipe_uses_abort_escalation_policy ... ok
+test recovery_recipes::tests::multi_step_success_reports_correct_steps_taken ... ok
+test recovery_recipes::tests::partial_plugin_startup_recipe_has_restart_then_handshake ... ok
+test recovery_recipes::tests::partial_recovery_when_step_fails_midway ... ok
+test recovery_recipes::tests::provider_failure_recipe_uses_restart_worker_step ... ok
+test recovery_recipes::tests::provider_failure_recovery_attempt_succeeds_then_escalates ... ok
+test recovery_recipes::tests::recovery_context_tracks_attempts_per_scenario ... ok
+test recovery_recipes::tests::stale_branch_recipe_has_rebase_then_clean_build ... ok
+test recovery_recipes::tests::successful_recovery_returns_recovered_and_emits_events ... ok
+test recovery_recipes::tests::worker_failure_kind_maps_to_failure_scenario ... ok
+test remote::tests::bootstrap_derives_proxy_state_and_env ... ok
+test remote::tests::bootstrap_fails_open_when_token_or_session_is_missing ... ok
+test remote::tests::helper_outputs_match_expected_shapes ... ok
+test remote::tests::inherited_proxy_env_requires_proxy_and_ca ... ok
+test remote::tests::remote_context_reads_env_state ... ok
+test remote::tests::token_reader_trims_and_handles_missing_files ... ok
+test sandbox::tests::builds_linux_launcher_with_network_flag_when_requested ... ok
+test sandbox::tests::detects_container_markers_from_multiple_sources ... ok
+test sandbox::tests::resolves_request_with_overrides ... ok
+test session::tests::appends_messages_to_persisted_jsonl_session ... ok
+test session::tests::forks_sessions_with_branch_metadata_and_persists_it ... ok
+test session::tests::loads_legacy_session_json_object ... ok
+test session::tests::normalizes_blank_fork_branch_name_to_none ... ok
+test session::tests::persists_and_restores_session_jsonl ... ok
+test session::tests::persists_compaction_metadata ... ok
+test session::tests::persists_workspace_root_round_trip_and_forks_inherit_it ... ok
+test session::tests::rejects_jsonl_message_record_without_message_payload ... ok
+test session::tests::rejects_jsonl_record_with_unknown_type ... ok
+test session::tests::rejects_jsonl_record_without_type ... ok
+test session::tests::rejects_legacy_session_json_without_messages ... ok
+test session::tests::rejects_unknown_content_block_type ... ok
+test session::tests::rotates_and_cleans_up_large_session_logs ... ok
+test session::workspace_sessions_dir_tests::workspace_sessions_dir_differs_for_different_cwds ... ok
+test session::workspace_sessions_dir_tests::workspace_sessions_dir_returns_fingerprinted_path_for_valid_cwd ... ok
+test session_control::tests::creates_and_lists_managed_sessions ... ok
+test session_control::tests::forks_session_into_managed_storage_with_lineage ... ok
+test session_control::tests::resolves_latest_alias_and_loads_session_from_workspace_root ... ok
+test session_control::tests::session_store_create_and_load_round_trip ... ok
+test session_control::tests::session_store_fork_stays_in_same_namespace ... ok
+test session_control::tests::session_store_from_cwd_isolates_sessions_by_workspace ... ok
+test session_control::tests::session_store_from_data_dir_namespaces_by_workspace ... ok
+test session_control::tests::session_store_latest_and_resolve_reference ... ok
+test session_control::tests::workspace_fingerprint_is_deterministic_and_differs_per_path ... ok
+test sse::tests::finish_flushes_a_trailing_event_without_separator ... ok
+test sse::tests::parses_streaming_events ... ok
+test prompt::tests::discover_with_git_includes_status_snapshot ... ok
+test prompt::tests::load_system_prompt_reads_claude_files_and_config ... ok
+test stale_base::tests::format_warning_returns_message_for_diverged ... ok
+test stale_base::tests::format_warning_returns_none_for_matches ... ok
+test stale_base::tests::format_warning_returns_none_for_no_expected_base ... ok
+test stale_base::tests::matches_when_head_equals_expected_base ... ok
+test stale_base::tests::diverged_when_head_moved_past_expected_base ... ok
+test stale_base::tests::diverged_with_claw_base_file_after_new_commit ... ok
+test stale_base::tests::not_a_git_repo_when_outside_repo ... ok
+test stale_base::tests::reads_claw_base_file ... ok
+test stale_base::tests::resolve_expected_base_falls_back_to_file ... ok
+test stale_base::tests::resolve_expected_base_prefers_flag_over_file ... ok
+test stale_base::tests::resolve_expected_base_returns_none_when_nothing_available ... ok
+test stale_base::tests::returns_none_for_empty_claw_base_file ... ok
+test stale_base::tests::returns_none_for_missing_claw_base_file ... ok
+test stale_base::tests::no_expected_base_when_source_is_none ... ok
+test stale_base::tests::matches_with_claw_base_file_in_real_repo ... ok
+Switched to a new branch 'topic'
+Switched to branch 'main'
+Switched to a new branch 'topic'
+Switched to a new branch 'topic'
+test stale_branch::tests::fresh_branch_passes ... ok
+test stale_branch::tests::policy_auto_merge_forward_for_diverged_branch ... ok
+test stale_branch::tests::policy_auto_rebase_for_stale_branch ... ok
+test stale_branch::tests::policy_block_for_stale_branch ... ok
+test stale_branch::tests::policy_noop_for_fresh_branch ... ok
+test stale_branch::tests::policy_warn_for_diverged_branch ... ok
+test stale_branch::tests::policy_warn_for_stale_branch ... ok
+test stale_branch::tests::diverged_branch_detection ... ok
+test summary_compression::tests::collapses_whitespace_and_duplicate_lines ... ok
+test summary_compression::tests::keeps_core_lines_when_budget_is_tight ... ok
+test summary_compression::tests::provides_a_default_text_only_helper ... ok
+test task_packet::tests::invalid_packet_accumulates_errors ... ok
+test task_packet::tests::serialization_roundtrip_preserves_packet ... ok
+test task_packet::tests::valid_packet_passes_validation ... ok
+test task_registry::tests::appends_and_retrieves_output ... ok
+test task_registry::tests::assign_team_rejects_missing_task ... ok
+test task_registry::tests::assigns_team_and_removes_task ... ok
+test task_registry::tests::create_without_description ... ok
+test task_registry::tests::creates_and_retrieves_tasks ... ok
+test task_registry::tests::creates_task_from_packet ... ok
+test task_registry::tests::lists_tasks_with_optional_filter ... ok
+test task_registry::tests::new_registry_is_empty ... ok
+test task_registry::tests::rejects_operations_on_missing_task ... ok
+test task_registry::tests::remove_nonexistent_returns_none ... ok
+test task_registry::tests::stop_rejects_completed_task ... ok
+test task_registry::tests::stop_rejects_failed_task ... ok
+test task_registry::tests::stop_succeeds_from_created_state ... ok
+test task_registry::tests::stops_running_task ... ok
+test task_registry::tests::task_status_display_all_variants ... ok
+test task_registry::tests::updates_task_with_messages ... ok
+test stale_branch::tests::fresh_branch_ahead_of_main_still_fresh ... ok
+test team_cron_registry::tests::creates_and_retrieves_cron ... ok
+test team_cron_registry::tests::cron_create_without_description ... ok
+test team_cron_registry::tests::creates_and_retrieves_team ... ok
+test team_cron_registry::tests::cron_disable_updates_timestamp ... ok
+test team_cron_registry::tests::cron_list_all_disabled_returns_empty_for_enabled_only ... ok
+test team_cron_registry::tests::cron_record_run_updates_timestamp_and_counter ... ok
+test team_cron_registry::tests::deletes_cron_entry ... ok
+test team_cron_registry::tests::lists_and_deletes_teams ... ok
+test team_cron_registry::tests::lists_with_enabled_filter ... ok
+test team_cron_registry::tests::new_cron_registry_is_empty ... ok
+test team_cron_registry::tests::new_team_registry_is_empty ... ok
+test team_cron_registry::tests::records_cron_runs ... ok
+test team_cron_registry::tests::rejects_missing_cron_operations ... ok
+test team_cron_registry::tests::rejects_missing_team_operations ... ok
+test team_cron_registry::tests::team_len_transitions ... ok
+test team_cron_registry::tests::team_remove_nonexistent_returns_none ... ok
+test team_cron_registry::tests::team_status_display_all_variants ... ok
+test trust_resolver::tests::auto_trusts_allowlisted_cwd_after_prompt_detection ... ok
+test trust_resolver::tests::denied_root_takes_precedence_over_allowlist ... ok
+test trust_resolver::tests::detects_known_trust_prompt_copy ... ok
+test trust_resolver::tests::does_not_emit_events_when_prompt_is_absent ... ok
+test trust_resolver::tests::requires_approval_for_unknown_cwd_after_prompt_detection ... ok
+test trust_resolver::tests::sibling_prefix_does_not_match_trusted_root ... ok
+test usage::tests::marks_unknown_model_pricing_as_fallback ... ok
+test usage::tests::computes_cost_summary_lines ... ok
+test usage::tests::reconstructs_usage_from_session_messages ... ok
+test usage::tests::supports_model_specific_pricing ... ok
+test usage::tests::tracks_true_cumulative_usage ... ok
+test worker_boot::tests::allowlisted_trust_prompt_auto_resolves_then_reaches_ready_state ... ok
+test worker_boot::tests::await_ready_surfaces_blocked_or_ready_worker_state ... ok
+test worker_boot::tests::emit_state_file_writes_worker_status_on_transition ... ok
+test worker_boot::tests::observe_completion_accepts_normal_finish_with_tokens ... ok
+test worker_boot::tests::observe_completion_classifies_provider_failure_on_unknown_finish_zero_tokens ... ok
+test worker_boot::tests::prompt_delivery_detects_wrong_target_and_replays_to_expected_worker ... ok
+test worker_boot::tests::ready_detection_ignores_plain_shell_prompts ... ok
+test worker_boot::tests::prompt_misdelivery_is_detected_and_replay_can_be_rearmed ... ok
+test worker_boot::tests::trust_prompt_blocks_non_allowlisted_worker_until_resolved ... ok
+test worker_boot::tests::restart_and_terminate_reset_or_finish_worker ... ok
+test mcp_tool_bridge::tests::given_connected_server_with_manager_when_calling_tool_then_it_returns_live_result ... ok
+Switched to a new branch 'topic'
+Switched to branch 'main'
+test stale_branch::tests::stale_branch_detected_with_correct_behind_count_and_missing_fixes ... ok
+
+test result: ok. 430 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.32s
+
+     Running tests/integration_tests.rs (target/debug/deps/integration_tests-803a947e7ecc988c)
+
+running 12 tests
+test end_to_end_stale_lane_gets_merge_forward_action ... ok
+test fresh_branch_does_not_trigger_stale_policy ... ok
+test fresh_approved_lane_gets_merge_action ... ok
+test green_contract_satisfied_allows_merge ... ok
+test green_contract_unsatisfied_blocks_merge ... ok
+test reconciled_lane_matches_reconcile_condition ... ok
+test stale_branch_apply_policy_produces_merge_forward_action ... ok
+test stale_branch_apply_policy_produces_rebase_action ... ok
+test stale_branch_apply_policy_warn_only ... ok
+test stale_branch_detection_flows_into_policy_engine ... ok
+test stale_branch_fresh_produces_noop ... ok
+test worker_provider_failure_flows_through_recovery_to_policy ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/onyx-1d67b7a03571ebd2)
+
+running 156 tests
+test input::tests::completes_matching_slash_command_arguments ... ok
+test input::tests::completes_matching_slash_commands ... ok
+test init::tests::render_init_template_mentions_detected_python_and_nextjs_markers ... ok
+test input::tests::extracts_terminal_slash_command_prefixes_with_arguments ... ok
+test init::tests::initialize_repo_creates_expected_files_and_gitignore_entries ... ok
+test input::tests::ignores_non_slash_command_completion_requests ... ok
+test init::tests::initialize_repo_is_idempotent_and_preserves_existing_files ... ok
+test input::tests::set_completions_replaces_and_normalizes_candidates ... ok
+test input::tests::push_history_ignores_blank_entries ... ok
+test input::tests::tracks_current_buffer_through_highlighter ... ok
+test render::tests::renders_links_as_colored_markdown_labels ... ok
+test render::tests::renders_markdown_with_styling_and_lists ... ok
+test render::tests::highlights_fenced_code_blocks ... ok
+test render::tests::renders_nested_fenced_code_block_preserves_inner_markers ... ok
+test render::tests::renders_ordered_and_nested_lists ... ok
+test render::tests::renders_tables_with_alignment ... ok
+test render::tests::spinner_advances_frames ... ok
+test sandbox_report_tests::hook_abort_monitor_propagates_interrupt ... ok
+test sandbox_report_tests::hook_abort_monitor_stops_without_aborting ... ok
+test sandbox_report_tests::sandbox_report_renders_expected_fields ... ok
+test render::tests::streaming_state_distinguishes_backtick_and_tilde_fences ... ok
+test tests::build_runtime_plugin_state_merges_plugin_hooks_into_runtime_features ... ok
+test render::tests::streaming_state_holds_outer_fence_with_nested_inner_fence ... ok
+test render::tests::streaming_state_waits_for_complete_blocks ... ok
+test tests::clear_command_requires_explicit_confirmation_flag ... ok
+test tests::collect_session_prompt_history_extracts_user_text_blocks ... ok
+test tests::commit_reports_surface_workspace_context ... ok
+test tests::commit_skipped_report_points_to_next_steps ... ok
+test tests::compact_report_uses_structured_output ... ok
+test tests::completion_candidates_include_workflow_shortcuts_and_dynamic_sessions ... ok
+test tests::config_report_supports_section_views ... ok
+test tests::config_report_uses_sectioned_layout ... ok
+test tests::context_window_preflight_errors_render_recovery_steps ... ok
+test tests::converts_tool_roundtrip_messages ... ok
+test tests::cost_report_uses_sectioned_layout ... ok
+test tests::build_runtime_plugin_state_surfaces_unsupported_mcp_servers_structurally ... ok
+test tests::build_runtime_runs_plugin_lifecycle_init_and_shutdown ... ok
+test tests::dangerously_skip_permissions_flag_applies_to_prompt_subcommand ... ok
+test tests::dangerously_skip_permissions_flag_forces_danger_full_access_in_repl ... ok
+test tests::describe_tool_progress_summarizes_known_tools ... ok
+test tests::direct_slash_commands_surface_shared_validation_errors ... ok
+test tests::default_permission_mode_uses_project_config_when_env_is_unset ... FAILED
+test tests::defaults_to_repl_when_no_args ... ok
+test tests::env_permission_mode_overrides_project_config_default ... ok
+test tests::format_connected_line_renders_anthropic_provider_for_claude_model ... ok
+test tests::format_connected_line_renders_xai_provider_for_grok_model ... ok
+test tests::format_history_timestamp_renders_iso8601_utc ... ok
+test tests::filtered_tool_specs_respect_allowlist ... ok
+test tests::format_history_timestamp_renders_unix_epoch_origin ... ok
+test tests::filtered_tool_specs_include_plugin_tools ... ok
+test tests::formats_unknown_slash_command_with_suggestions ... ok
+test tests::help_mentions_jsonl_resume_examples ... ok
+test tests::formats_namespaced_omc_slash_command_with_contract_guidance ... ok
+test tests::init_template_mentions_detected_rust_workspace ... ok
+test tests::init_help_mentions_direct_subcommand ... ok
+test tests::local_command_help_flags_stay_on_the_local_parser_path ... ok
+test tests::load_runtime_oauth_config_for_returns_none_without_project_config ... ok
+test tests::login_browser_failure_keeps_json_stdout_clean ... ok
+test tests::memory_report_uses_sectioned_layout ... ok
+test tests::merge_prompt_with_stdin_appends_piped_content_as_context ... ok
+test tests::merge_prompt_with_stdin_ignores_whitespace_only_pipe ... ok
+test tests::merge_prompt_with_stdin_returns_pipe_when_prompt_is_empty ... ok
+test tests::merge_prompt_with_stdin_returns_prompt_unchanged_when_no_pipe ... ok
+test tests::merge_prompt_with_stdin_trims_surrounding_whitespace_on_pipe ... ok
+test tests::model_report_uses_sectioned_layout ... ok
+test tests::model_switch_report_preserves_context_summary ... ok
+test tests::multi_word_prompt_still_uses_shorthand_prompt_mode ... ok
+test tests::no_arg_commands_reject_unexpected_arguments ... ok
+test tests::normalizes_supported_permission_modes ... ok
+test tests::opaque_provider_wrapper_surfaces_failure_class_session_and_trace ... ok
+test tests::parse_export_args_helper_defaults_to_latest_reference_and_no_output ... ok
+test tests::parse_history_count_accepts_positive_integers ... ok
+test tests::parse_history_count_defaults_to_twenty_when_missing ... ok
+test tests::parse_history_count_rejects_non_numeric ... ok
+test tests::parse_history_count_rejects_zero ... ok
+test tests::parses_allowed_tools_flags_with_aliases_and_lists ... ok
+test tests::parses_bare_export_subcommand_targeting_latest_session ... ok
+test tests::parses_bare_prompt_and_json_output_flag ... ok
+test tests::parses_compact_flag_for_prompt_mode ... ok
+test tests::parses_detached_head_from_status_snapshot ... ok
+test tests::parses_direct_agents_mcp_and_skills_slash_commands ... ok
+test tests::parses_export_subcommand_with_inline_flag_values ... ok
+test tests::parses_export_subcommand_with_json_output_format ... ok
+test tests::parses_export_subcommand_with_positional_output_path ... ok
+test tests::parses_export_subcommand_with_session_and_output_flags ... ok
+test tests::parses_git_status_metadata ... ok
+test tests::parses_git_workspace_summary_counts ... ok
+test tests::parses_json_output_for_mcp_and_skills_commands ... ok
+test tests::parses_login_and_logout_subcommands ... ok
+test tests::parses_permission_mode_flag ... ok
+test tests::parses_prompt_subcommand ... ok
+test tests::parses_resume_and_config_slash_commands ... ok
+test tests::parses_resume_flag_with_absolute_export_path ... ok
+test tests::parses_resume_flag_with_multiple_slash_commands ... ok
+test tests::parses_resume_flag_with_slash_command ... ok
+test tests::parses_resume_flag_with_slash_command_arguments ... ok
+test tests::parses_resume_flag_without_path_as_latest_session ... ok
+test tests::parses_single_word_command_aliases_without_falling_back_to_prompt_mode ... ok
+test tests::parses_system_prompt_options ... ok
+test tests::parses_version_flags_without_initializing_prompt_mode ... ok
+test tests::permission_policy_uses_plugin_tool_permissions ... ok
+test tests::permissions_report_uses_sectioned_layout ... ok
+test tests::permissions_switch_report_is_structured ... ok
+test tests::prompt_subcommand_defaults_compact_to_false ... ok
+test tests::provider_context_window_errors_are_reframed_with_same_guidance ... ok
+test tests::latest_session_alias_resolves_most_recent_managed_session ... ok
+test tests::push_output_block_skips_empty_object_prefix_for_tool_streams ... ok
+test tests::rejects_export_with_extra_positional_after_path ... ok
+test tests::managed_sessions_default_to_jsonl_and_resolve_legacy_json ... FAILED
+test tests::rejects_unknown_export_options_with_helpful_message ... ok
+test tests::rejects_unknown_options_with_helpful_guidance ... ok
+test tests::rejects_unknown_allowed_tools ... ok
+test tests::render_diff_report_includes_staged_and_unstaged_sections ... ok
+test tests::push_output_block_renders_markdown_text ... ok
+test tests::render_prompt_history_report_handles_empty_history ... ok
+test tests::render_prompt_history_report_lists_entries_with_timestamps ... ok
+test tests::render_prompt_history_report_truncates_to_limit_from_the_tail ... ok
+test tests::render_session_markdown_includes_header_and_summarized_tool_calls ... ok
+test tests::render_session_markdown_marks_tool_errors_and_skips_empty_summaries ... ok
+test tests::repl_help_includes_shared_commands_and_exit ... ok
+test tests::repl_help_mentions_history_completion_and_multiline ... ok
+test tests::render_diff_report_omits_ignored_files ... ok
+test tests::render_diff_report_shows_clean_tree_for_committed_repo ... ok
+test tests::resolve_cli_auth_source_uses_default_oauth_when_runtime_config_is_missing ... ok
+test tests::resolve_repl_model_returns_user_supplied_model_unchanged_when_explicit ... ok
+test tests::resolve_repl_model_falls_back_to_anthropic_model_env_when_default ... ok
+test tests::resolves_known_model_aliases ... ok
+test tests::response_to_events_preserves_empty_object_json_input_outside_streaming ... ok
+test tests::resolve_repl_model_returns_default_when_env_unset_and_no_config ... ok
+test tests::response_to_events_preserves_non_empty_json_input_outside_streaming ... ok
+test tests::resolves_model_aliases_in_args ... ok
+test tests::resume_report_uses_sectioned_layout ... ok
+test tests::resume_supported_command_list_matches_expected_surface ... ok
+test tests::resume_usage_mentions_latest_shortcut ... ok
+test tests::retry_exhaustion_uses_retry_failure_class_for_generic_provider_wrapper ... ok
+test tests::retry_wrapped_context_window_errors_keep_recovery_guidance ... ok
+test tests::runtime_slash_reports_describe_command_behavior ... ok
+test tests::shared_help_uses_resume_annotation_copy ... ok
+test tests::short_tool_id_truncates_long_identifiers_with_ellipsis ... ok
+test tests::single_word_slash_command_names_return_guidance_instead_of_hitting_prompt_mode ... ok
+test tests::resume_diff_command_renders_report_for_saved_session ... ok
+test tests::status_context_reads_real_workspace_metadata ... ok
+test tests::status_line_reports_model_and_token_totals ... ok
+test tests::summarize_tool_payload_for_markdown_compacts_json_and_truncates_overflow ... ok
+test tests::tool_rendering_helpers_compact_output ... ok
+test tests::tool_rendering_truncates_generic_long_output_for_display_only ... ok
+test tests::tool_rendering_truncates_large_bash_output_for_display_only ... ok
+test tests::tool_rendering_truncates_large_read_output_for_display_only ... ok
+test tests::tool_rendering_truncates_raw_generic_output_for_display_only ... ok
+test tests::ultraplan_progress_lines_include_phase_step_and_elapsed_status ... ok
+test tests::unknown_omc_slash_command_guidance_explains_runtime_gap ... ok
+test tests::unknown_slash_command_guidance_suggests_nearby_commands ... ok
+test tests::response_to_events_renders_collapsed_thinking_summary ... ok
+test tests::startup_banner_mentions_workflow_completions ... ok
+test tests::user_defined_aliases_resolve_before_provider_dispatch ... FAILED
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+chdir: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+chdir: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+chdir: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+chdir: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+chdir: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+test tests::build_runtime_plugin_state_discovers_mcp_tools_and_surfaces_pending_servers ... ok
+
+failures:
+
+---- tests::default_permission_mode_uses_project_config_when_env_is_unset stdout ----
+
+thread 'tests::default_permission_mode_uses_project_config_when_env_is_unset' (58830) panicked at crates/rusty-claude-cli/src/main.rs:8384:9:
+assertion `left == right` failed
+  left: DangerFullAccess
+ right: WorkspaceWrite
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::managed_sessions_default_to_jsonl_and_resolve_legacy_json stdout ----
+
+thread 'tests::managed_sessions_default_to_jsonl_and_resolve_legacy_json' (58850) panicked at crates/rusty-claude-cli/src/main.rs:10254:60:
+legacy session should resolve: "session not found: legacy\nHint: managed sessions live in .onyx/sessions/. Try `latest` for the most recent session or `/session list` in the REPL."
+
+---- tests::user_defined_aliases_resolve_before_provider_dispatch stdout ----
+
+thread 'tests::user_defined_aliases_resolve_before_provider_dispatch' (59070) panicked at crates/rusty-claude-cli/src/main.rs:8715:9:
+assertion `left == right` failed
+  left: "fast"
+ right: "claude-haiku-4-5-20251213"
+
+
+failures:
+    tests::default_permission_mode_uses_project_config_when_env_is_unset
+    tests::managed_sessions_default_to_jsonl_and_resolve_legacy_json
+    tests::user_defined_aliases_resolve_before_provider_dispatch
+
+test result: FAILED. 153 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.54s
+
+error: test failed, to rerun pass `-p rusty-claude-cli --bin onyx`

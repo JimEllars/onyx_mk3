@@ -136,6 +136,7 @@ pub fn resolve_model_alias(model: &str) -> String {
                     "opus" => "claude-opus-4-6",
                     "sonnet" => "claude-sonnet-4-6",
                     "haiku" => "claude-haiku-4-5-20251213",
+                    "axim-default" => "claude-sonnet-4-6",
                     _ => trimmed,
                 },
                 ProviderKind::Xai => match *alias {
@@ -555,8 +556,8 @@ mod tests {
             .as_nanos();
         let root = std::env::temp_dir().join(format!("api-plugin-max-tokens-{nanos}"));
         let cwd = root.join("project");
-        let home = root.join("home").join(".claw");
-        std::fs::create_dir_all(cwd.join(".claw")).expect("project config dir");
+        let home = root.join("home").join(".onyx");
+        std::fs::create_dir_all(cwd.join(".onyx")).expect("project config dir");
         std::fs::create_dir_all(&home).expect("home config dir");
         std::fs::write(
             home.join("settings.json"),
