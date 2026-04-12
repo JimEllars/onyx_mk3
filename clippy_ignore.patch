@@ -1,0 +1,51 @@
+--- rust/crates/api/src/http_client.rs
++++ rust/crates/api/src/http_client.rs
+@@ -88,6 +88,7 @@
+     let proxy = reqwest::Proxy::custom(move |url| {
+         let scheme = url.scheme();
+         let is_https = scheme == "https";
++        #[allow(clippy::similar_names)]
+         let (http_proxy_url, https_proxy_url) = match config.proxy_url.as_deref() {
+             Some(url) => (Some(url), Some(url)),
+             None => (
+--- rust/crates/api/src/providers/anthropic.rs
++++ rust/crates/api/src/providers/anthropic.rs
+@@ -502,10 +502,7 @@
+         request.stream = false;
+         request.messages.push(message.clone());
+
+-        let counted_input_tokens = match self.count_tokens(request).await {
+-            Ok(count) => count,
+-            Err(_) => return Ok(()),
+-        };
++        let Ok(counted_input_tokens) = self.count_tokens(request).await else { return Ok(()) };
+
+         let cost = calculate_prompt_caching_cost(
+             counted_input_tokens,
+--- rust/crates/commands/src/lib.rs
++++ rust/crates/commands/src/lib.rs
+@@ -1820,15 +1820,6 @@
+         "history" => "History",
+         "settings" => "Settings",
+         "login" | "logout" => "Account",
+-        "diff" | "commit" | "pr" | "issue" | "branch" | "blame" | "log" | "git" | "stash"
+-        | "init" | "export" | "plan" | "review" | "security-review" | "bughunter" | "ultraplan"
+-        | "teleport" | "refactor" | "fix" | "autofix" | "explain" | "docs" | "perf" | "search"
+-        | "references" | "definition" | "hover" | "symbols" | "map" | "web" | "image"
+-        | "screenshot" | "paste" | "listen" | "speak" | "test" | "lint" | "build" | "run"
+-        | "format" | "parallel" | "multi" | "macro" | "alias" | "templates" | "migrate"
+-        | "benchmark" | "cron" | "agent" | "subagent" | "agents" | "skills" | "team" | "plugin"
+-        | "mcp" | "hooks" | "tasks" | "advisor" | "insights" | "release-notes" | "chat"
+-        | "approve" | "deny" | "allowed-tools" | "add-dir" => "Tools",
+         "status" | "doctor" | "sandbox" => "System",
+         _ => "Tools",
+     }
+@@ -2358,7 +2349,7 @@
+                     if let Ok(registry) = runtime::global_skill_registry() {
+                         let names = registry.list_skill_names();
+                         if !names.is_empty() {
+-                            message.push_str(&format!("\n  Available skills: {}", names.join(", ")));
++                            let _ = write!(message, "\n  Available skills: {}", names.join(", "));
+                         }
+                     }
+                 }

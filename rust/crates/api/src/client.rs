@@ -233,8 +233,7 @@ mod tests {
                 );
             }
             other => panic!(
-                "Expected ProviderClient::OpenAi for qwen-plus, got: {:?}",
-                other
+                "Expected ProviderClient::OpenAi for qwen-plus, got: {other:?}"
             ),
         }
     }

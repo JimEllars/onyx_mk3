@@ -1,0 +1,3 @@
+{"created_at_ms":1775954932518,"session_id":"session-1775954932518-0","type":"session_meta","updated_at_ms":1775954932706,"version":1}
+{"message":{"blocks":[{"text":"PARITY_SCENARIO:streaming_text","type":"text"}],"role":"user"},"type":"message"}
+{"message":{"blocks":[{"text":"Mock streaming says hello from the parity harness.","type":"text"}],"role":"assistant","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":11,"output_tokens":8}},"type":"message"}

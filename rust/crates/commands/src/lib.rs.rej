@@ -1,0 +1,27 @@
+--- rust/crates/commands/src/lib.rs
++++ rust/crates/commands/src/lib.rs
+@@ -1820,15 +1820,6 @@
+         "history" => "History",
+         "settings" => "Settings",
+         "login" | "logout" => "Account",
+-        "diff" | "commit" | "pr" | "issue" | "branch" | "blame" | "log" | "git" | "stash"
+-        | "init" | "export" | "plan" | "review" | "security-review" | "bughunter" | "ultraplan"
+-        | "teleport" | "refactor" | "fix" | "autofix" | "explain" | "docs" | "perf" | "search"
+-        | "references" | "definition" | "hover" | "symbols" | "map" | "web" | "image"
+-        | "screenshot" | "paste" | "listen" | "speak" | "test" | "lint" | "build" | "run"
+-        | "format" | "parallel" | "multi" | "macro" | "alias" | "templates" | "migrate"
+-        | "benchmark" | "cron" | "agent" | "subagent" | "agents" | "skills" | "team" | "plugin"
+-        | "mcp" | "hooks" | "tasks" | "advisor" | "insights" | "release-notes" | "chat"
+-        | "approve" | "deny" | "allowed-tools" | "add-dir" => "Tools",
+         "status" | "doctor" | "sandbox" => "System",
+         _ => "Tools",
+     }
+@@ -2358,7 +2349,7 @@
+                     if let Ok(registry) = runtime::global_skill_registry() {
+                         let names = registry.list_skill_names();
+                         if !names.is_empty() {
+-                            message.push_str(&format!("\n  Available skills: {}", names.join(", ")));
++                            let _ = write!(message, "\n  Available skills: {}", names.join(", "));
+                         }
+                     }
+                 }

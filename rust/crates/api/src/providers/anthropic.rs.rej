@@ -1,0 +1,14 @@
+--- rust/crates/api/src/providers/anthropic.rs
++++ rust/crates/api/src/providers/anthropic.rs
+@@ -502,10 +502,7 @@
+         request.stream = false;
+         request.messages.push(message.clone());
+
+-        let counted_input_tokens = match self.count_tokens(request).await {
+-            Ok(count) => count,
+-            Err(_) => return Ok(()),
+-        };
++        let Ok(counted_input_tokens) = self.count_tokens(request).await else { return Ok(()) };
+
+         let cost = calculate_prompt_caching_cost(
+             counted_input_tokens,
