@@ -469,9 +469,7 @@ fn build_stream_body(request: &MessageRequest, scenario: Scenario) -> String {
         }
         Scenario::AximPolicyBashRestrictedCmd => match latest_tool_result(request) {
             Some((tool_output, is_error)) if is_error => {
-                final_text_sse(&format!(
-                    "bash command rejected by policy: {tool_output}"
-                ))
+                final_text_sse(&format!("bash command rejected by policy: {tool_output}"))
             }
             _ => tool_use_sse(
                 "toolu_axim_bash_denied",
@@ -650,12 +648,10 @@ fn build_message_response(request: &MessageRequest, scenario: Scenario) -> Messa
             500,
         ),
         Scenario::AximPolicyBashRestrictedCmd => match latest_tool_result(request) {
-            Some((tool_output, is_error)) if is_error => {
-                text_message_response(
-                    "msg_axim_bash_denied_final",
-                    &format!("bash command rejected by policy: {tool_output}"),
-                )
-            }
+            Some((tool_output, is_error)) if is_error => text_message_response(
+                "msg_axim_bash_denied_final",
+                &format!("bash command rejected by policy: {tool_output}"),
+            ),
             _ => tool_message_response(
                 "msg_axim_bash_denied_tool",
                 "toolu_axim_bash_denied",

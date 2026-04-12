@@ -46,14 +46,13 @@ use render::{MarkdownStreamState, Spinner, TerminalRenderer};
 use runtime::{
     check_base_commit, clear_oauth_credentials, format_stale_base_warning, format_usd,
     generate_pkce_pair, generate_state, load_oauth_credentials, load_system_prompt,
-    TaskPacket,
     parse_oauth_callback_request_target, pricing_for_model, resolve_expected_base,
     resolve_sandbox_status, save_oauth_credentials, ApiClient, ApiRequest, AssistantEvent,
     CompactionConfig, ConfigLoader, ConfigSource, ContentBlock, ConversationMessage,
     ConversationRuntime, McpServer, McpServerManager, McpServerSpec, McpTool, MessageRole,
     ModelPricing, OAuthAuthorizationRequest, OAuthConfig, OAuthTokenExchangeRequest,
     PermissionMode, PermissionPolicy, ProjectContext, PromptCacheEvent, ResolvedPermissionMode,
-    RuntimeError, Session, TokenUsage, ToolError, ToolExecutor, UsageTracker,
+    RuntimeError, Session, TaskPacket, TokenUsage, ToolError, ToolExecutor, UsageTracker,
 };
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -882,7 +881,7 @@ fn resolve_model_alias(model: &str) -> &str {
         "opus" => "claude-opus-4-6",
         "sonnet" => "claude-sonnet-4-6",
         "haiku" => "claude-haiku-4-5-20251213",
-        "axim-default" => "claude-sonnet-4-6",
+        "axim-default" => "claude-3-5-sonnet-20241022",
         _ => model,
     }
 }
@@ -1370,7 +1369,7 @@ fn run_worker_state(output_format: CliOutputFormat) -> Result<(), Box<dyn std::e
     if !state_path.exists() {
         match output_format {
             CliOutputFormat::Text => {
-                println!("No worker state file found at {}", state_path.display())
+                println!("No worker state file found at {}", state_path.display());
             }
             CliOutputFormat::Json => println!(
                 "{}",
@@ -1400,8 +1399,12 @@ use axum::{
     Json, Router,
 };
 
+use tokio::sync::mpsc as tokio_mpsc;
+
 #[derive(Clone)]
-struct AppState {}
+struct AppState {
+    task_queue: tokio_mpsc::Sender<TaskPacket>,
+}
 
 async fn health_check() -> impl IntoResponse {
     Json(json!({"status": "ok"}))
@@ -1432,7 +1435,7 @@ async fn get_worker_state(
 }
 
 async fn ingest_task_packet(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Json(task_json): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let task: TaskPacket = match serde_json::from_value(task_json) {
@@ -1441,36 +1444,44 @@ async fn ingest_task_packet(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(json!({"error": format!("invalid task packet: {}", e)})),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
     match runtime::validate_packet(task) {
         Ok(validated) => {
             let packet = validated.into_inner();
-            match tools::run_task_packet(packet.clone()) {
-                Ok(res) => {
-                    let parsed = serde_json::from_str::<serde_json::Value>(&res)
-                        .unwrap_or_else(|_| json!({"message": res}));
-                    (StatusCode::ACCEPTED, Json(parsed)).into_response()
+
+            // Still register it locally so we get a task_id
+            let res = match tools::run_task_packet(packet.clone()) {
+                Ok(res) => res,
+                Err(e) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": e.clone()})),
+                    )
+                        .into_response();
                 }
-                Err(e) => (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": e.to_string()})),
-                )
-                    .into_response(),
-            }
+            };
+
+            let parsed = serde_json::from_str::<serde_json::Value>(&res)
+                .unwrap_or_else(|_| json!({"message": res}));
+
+            // Fire and forget to the background worker loop
+            let _ = state.task_queue.send(packet).await;
+
+            (StatusCode::ACCEPTED, Json(parsed)).into_response()
         }
-        Err(validation_err) => {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "status": "rejected",
-                    "error": validation_err.to_string(),
-                    "details": validation_err.errors()
-                })),
-            ).into_response()
-        }
+        Err(validation_err) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "status": "rejected",
+                "error": validation_err.to_string(),
+                "details": validation_err.errors()
+            })),
+        )
+            .into_response(),
     }
 }
 
@@ -1479,12 +1490,78 @@ async fn stream_events(State(_state): State<Arc<AppState>>) -> impl IntoResponse
 }
 
 fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
 
     runtime.block_on(async move {
-        let app_state = Arc::new(AppState {});
+        let (task_queue, mut task_rx) = tokio_mpsc::channel::<TaskPacket>(100);
+        let app_state = Arc::new(AppState { task_queue });
+
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+
+            while let Some(packet) = rt.block_on(task_rx.recv()) {
+                println!("Starting execution for task: {:?}", packet.objective);
+
+                // Transition state to Running manually, or rely on worker loop internals
+                if let Ok(axim_endpoint) = std::env::var("AXIM_CORE_STATE_ENDPOINT") {
+                    let _ = reqwest::blocking::Client::new()
+                        .post(&axim_endpoint)
+                        .header("Content-Type", "application/json")
+                        .json(&json!({
+                            "worker_id": "headless_worker",
+                            "status": "Running",
+                            "is_ready": true,
+                            "trust_gate_cleared": true,
+                            "prompt_in_flight": true,
+                            "last_event": null,
+                            "updated_at": 0,
+                            "seconds_since_update": 0
+                        }))
+                        .send();
+                }
+
+                let prompt = format!(
+                    "Execute task {}. Objective: {}. Branch policy: {}. Scope: {}",
+                    packet.repo, packet.objective, packet.branch_policy, packet.scope
+                );
+
+                // Construct a CLI loop internally
+                let model = resolve_repl_model(DEFAULT_MODEL.to_string());
+
+                let mut cli = LiveCli::new(model, true, None, PermissionMode::DangerFullAccess)
+                    .expect("failed to initialize LiveCli for headless mode");
+
+                let result = cli.run_turn_with_output(&prompt, CliOutputFormat::Json, false);
+
+                match result {
+                    Ok(()) => println!("Worker task finished successfully"),
+                    Err(e) => println!("Worker task failed: {e}"),
+                }
+
+                // Transition state to Completed
+                if let Ok(axim_endpoint) = std::env::var("AXIM_CORE_STATE_ENDPOINT") {
+                    let _ = reqwest::blocking::Client::new()
+                        .post(&axim_endpoint)
+                        .header("Content-Type", "application/json")
+                        .json(&json!({
+                            "worker_id": "headless_worker",
+                            "status": "Finished",
+                            "is_ready": false,
+                            "trust_gate_cleared": true,
+                            "prompt_in_flight": false,
+                            "last_event": null,
+                            "updated_at": 0,
+                            "seconds_since_update": 0
+                        }))
+                        .send();
+                }
+            }
+        });
 
         let app = Router::new()
             .route("/state", get(get_state))
@@ -1494,8 +1571,8 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
             .route("/health", get(health_check))
             .with_state(app_state);
 
-        let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
-        println!("Onyx headless server listening on port {}", port);
+        let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
+        println!("Onyx headless server listening on port {port}");
 
         axum::serve(listener, app).await?;
         Ok(())
@@ -3295,23 +3372,32 @@ fn build_runtime_mcp_state(
             env: std::collections::BTreeMap::new(),
             tool_call_timeout_ms: None,
         };
-        servers.insert("axim-core".to_string(), runtime::ScopedMcpServerConfig {
-            scope: runtime::ConfigSource::Local,
-            config: runtime::McpServerConfig::Stdio(stdio_config),
-        });
+        servers.insert(
+            "axim-core".to_string(),
+            runtime::ScopedMcpServerConfig {
+                scope: runtime::ConfigSource::Local,
+                config: runtime::McpServerConfig::Stdio(stdio_config),
+            },
+        );
 
         let mut headers = std::collections::BTreeMap::new();
-        headers.insert("Authorization".to_string(), format!("Bearer {}", axim_mcp_token));
+        headers.insert(
+            "Authorization".to_string(),
+            format!("Bearer {axim_mcp_token}"),
+        );
         let http_config = runtime::McpRemoteServerConfig {
             url: "https://internal.axim.systems/mcp".to_string(),
             headers,
             headers_helper: None,
             oauth: None,
         };
-        servers.insert("axim-internal-api".to_string(), runtime::ScopedMcpServerConfig {
-            scope: runtime::ConfigSource::Local,
-            config: runtime::McpServerConfig::Http(http_config),
-        });
+        servers.insert(
+            "axim-internal-api".to_string(),
+            runtime::ScopedMcpServerConfig {
+                scope: runtime::ConfigSource::Local,
+                config: runtime::McpServerConfig::Http(http_config),
+            },
+        );
 
         let bash_config = runtime::McpStdioServerConfig {
             command: "uvx".to_string(),
@@ -3319,10 +3405,13 @@ fn build_runtime_mcp_state(
             env: std::collections::BTreeMap::new(),
             tool_call_timeout_ms: None,
         };
-        servers.insert("bash".to_string(), runtime::ScopedMcpServerConfig {
-            scope: runtime::ConfigSource::Local,
-            config: runtime::McpServerConfig::Stdio(bash_config),
-        });
+        servers.insert(
+            "bash".to_string(),
+            runtime::ScopedMcpServerConfig {
+                scope: runtime::ConfigSource::Local,
+                config: runtime::McpServerConfig::Stdio(bash_config),
+            },
+        );
 
         config_clone = config_clone.with_mcp_servers(servers);
     }

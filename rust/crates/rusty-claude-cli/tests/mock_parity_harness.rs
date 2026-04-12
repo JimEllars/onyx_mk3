@@ -177,10 +177,8 @@ fn clean_env_cli_reaches_mock_anthropic_service_across_scripted_parity_scenarios
             permission_mode: "dontAsk",
             allowed_tools: None,
             stdin: Some(""),
-            prepare: |_workspace| {
-            },
-            assert: |_workspace, _run| {
-            },
+            prepare: |_workspace| {},
+            assert: |_workspace, _run| {},
             extra_env: None,
             resume_session: None,
         },
@@ -196,13 +194,12 @@ fn clean_env_cli_reaches_mock_anthropic_service_across_scripted_parity_scenarios
                 let state_file = workspace.root.join(".onyx").join("worker-state.json");
                 assert!(
                     state_file.exists(),
-                    "state file should be emitted at {:?}",
-                    state_file
+                    "state file should be emitted at {state_file:?}"
                 );
-                let contents = std::fs::read_to_string(&state_file)
-                    .expect("state file should be readable");
-                let value: serde_json::Value = serde_json::from_str(&contents)
-                    .expect("state file should be valid JSON");
+                let contents =
+                    std::fs::read_to_string(&state_file).expect("state file should be readable");
+                let value: serde_json::Value =
+                    serde_json::from_str(&contents).expect("state file should be valid JSON");
                 assert_eq!(value["status"].as_str(), Some("ready_for_prompt"));
             },
             extra_env: None,
@@ -218,10 +215,10 @@ fn clean_env_cli_reaches_mock_anthropic_service_across_scripted_parity_scenarios
             },
             assert: |workspace, _run| {
                 let state_file = workspace.root.join(".onyx").join("worker-state.json");
-                let contents = std::fs::read_to_string(&state_file)
-                    .expect("state file should be readable");
-                let value: serde_json::Value = serde_json::from_str(&contents)
-                    .expect("state file should be valid JSON");
+                let contents =
+                    std::fs::read_to_string(&state_file).expect("state file should be readable");
+                let value: serde_json::Value =
+                    serde_json::from_str(&contents).expect("state file should be valid JSON");
 
                 // Verify state machine progression
                 assert!(value["is_ready"].as_bool() == Some(true));
@@ -233,7 +230,7 @@ fn clean_env_cli_reaches_mock_anthropic_service_across_scripted_parity_scenarios
             },
             extra_env: None,
             resume_session: None,
-        }
+        },
     ];
 
     let case_names = cases.iter().map(|case| case.name).collect::<Vec<_>>();
@@ -278,9 +275,7 @@ fn clean_env_cli_reaches_mock_anthropic_service_across_scripted_parity_scenarios
             .or_insert(0_usize) += 1;
     }
     for report in &mut scenario_reports {
-        report.request_count = *request_counts
-            .get(report.name.as_str())
-            .unwrap_or(&0);
+        report.request_count = *request_counts.get(report.name.as_str()).unwrap_or(&0);
     }
 
     maybe_write_report(&scenario_reports);
@@ -340,8 +335,9 @@ impl HarnessWorkspace {
         });
         fs::write(
             onyx_dir.join("worker-state.json"),
-            serde_json::to_string(&state_json).unwrap()
-        ).expect("write worker state");
+            serde_json::to_string(&state_json).unwrap(),
+        )
+        .expect("write worker state");
     }
 }
 
@@ -423,32 +419,42 @@ fn run_case(case: ScenarioCase, workspace: &HarnessWorkspace, base_url: &str) ->
 
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     if !output.status.success() {
-        if case.name == "task_packet_ingestion" || case.name == "task_packet_validation_error" || case.name == "state_file_emission" || case.name == "worker_ready_handshake" || case.name == "axim_policy_bash_restricted_cmd" {
-             // In these cases the CLI is expected to just print errors for these unhandled mock cases because we didn't implement the full mock service backend for the new routes for CLI testing.
-             // We can safely return a dummy run to let assertions handle or just pass.
-             return ScenarioRun {
-                 response: serde_json::json!({
-                     "iterations": 1,
-                     "tool_uses": [],
-                     "tool_results": [],
-                     "message": "mock bypassed"
-                 }),
-                 stdout,
-             };
+        if case.name == "task_packet_ingestion"
+            || case.name == "task_packet_validation_error"
+            || case.name == "state_file_emission"
+            || case.name == "worker_ready_handshake"
+            || case.name == "axim_policy_bash_restricted_cmd"
+        {
+            // In these cases the CLI is expected to just print errors for these unhandled mock cases because we didn't implement the full mock service backend for the new routes for CLI testing.
+            // We can safely return a dummy run to let assertions handle or just pass.
+            return ScenarioRun {
+                response: serde_json::json!({
+                    "iterations": 1,
+                    "tool_uses": [],
+                    "tool_results": [],
+                    "message": "mock bypassed"
+                }),
+                stdout,
+            };
         }
         assert_success(&output);
     }
 
-    if case.name == "task_packet_ingestion" || case.name == "task_packet_validation_error" || case.name == "state_file_emission" || case.name == "worker_ready_handshake" || case.name == "axim_policy_bash_restricted_cmd" {
-         return ScenarioRun {
-             response: serde_json::json!({
-                 "iterations": 1,
-                 "tool_uses": [],
-                 "tool_results": [],
-                 "message": "mock bypassed"
-             }),
-             stdout,
-         };
+    if case.name == "task_packet_ingestion"
+        || case.name == "task_packet_validation_error"
+        || case.name == "state_file_emission"
+        || case.name == "worker_ready_handshake"
+        || case.name == "axim_policy_bash_restricted_cmd"
+    {
+        return ScenarioRun {
+            response: serde_json::json!({
+                "iterations": 1,
+                "tool_uses": [],
+                "tool_results": [],
+                "message": "mock bypassed"
+            }),
+            stdout,
+        };
     }
 
     ScenarioRun {

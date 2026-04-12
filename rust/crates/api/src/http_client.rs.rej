@@ -1,0 +1,10 @@
+--- rust/crates/api/src/http_client.rs
++++ rust/crates/api/src/http_client.rs
+@@ -88,6 +88,7 @@
+     let proxy = reqwest::Proxy::custom(move |url| {
+         let scheme = url.scheme();
+         let is_https = scheme == "https";
++        #[allow(clippy::similar_names)]
+         let (http_proxy_url, https_proxy_url) = match config.proxy_url.as_deref() {
+             Some(url) => (Some(url), Some(url)),
+             None => (

@@ -3554,7 +3554,7 @@ fn write_agent_manifest(manifest: &AgentOutput) -> Result<(), String> {
                 .append(true)
                 .open(&events_path)
             {
-                let _ = writeln!(file, "{}", event_json);
+                let _ = writeln!(file, "{event_json}");
             }
 
             // Stream lane events to AXiM Core if the endpoint is configured
@@ -3568,11 +3568,7 @@ fn write_agent_manifest(manifest: &AgentOutput) -> Result<(), String> {
         }
     }
 
-    std::fs::write(
-        &normalized.manifest_file,
-        output,
-    )
-    .map_err(|error| error.to_string())
+    std::fs::write(&normalized.manifest_file, output).map_err(|error| error.to_string())
 }
 
 fn persist_agent_terminal_state(
@@ -3800,8 +3796,7 @@ impl ProviderRuntimeClient {
     ) -> Result<Self, String> {
         let primary_model = fallback_config
             .primary()
-            .map(str::to_string)
-            .unwrap_or(model);
+            .map_or(model, str::to_string);
         let primary = build_provider_entry(&primary_model)?;
         let mut chain = vec![primary];
         for fallback_model in fallback_config.fallbacks() {
@@ -3886,9 +3881,7 @@ impl ApiClient for ProviderRuntimeClient {
         }
 
         Err(RuntimeError::new(
-            last_error
-                .map(|error| error.to_string())
-                .unwrap_or_else(|| String::from("provider chain exhausted with no attempts")),
+            last_error.map_or_else(|| String::from("provider chain exhausted with no attempts"), |error| error.to_string()),
         ))
     }
 }
