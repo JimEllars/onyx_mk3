@@ -52,7 +52,7 @@ async fn axim_headless() {
         format!("http://{addr}/api/lane"),
     );
     command.env("ANTHROPIC_BASE_URL", mock_anthropic.base_url());
-    command.env("ANTHROPIC_API_KEY", "test-key");
+    command.env("ANTHROPIC_API_KEY", "test-parity-key");
     command.args(["serve-headless", "--port", "13342"]);
     let mut child = command.spawn().expect("failed to start headless server");
 
