@@ -76,7 +76,7 @@ Context: ${typeof context === 'object' ? JSON.stringify(context) : context || 'N
 					"content-type": "application/json"
 				},
 				body: JSON.stringify({
-					model: "claude-3-haiku-20240307", // Fast, cheap model for edge processing
+					model: "claude-3-5-sonnet-20241022", // Fast, cheap model for edge processing
 					max_tokens: 1024,
 					system: onyxSystemPrompt,
 					messages: [{ role: "user", content: command }]

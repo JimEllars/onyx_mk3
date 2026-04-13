@@ -6659,7 +6659,7 @@ impl AnthropicRuntimeClient {
         // so we can explicitly apply `api::read_base_url()` — that
         // reads `ANTHROPIC_BASE_URL` and is required for the local
         // mock-server test harness
-        // (`crates/rusty-claude-cli/tests/compact_output.rs`) to point
+        // (`crates/onyx/tests/compact_output.rs`) to point
         // onyx at its fake Anthropic endpoint. We also attach a
         // session-scoped prompt cache on the Anthropic path; the
         // prompt cache is Anthropic-only so non-Anthropic variants
@@ -8317,7 +8317,7 @@ mod tests {
             .expect("time should be after epoch")
             .as_nanos();
         let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!("rusty-claude-cli-{nanos}-{unique}"))
+        std::env::temp_dir().join(format!("onyx-{nanos}-{unique}"))
     }
 
     fn git(args: &[&str], cwd: &Path) {
@@ -10743,7 +10743,7 @@ UU conflicted.rs",
             task_label: "ship plugin progress".to_string(),
             step: 3,
             phase: "running read_file".to_string(),
-            detail: Some("reading rust/crates/rusty-claude-cli/src/main.rs".to_string()),
+            detail: Some("reading rust/crates/onyx/src/main.rs".to_string()),
             saw_final_text: false,
         };
 
@@ -10790,8 +10790,8 @@ UU conflicted.rs",
             "reading src/main.rs"
         );
         assert!(
-            describe_tool_progress("bash", r#"{"command":"cargo test -p rusty-claude-cli"}"#)
-                .contains("cargo test -p rusty-claude-cli")
+            describe_tool_progress("bash", r#"{"command":"cargo test -p onyx"}"#)
+                .contains("cargo test -p onyx")
         );
         assert_eq!(
             describe_tool_progress("grep_search", r#"{"pattern":"ultraplan","path":"rust"}"#),
