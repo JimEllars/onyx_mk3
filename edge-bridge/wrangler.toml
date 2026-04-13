@@ -1,0 +1,7 @@
+name = "onyx-edge-bridge"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+
+[vars]
+AXIM_ONYX_SECRET = ""
+ANTHROPIC_API_KEY = ""
