@@ -282,6 +282,29 @@ impl PermissionPolicy {
             );
         }
 
+        // Specifically block these actions and label them as "Requires Human Approval"
+        // to strictly enforce safety per Overwatch AI policy.
+        if [
+            "update_post_content",
+            "update_seo_metadata",
+            "purge_zone_cache",
+            "trigger_pages_deployment",
+            "create_branch",
+            "create_pull_request"
+        ].contains(&tool_name) {
+            let reason = Some(format!(
+                "tool '{tool_name}' Requires Human Approval to perform destructive action."
+            ));
+            return Self::prompt_or_deny(
+                tool_name,
+                input,
+                current_mode,
+                required_mode,
+                reason,
+                prompter,
+            );
+        }
+
         PermissionOutcome::Deny {
             reason: format!(
                 "tool '{tool_name}' requires {} permission; current mode is {}",
