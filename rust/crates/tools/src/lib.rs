@@ -1,3 +1,7 @@
+pub mod wordpress_admin;
+pub mod cloudflare_ops;
+pub mod github_ops;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -463,6 +467,105 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "additionalProperties": false
             }),
             required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "fetch_post",
+            description: "Fetch a post from Headless WordPress.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "post_id": { "type": "integer" }
+                },
+                "required": ["post_id"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "update_post_content",
+            description: "Update content of a post in Headless WordPress.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "post_id": { "type": "integer" },
+                    "content": { "type": "string" }
+                },
+                "required": ["post_id", "content"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::DangerFullAccess,
+        },
+        ToolSpec {
+            name: "update_seo_metadata",
+            description: "Update SEO metadata for a post.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "post_id": { "type": "integer" },
+                    "helmet_payload": { "type": "object" }
+                },
+                "required": ["post_id", "helmet_payload"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::DangerFullAccess,
+        },
+        ToolSpec {
+            name: "purge_zone_cache",
+            description: "Purge Cloudflare zone cache.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "zone_id": { "type": "string" }
+                },
+                "required": ["zone_id"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::DangerFullAccess,
+        },
+        ToolSpec {
+            name: "trigger_pages_deployment",
+            description: "Trigger a Cloudflare Pages deployment.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "project_name": { "type": "string" }
+                },
+                "required": ["project_name"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::DangerFullAccess,
+        },
+        ToolSpec {
+            name: "create_branch",
+            description: "Create a branch in a fleet repository.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "repo": { "type": "string" },
+                    "branch_name": { "type": "string" },
+                    "base_branch": { "type": "string" }
+                },
+                "required": ["repo", "branch_name", "base_branch"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::WorkspaceWrite,
+        },
+        ToolSpec {
+            name: "create_pull_request",
+            description: "Create a pull request in a fleet repository.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "repo": { "type": "string" },
+                    "title": { "type": "string" },
+                    "head_branch": { "type": "string" },
+                    "base_branch": { "type": "string" },
+                    "body": { "type": "string" }
+                },
+                "required": ["repo", "title", "head_branch", "base_branch", "body"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::WorkspaceWrite,
         },
         ToolSpec {
             name: "grep_search",
@@ -1261,6 +1364,48 @@ fn execute_tool_with_enforcer(
         "MCP" => from_value::<McpToolInput>(input).and_then(run_mcp_tool),
         "TestingPermission" => {
             from_value::<TestingPermissionInput>(input).and_then(run_testing_permission)
+        }
+        "fetch_post" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<wordpress_admin::FetchPostInput>(input).and_then(|i| {
+                tokio::runtime::Handle::current().block_on(wordpress_admin::execute_fetch_post(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
+        }
+        "update_post_content" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<wordpress_admin::UpdatePostContentInput>(input).and_then(|i| {
+                tokio::runtime::Handle::current().block_on(wordpress_admin::execute_update_post_content(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
+        }
+        "update_seo_metadata" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<wordpress_admin::UpdateSeoMetadataInput>(input).and_then(|i| {
+                tokio::runtime::Handle::current().block_on(wordpress_admin::execute_update_seo_metadata(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
+        }
+        "purge_zone_cache" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<cloudflare_ops::PurgeZoneCacheInput>(input).and_then(|i| {
+                tokio::runtime::Handle::current().block_on(cloudflare_ops::execute_purge_zone_cache(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
+        }
+        "trigger_pages_deployment" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<cloudflare_ops::TriggerPagesDeploymentInput>(input).and_then(|i| {
+                tokio::runtime::Handle::current().block_on(cloudflare_ops::execute_trigger_pages_deployment(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
+        }
+        "create_branch" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<github_ops::CreateBranchInput>(input).and_then(|i| {
+                tokio::runtime::Handle::current().block_on(github_ops::execute_create_branch(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
+        }
+        "create_pull_request" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<github_ops::CreatePullRequestInput>(input).and_then(|i| {
+                tokio::runtime::Handle::current().block_on(github_ops::execute_create_pull_request(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
         }
         _ => Err(format!("unsupported tool: {name}")),
     }
