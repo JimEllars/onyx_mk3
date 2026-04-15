@@ -42,7 +42,11 @@ async fn axim_headless() {
 
     let mock_anthropic = MockAnthropicService::spawn().await.unwrap();
 
-    let mut command = Command::new("../../target/debug/onyx");
+    let mut onyx_bin = std::env::current_exe().unwrap();
+    onyx_bin.pop(); // remove test binary name
+    onyx_bin.pop(); // remove `deps` directory
+    onyx_bin.push("onyx");
+    let mut command = Command::new(onyx_bin);
     command.env(
         "AXIM_CORE_STATE_ENDPOINT",
         format!("http://{addr}/api/state"),
