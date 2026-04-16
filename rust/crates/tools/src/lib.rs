@@ -493,7 +493,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "required": ["post_id", "content"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            required_permission: PermissionMode::Prompt,
         },
         ToolSpec {
             name: "update_seo_metadata",
@@ -507,7 +507,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "required": ["post_id", "helmet_payload"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            required_permission: PermissionMode::Prompt,
         },
         ToolSpec {
             name: "purge_zone_cache",
@@ -520,7 +520,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "required": ["zone_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            required_permission: PermissionMode::Prompt,
         },
         ToolSpec {
             name: "trigger_pages_deployment",
@@ -533,7 +533,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "required": ["project_name"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            required_permission: PermissionMode::Prompt,
         },
         ToolSpec {
             name: "create_branch",
@@ -565,7 +565,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "required": ["repo", "title", "head_branch", "base_branch", "body"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::WorkspaceWrite,
+            required_permission: PermissionMode::Prompt,
         },
         ToolSpec {
             name: "grep_search",
