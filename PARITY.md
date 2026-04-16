@@ -177,6 +177,19 @@ Canonical scenario map: `rust/mock_parity_scenarios.json`
 - [x] Bash validation lane merged onto `main`
 - [ ] CI green on every commit
 
+## New AXiM Headless Scenarios
+
+- AXiM Security: Bash command deny patterns enforced
+- auto_compaction threshold from env
+- AXiM Headless Mode: Task Packet Ingestion
+- Onyx serve-headless HTTP listener validation
+- AXiM Headless Mode: Validation Error Handling
+- Task packet validation contract
+- AXiM Headless Mode: File-based State Surface
+- Observability contract for external orchestrators
+- AXiM Headless Mode: Worker Boot Protocol
+- Ready-handshake lifecycle for headless workers
+
 ## Migration Readiness
 
 - [x] `PARITY.md` maintained and honest

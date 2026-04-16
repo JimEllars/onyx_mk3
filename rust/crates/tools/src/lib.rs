@@ -1286,6 +1286,17 @@ fn execute_tool_with_enforcer(
     match name {
         "bash" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
+
+            // Explicit bash permission enforcer check
+            if let Some(enf) = enforcer {
+                if let Ok(cmd_input) = from_value::<BashCommandInput>(input) {
+                    let bash_check = enf.check_bash(&cmd_input.command);
+                    if let runtime::permission_enforcer::EnforcementResult::Denied { reason, .. } = bash_check {
+                        return Err(reason);
+                    }
+                }
+            }
+
             from_value::<BashCommandInput>(input).and_then(run_bash)
         }
         "read_file" => {
