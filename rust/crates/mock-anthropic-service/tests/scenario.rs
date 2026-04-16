@@ -42,10 +42,18 @@ async fn axim_headless() {
 
     let mock_anthropic = MockAnthropicService::spawn().await.unwrap();
 
-    let mut onyx_bin = std::env::current_exe().unwrap();
-    onyx_bin.pop(); // remove test binary name
-    onyx_bin.pop(); // remove `deps` directory
-    onyx_bin.push("onyx");
+    // Use cargo's CARGO_BIN_EXE_<name> if available, otherwise fallback to the
+    // relative location from the test executable (target/debug/deps/xxx -> target/debug/onyx)
+    let onyx_bin = if let Ok(bin) = std::env::var("CARGO_BIN_EXE_onyx") {
+        std::path::PathBuf::from(bin)
+    } else {
+        let mut exe = std::env::current_exe().unwrap();
+        exe.pop(); // remove test binary name
+        exe.pop(); // remove `deps` directory
+        exe.push("onyx");
+        exe
+    };
+
     let mut command = Command::new(onyx_bin);
     command.env(
         "AXIM_CORE_STATE_ENDPOINT",
