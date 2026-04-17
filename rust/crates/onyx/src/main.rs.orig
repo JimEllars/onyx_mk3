@@ -1067,7 +1067,7 @@ fn parse_export_args(args: &[String], output_format: CliOutputFormat) -> Result<
                 let value = args
                     .get(index + 1)
                     .ok_or_else(|| "missing value for --session".to_string())?;
-                session_reference.clone_from(value);
+                session_reference = value.clone();
                 index += 2;
             }
             flag if flag.starts_with("--session=") => {
@@ -6775,6 +6775,7 @@ impl ApiClient for AnthropicRuntimeClient {
                     {
                         // Stalled after tool completion — nudge the model by
                         // re-sending the same request.
+                        continue;
                     }
                     Err(error) => return Err(error),
                 }

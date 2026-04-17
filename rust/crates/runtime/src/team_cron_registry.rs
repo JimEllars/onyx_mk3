@@ -17,6 +17,61 @@ fn now_secs() -> u64 {
         .as_secs()
 }
 
+/// The Background "Tick" Architecture for Onyx Overwatch Tasks
+///
+/// As an Overwatch AI, Onyx cannot only be reactive. This asynchronous loop
+/// allows Onyx to periodically trigger its own internal tasks based on cron schedules.
+///
+/// Example: `supabase_ops::query_telemetry_logs` every 60 minutes.
+///
+/// Usage: Start this loop in the main application lifecycle after setting up the registry.
+use crate::fleet_health::{evaluate_fleet_health, GlobalFleetStatus};
+
+pub fn start_background_tick_loop(
+    cron_registry: Arc<CronRegistry>,
+    fleet_status: GlobalFleetStatus,
+) {
+    // 1. Spawns an asynchronous background task.
+    tokio::spawn(async move {
+        loop {
+            // 2. Fetch all registered crons
+            let crons = cron_registry.list(false);
+            let _current_time = now_secs();
+
+            for _cron in crons {
+                // 3. For each cron, check if it is time to execute
+                // (E.g., interval passed or specific schedule matched)
+
+                // TODO: Implement cron evaluation logic
+                // if cron.should_execute(current_time) {
+                //     // 4. If execution is due, dispatch the task/command to the main execution channel/queue
+                //     // E.g., send an event to `ConversationRuntime` to execute the specific tool
+                //     // cron_registry.update_last_run(cron.id, current_time);
+                // }
+            }
+
+            // Execute fleet health checks autonomously using reqwest directly
+            if let Ok(supabase_url) = std::env::var("SUPABASE_URL").or_else(|_| std::env::var("SUPABASE_URL")) {
+                if let Ok(supabase_key) = std::env::var("SUPABASE_SERVICE_ROLE_KEY").or_else(|_| std::env::var("SUPABASE_SERVICE_ROLE_KEY")) {
+                    let client = reqwest::Client::new();
+                    let url = format!("{supabase_url}/rest/v1/telemetry_logs?brand_id=eq.axim_enterprise");
+                    if let Ok(res) = client.get(&url)
+                        .header("apikey", &supabase_key)
+                        .header("Authorization", format!("Bearer {supabase_key}"))
+                        .send().await
+                    {
+                        if let Ok(logs) = res.json::<serde_json::Value>().await {
+                            evaluate_fleet_health(&fleet_status, &logs);
+                        }
+                    }
+                }
+            }
+
+            // 5. Sleep for a tick duration (e.g., 60 seconds)
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        }
+    });
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Team {
     pub team_id: String,
@@ -508,36 +563,3 @@ mod tests {
     }
 }
 
-/// The Background "Tick" Architecture for Onyx Overwatch Tasks
-///
-/// As an Overwatch AI, Onyx cannot only be reactive. This asynchronous loop
-/// allows Onyx to periodically trigger its own internal tasks based on cron schedules.
-///
-/// Example: `supabase_ops::query_telemetry_logs` every 60 minutes.
-///
-/// Usage: Start this loop in the main application lifecycle after setting up the registry.
-pub async fn start_background_tick_loop(cron_registry: Arc<CronRegistry>) {
-    // 1. Spawns an asynchronous background task.
-    tokio::spawn(async move {
-        loop {
-            // 2. Fetch all registered crons
-            let crons = cron_registry.list(false);
-            let _current_time = now_secs();
-
-            for _cron in crons {
-                // 3. For each cron, check if it is time to execute
-                // (E.g., interval passed or specific schedule matched)
-
-                // TODO: Implement cron evaluation logic
-                // if cron.should_execute(current_time) {
-                //     // 4. If execution is due, dispatch the task/command to the main execution channel/queue
-                //     // E.g., send an event to `ConversationRuntime` to execute the specific tool
-                //     // cron_registry.update_last_run(cron.id, current_time);
-                // }
-            }
-
-            // 5. Sleep for a tick duration (e.g., 60 seconds)
-            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-        }
-    });
-}

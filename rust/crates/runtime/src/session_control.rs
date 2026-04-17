@@ -575,6 +575,24 @@ fn format_no_managed_sessions() -> String {
     )
 }
 
+/// Background "Tick" Loop Spawner for Session Control
+///
+/// Ties the session lifecycle to the global cron registry to dispatch scheduled tasks
+/// into the appropriate active or background session context.
+#[allow(clippy::needless_pass_by_value)]
+pub fn start_session_background_loop(store: SessionStore, cron_registry: std::sync::Arc<crate::team_cron_registry::CronRegistry>) {
+    // Scaffold implementation for the background loop linking session and cron
+    tokio::spawn(async move {
+        let _ = store;
+        let _ = cron_registry;
+        // In the future:
+        // 1. Fetch scheduled crons from `cron_registry`
+        // 2. Identify target workspaces or sessions
+        // 3. Inject commands or trigger tools within `Session`
+        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -873,19 +891,3 @@ mod tests {
     }
 }
 
-/// Background "Tick" Loop Spawner for Session Control
-///
-/// Ties the session lifecycle to the global cron registry to dispatch scheduled tasks
-/// into the appropriate active or background session context.
-pub async fn start_session_background_loop(store: SessionStore, cron_registry: std::sync::Arc<crate::team_cron_registry::CronRegistry>) {
-    // Scaffold implementation for the background loop linking session and cron
-    tokio::spawn(async move {
-        let _ = store;
-        let _ = cron_registry;
-        // In the future:
-        // 1. Fetch scheduled crons from `cron_registry`
-        // 2. Identify target workspaces or sessions
-        // 3. Inject commands or trigger tools within `Session`
-        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-    });
-}

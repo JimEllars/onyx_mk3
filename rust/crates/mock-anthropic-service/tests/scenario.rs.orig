@@ -107,5 +107,5 @@ async fn axim_headless() {
 
     child.kill().expect("failed to kill headless server");
 
-    assert!(!reported_states.is_empty(), "Expected state transitions to be streamed via background execution loop");
+    assert!(!states.is_empty(), "Expected state transitions to be streamed via background execution loop");
 }

@@ -1,0 +1,19 @@
+--- rust/crates/onyx/src/main.rs
++++ rust/crates/onyx/src/main.rs
+@@ -1067,7 +1067,7 @@
+         }
+         let Some((key, value)) = arg.split_once('=') else {
+             if matches!(arg.as_str(), "--resume") && index + 1 < args.len() {
+-                session_reference = args[index + 1].clone();
++                session_reference.clone_from(&args[index + 1]);
+                 index += 2;
+                 continue;
+             }
+@@ -6775,7 +6775,6 @@
+                         entry.model
+                     );
+                     last_error = Some(error);
+-                    continue;
+                 }
+                 Err(error) => return Err(RuntimeError::new(error.to_string())),
+             }

@@ -20,7 +20,7 @@ pub async fn execute_create_branch(input: CreateBranchInput) -> Result<CreateBra
     let base_url = format!("https://api.github.com/repos/{}/git/ref/heads/{}", input.repo, input.base_branch);
     let base_res = client
         .get(&base_url)
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {token}"))
         .header("User-Agent", "Onyx-Agent")
         .send()
         .await
@@ -37,7 +37,7 @@ pub async fn execute_create_branch(input: CreateBranchInput) -> Result<CreateBra
     let create_url = format!("https://api.github.com/repos/{}/git/refs", input.repo);
     let create_res = client
         .post(&create_url)
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {token}"))
         .header("User-Agent", "Onyx-Agent")
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({
@@ -76,7 +76,7 @@ pub async fn execute_create_pull_request(input: CreatePullRequestInput) -> Resul
     let url = format!("https://api.github.com/repos/{}/pulls", input.repo);
     let res = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {token}"))
         .header("User-Agent", "Onyx-Agent")
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({

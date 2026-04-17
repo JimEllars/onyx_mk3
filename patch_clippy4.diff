@@ -1,0 +1,18 @@
+--- rust/crates/tools/src/lib.rs
++++ rust/crates/tools/src/lib.rs
+@@ -1310,6 +1310,7 @@
+     execute_tool_with_enforcer(None, &Default::default(), name, input)
+ }
+
++#[allow(clippy::too_many_lines, clippy::implicit_clone)]
+ fn execute_tool_with_enforcer(
+     enforcer: Option<&PermissionEnforcer>,
+     devsecops: &runtime::RuntimeDevSecOpsConfig,
+@@ -4073,7 +4074,6 @@
+                 if entry.file_type().is_file() {
+                     if let Some(name) = entry.file_name().to_str() {
+                         let _ = output.write_all(format!("{name}\n").as_bytes());
+-                        continue;
+                     }
+                 }
+             }
