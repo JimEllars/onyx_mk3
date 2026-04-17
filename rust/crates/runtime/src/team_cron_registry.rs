@@ -507,3 +507,37 @@ mod tests {
         assert!(fetched.updated_at >= entry.updated_at);
     }
 }
+
+/// The Background "Tick" Architecture for Onyx Overwatch Tasks
+///
+/// As an Overwatch AI, Onyx cannot only be reactive. This asynchronous loop
+/// allows Onyx to periodically trigger its own internal tasks based on cron schedules.
+///
+/// Example: `supabase_ops::query_telemetry_logs` every 60 minutes.
+///
+/// Usage: Start this loop in the main application lifecycle after setting up the registry.
+pub async fn start_background_tick_loop(cron_registry: Arc<CronRegistry>) {
+    // 1. Spawns an asynchronous background task.
+    tokio::spawn(async move {
+        loop {
+            // 2. Fetch all registered crons
+            let crons = cron_registry.list(false);
+            let _current_time = now_secs();
+
+            for _cron in crons {
+                // 3. For each cron, check if it is time to execute
+                // (E.g., interval passed or specific schedule matched)
+
+                // TODO: Implement cron evaluation logic
+                // if cron.should_execute(current_time) {
+                //     // 4. If execution is due, dispatch the task/command to the main execution channel/queue
+                //     // E.g., send an event to `ConversationRuntime` to execute the specific tool
+                //     // cron_registry.update_last_run(cron.id, current_time);
+                // }
+            }
+
+            // 5. Sleep for a tick duration (e.g., 60 seconds)
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        }
+    });
+}
