@@ -643,6 +643,21 @@ fn apply_code_block_background(line: &str) -> String {
 /// closing fence, breaking the render.  This function detects the situation and
 /// upgrades the outer fence to use enough backticks (or tildes) that the inner
 /// markers become ordinary content.
+struct StackEntry {
+    line_idx: usize,
+    fence_char: char,
+    fence_len: usize,
+    fence_has_info: bool,
+    fence_indent: usize,
+}
+
+struct Rewrite {
+    char: char,
+    new_len: usize,
+    indent: usize,
+}
+
+#[allow(clippy::too_many_lines)]
 fn normalize_nested_fences(markdown: &str) -> String {
     // A fence line is either "labeled" (has an info string ⇒ always an opener)
     // or "bare" (no info string ⇒ could be opener or closer).
@@ -693,11 +708,6 @@ fn normalize_nested_fences(markdown: &str) -> String {
     // Second pass: pair openers with closers using a stack, recording
     // (opener_idx, closer_idx) pairs plus the max fence length found between
     // them.
-    struct StackEntry {
-        line_idx: usize,
-        fence: FenceLine,
-    }
-
     let mut stack: Vec<StackEntry> = Vec::new();
     // Paired blocks: (opener_line, closer_line, max_inner_fence_len)
     let mut pairs: Vec<(usize, usize, usize)> = Vec::new();
@@ -709,13 +719,16 @@ fn normalize_nested_fences(markdown: &str) -> String {
             // Labeled fence ⇒ always an opener.
             stack.push(StackEntry {
                 line_idx: i,
-                fence: fl.clone(),
+                fence_char: fl.char,
+                fence_len: fl.len,
+                fence_has_info: fl.has_info,
+                fence_indent: fl.indent,
             });
         } else {
             // Bare fence ⇒ try to close the top of the stack if compatible.
             let closes_top = stack
                 .last()
-                .is_some_and(|top| top.fence.char == fl.char && fl.len >= top.fence.len);
+                .is_some_and(|top| top.fence_char == fl.char && fl.len >= top.fence_len);
             if closes_top {
                 let opener = stack.pop().unwrap();
                 // Find max fence length of any fence line strictly between
@@ -730,7 +743,10 @@ fn normalize_nested_fences(markdown: &str) -> String {
                 // Treat as opener.
                 stack.push(StackEntry {
                     line_idx: i,
-                    fence: fl.clone(),
+                    fence_char: fl.char,
+                    fence_len: fl.len,
+                    fence_has_info: fl.has_info,
+                    fence_indent: fl.indent,
                 });
             }
         }
@@ -738,11 +754,6 @@ fn normalize_nested_fences(markdown: &str) -> String {
 
     // Determine which lines need rewriting.  A pair needs rewriting when
     // its opener length <= max inner fence length.
-    struct Rewrite {
-        char: char,
-        new_len: usize,
-        indent: usize,
-    }
     let mut rewrites: std::collections::HashMap<usize, Rewrite> = std::collections::HashMap::new();
 
     for (opener_idx, closer_idx, inner_max) in &pairs {

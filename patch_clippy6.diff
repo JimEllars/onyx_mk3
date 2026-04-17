@@ -1,0 +1,47 @@
+--- rust/crates/onyx/src/main.rs
++++ rust/crates/onyx/src/main.rs
+@@ -1067,7 +1067,7 @@
+         }
+         let Some((key, value)) = arg.split_once('=') else {
+             if matches!(arg.as_str(), "--resume") && index + 1 < args.len() {
+-                session_reference = Some(args[index + 1].clone());
++                session_reference = Some(args[index + 1].clone());
+                 index += 2;
+                 continue;
+             }
+@@ -2959,10 +2959,7 @@
+ }
+
+ fn run_stale_base_preflight(base_commit: Option<&str>) {
+-    let cwd = match env::current_dir() {
+-        Ok(cwd) => cwd,
+-        Err(_) => return,
+-    };
++    let Ok(cwd) = env::current_dir() else { return };
+     match check_base_commit(&cwd, base_commit) {
+         Ok(runtime::BaseCommitState::Matches) => {}
+         Ok(runtime::BaseCommitState::Stale {
+@@ -2974,7 +2971,7 @@
+     model: String,
+     allowed_tools: Option<AllowedToolSet>,
+     permission_mode: PermissionMode,
+-    base_commit: Option<String>,
++    base_commit: Option<&String>,
+ ) -> Result<(), Box<dyn std::error::Error>> {
+     run_stale_base_preflight(base_commit.as_deref());
+     let resolved_model = resolve_repl_model(model);
+@@ -5670,15 +5667,15 @@
+     let z = unix_days + 719_468;
+     let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
+-    let doe = (z - era * 146_097) as u64; // [0, 146_096]
++    let doe = (z - era * 146_097).cast_unsigned(); // [0, 146_096]
+     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
+-    let y = yoe as i64 + era * 400;
++    let y = yoe.cast_signed() + era * 400;
+     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+     let mp = (5 * doy + 2) / 153; // [0, 11]
+     let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
+     let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
+-    (y as i32, m as u32, d as u32)
++    (y as i32, m as u32, d as u32)
+ }

@@ -22,7 +22,7 @@ pub async fn execute_query_telemetry_logs(input: QueryTelemetryLogsInput) -> Res
     let res = client
         .get(&url)
         .header("apikey", &supabase_key)
-        .header("Authorization", format!("Bearer {}", supabase_key))
+        .header("Authorization", format!("Bearer {supabase_key}"))
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -56,7 +56,7 @@ pub async fn execute_check_micro_app_transactions(input: CheckMicroAppTransactio
     let res = client
         .get(&url)
         .header("apikey", &supabase_key)
-        .header("Authorization", format!("Bearer {}", supabase_key))
+        .header("Authorization", format!("Bearer {supabase_key}"))
         .send()
         .await
         .map_err(|e| e.to_string())?;

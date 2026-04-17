@@ -44,6 +44,7 @@ pub mod summary_compression;
 pub mod task_packet;
 pub mod task_registry;
 pub mod team_cron_registry;
+pub mod fleet_health;
 #[cfg(test)]
 mod trust_resolver;
 mod usage;

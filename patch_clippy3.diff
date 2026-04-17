@@ -1,0 +1,65 @@
+--- rust/crates/tools/src/github_ops.rs
++++ rust/crates/tools/src/github_ops.rs
+@@ -20,7 +20,7 @@
+     let base_url = format!("https://api.github.com/repos/{}/git/ref/heads/{}", input.repo, input.base_branch);
+     let base_res = client
+         .get(&base_url)
+-        .header("Authorization", format!("Bearer {}", token))
++        .header("Authorization", format!("Bearer {token}"))
+         .header("User-Agent", "Onyx-Agent")
+         .send()
+         .await
+@@ -37,7 +37,7 @@
+     let create_url = format!("https://api.github.com/repos/{}/git/refs", input.repo);
+     let create_res = client
+         .post(&create_url)
+-        .header("Authorization", format!("Bearer {}", token))
++        .header("Authorization", format!("Bearer {token}"))
+         .header("User-Agent", "Onyx-Agent")
+         .header("Content-Type", "application/json")
+         .json(&serde_json::json!({
+@@ -76,7 +76,7 @@
+     let url = format!("https://api.github.com/repos/{}/pulls", input.repo);
+     let res = client
+         .post(&url)
+-        .header("Authorization", format!("Bearer {}", token))
++        .header("Authorization", format!("Bearer {token}"))
+         .header("User-Agent", "Onyx-Agent")
+         .header("Content-Type", "application/json")
+         .json(&serde_json::json!({
+--- rust/crates/tools/src/supabase_ops.rs
++++ rust/crates/tools/src/supabase_ops.rs
+@@ -22,7 +22,7 @@
+         .get(&url)
+         .header("apikey", supabase_key)
+-        .header("Authorization", format!("Bearer {}", supabase_key))
++        .header("Authorization", format!("Bearer {supabase_key}"))
+         .send()
+         .await
+         .map_err(|e| e.to_string())?;
+@@ -56,7 +56,7 @@
+         .get(&url)
+         .header("apikey", supabase_key)
+-        .header("Authorization", format!("Bearer {}", supabase_key))
++        .header("Authorization", format!("Bearer {supabase_key}"))
+         .send()
+         .await
+         .map_err(|e| e.to_string())?;
+--- rust/crates/tools/src/lib.rs
++++ rust/crates/tools/src/lib.rs
+@@ -1310,6 +1310,7 @@
+     execute_tool_with_enforcer(None, name, input)
+ }
+
++#[allow(clippy::too_many_lines, clippy::implicit_clone)]
+ fn execute_tool_with_enforcer(
+     enforcer: Option<&PermissionEnforcer>,
+     name: &str,
+@@ -4073,7 +4074,6 @@
+                 if entry.file_type().is_file() {
+                     if let Some(name) = entry.file_name().to_str() {
+                         let _ = output.write_all(format!("{name}\n").as_bytes());
+-                        continue;
+                     }
+                 }
+             }

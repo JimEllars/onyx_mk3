@@ -502,9 +502,8 @@ impl AnthropicClient {
         // Best-effort refinement using the Anthropic count_tokens endpoint.
         // On any failure (network, parse, auth), fall back to the local
         // byte-estimate result which already passed above.
-        let counted_input_tokens = match self.count_tokens(request).await {
-            Ok(count) => count,
-            Err(_) => return Ok(()),
+        let Ok(counted_input_tokens) = self.count_tokens(request).await else {
+            return Ok(());
         };
         let estimated_total_tokens = counted_input_tokens.saturating_add(request.max_tokens);
         if estimated_total_tokens > limit.context_window_tokens {

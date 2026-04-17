@@ -1,0 +1,10 @@
+--- rust/crates/tools/src/lib.rs
++++ rust/crates/tools/src/lib.rs
+@@ -4074,7 +4075,6 @@
+                 if entry.file_type().is_file() {
+                     if let Some(name) = entry.file_name().to_str() {
+                         let _ = output.write_all(format!("{name}\n").as_bytes());
+-                        continue;
+                     }
+                 }
+             }
