@@ -13,7 +13,7 @@ pub struct CreateBranchOutput {
 }
 
 pub async fn execute_create_branch(input: CreateBranchInput) -> Result<CreateBranchOutput, String> {
-    let token = std::env::var("GITHUB_TOKEN").map_err(|_| "GITHUB_TOKEN is not set")?;
+    let token = std::env::var("GITHUB_PAT").map_err(|_| "GITHUB_PAT is not set")?;
     let client = reqwest::Client::new();
 
     // First, get the SHA of the base branch
@@ -70,7 +70,7 @@ pub struct CreatePullRequestOutput {
 }
 
 pub async fn execute_create_pull_request(input: CreatePullRequestInput) -> Result<CreatePullRequestOutput, String> {
-    let token = std::env::var("GITHUB_TOKEN").map_err(|_| "GITHUB_TOKEN is not set")?;
+    let token = std::env::var("GITHUB_PAT").map_err(|_| "GITHUB_PAT is not set")?;
     let client = reqwest::Client::new();
 
     let url = format!("https://api.github.com/repos/{}/pulls", input.repo);

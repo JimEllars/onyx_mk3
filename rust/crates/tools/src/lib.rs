@@ -1,6 +1,7 @@
 pub mod wordpress_admin;
 pub mod cloudflare_ops;
 pub mod github_ops;
+pub mod supabase_ops;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -495,6 +496,35 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
             }),
             required_permission: PermissionMode::Prompt,
         },
+        ToolSpec {
+            name: "query_telemetry_logs",
+            description: "Query telemetry logs from Supabase for a specific brand.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "brand_id": { "type": "string" },
+                    "since_minutes": { "type": "integer" }
+                },
+                "required": ["brand_id", "since_minutes"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "check_micro_app_transactions",
+            description: "Check micro app transactions from Supabase for a specific app.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "app_name": { "type": "string" },
+                    "since_minutes": { "type": "integer" }
+                },
+                "required": ["app_name", "since_minutes"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+
         ToolSpec {
             name: "update_seo_metadata",
             description: "Update SEO metadata for a post.",
@@ -1418,6 +1448,19 @@ fn execute_tool_with_enforcer(
                 tokio::runtime::Handle::current().block_on(github_ops::execute_create_pull_request(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
         }
+        "query_telemetry_logs" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<supabase_ops::QueryTelemetryLogsInput>(input).and_then(|i| {
+                tokio::runtime::Handle::current().block_on(supabase_ops::execute_query_telemetry_logs(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
+        }
+        "check_micro_app_transactions" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<supabase_ops::CheckMicroAppTransactionsInput>(input).and_then(|i| {
+                tokio::runtime::Handle::current().block_on(supabase_ops::execute_check_micro_app_transactions(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
+        }
+
         _ => Err(format!("unsupported tool: {name}")),
     }
 }
