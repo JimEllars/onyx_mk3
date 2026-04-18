@@ -1497,8 +1497,18 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     runtime.block_on(async move {
         let cron_registry = Arc::new(runtime::team_cron_registry::CronRegistry::new());
         let fleet_status = runtime::fleet_health::create_global_fleet_status();
+        let fleet_status_clone = fleet_status.clone();
+
         let _bg = tokio::spawn(async move {
-            runtime::team_cron_registry::start_background_tick_loop(cron_registry, fleet_status);
+            runtime::team_cron_registry::start_background_tick_loop(cron_registry, fleet_status_clone);
+        });
+
+        let fleet_status_polling = fleet_status.clone();
+        tokio::spawn(async move {
+            let secret = std::env::var("AXIM_ONYX_SECRET").unwrap_or_default();
+            let edge_url = std::env::var("VITE_ONYX_WORKER_URL").unwrap_or_else(|_| "https://onyx-edge-worker.yourdomain.workers.dev".to_string());
+            let client = reqwest::Client::new();
+            runtime::fleet_health::start_approval_polling_loop(fleet_status_polling, client, edge_url, secret).await;
         });
 
         let (task_queue, mut task_rx) = tokio_mpsc::channel::<TaskPacket>(100);
