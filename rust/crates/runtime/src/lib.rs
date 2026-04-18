@@ -45,6 +45,9 @@ pub mod task_packet;
 pub mod task_registry;
 pub mod team_cron_registry;
 pub mod fleet_health;
+pub use fleet_health::{
+    AppStatus, FleetStatus, GlobalFleetStatus, ProposedAction, create_global_fleet_status, evaluate_fleet_health, start_approval_polling_loop, ActionStatus,
+};
 #[cfg(test)]
 mod trust_resolver;
 mod usage;

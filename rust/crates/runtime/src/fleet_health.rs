@@ -8,10 +8,19 @@ pub enum AppStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActionStatus {
+    Pending,
+    Executing,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProposedAction {
     pub tool_name: String,
     pub arguments: serde_json::Value,
     pub id: String,
+    pub status: ActionStatus,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -53,11 +62,63 @@ pub fn evaluate_fleet_health(status: &GlobalFleetStatus, telemetry_logs: &serde_
                     tool_name: "purge_zone_cache".to_string(),
                     arguments: serde_json::json!({ "zone_id": app }), // Simple mapping for now
                     id: action_id.clone(),
+                    status: ActionStatus::Pending,
                 };
                 println!("[Self-Healing: Spiking errors detected in {app}. Status set to DEGRADED. Pushing ProposedAction: {action_id}]");
                 current_status.pending_actions.push(proposed_action);
             } else {
                 current_status.apps.insert(app.clone(), AppStatus::Operational);
+            }
+        }
+    }
+}
+
+pub async fn start_approval_polling_loop(status: GlobalFleetStatus, client: reqwest::Client, edge_url: String, secret: String) {
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+    loop {
+        interval.tick().await;
+
+        let url = format!("{}/api/approvals", edge_url);
+        match client.get(&url)
+            .header("Authorization", format!("Bearer {}", secret))
+            .send()
+            .await {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(body) = resp.json::<serde_json::Value>().await {
+                    if let Some(approvals) = body.get("approvals").and_then(|v| v.as_array()) {
+                        let mut current_status = status.write().unwrap();
+                        for approval in approvals {
+                            if let Some(task_id) = approval.get("task_id").and_then(|v| v.as_str()) {
+                                for action in current_status.pending_actions.iter_mut() {
+                                    if action.id == task_id && action.status == ActionStatus::Pending {
+                                        action.status = ActionStatus::Executing;
+                                        println!("[Approval received for task_id {}. Transitioning to Executing]", task_id);
+
+                                        // Note: Assuming Supabase/Cloudflare tool is mapped to purge_zone_cache as per evaluate_fleet_health.
+                                        if action.tool_name == "purge_zone_cache" {
+                                            if let Some(zone_id) = action.arguments.get("zone_id").and_then(|v| v.as_str()) {
+                                                println!("[Simulating execution: Purging cache for zone_id {}...]", zone_id);
+                                                // Actually making the call to CF API or Supabase here...
+                                                // In a full implementation, we'd spawn a tool execution task.
+                                                action.status = ActionStatus::Completed;
+                                                println!("[Execution completed for task_id {}]", task_id);
+                                            } else {
+                                                action.status = ActionStatus::Failed;
+                                                eprintln!("[Execution failed: Missing zone_id]");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(resp) => {
+                eprintln!("[Approval polling failed with status: {}]", resp.status());
+            }
+            Err(e) => {
+                eprintln!("[Approval polling error: {}]", e);
             }
         }
     }

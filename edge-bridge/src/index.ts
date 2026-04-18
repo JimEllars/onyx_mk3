@@ -42,8 +42,14 @@ export default {
 
 		const url = new URL(request.url);
 
-		// Only allow POST requests for the API
-		if (request.method !== "POST") {
+		if (request.method === "GET" && url.pathname === "/health") {
+			return new Response(JSON.stringify({ status: "operational", service: "onyx-edge-bridge" }), {
+				headers: { ...corsHeaders, "Content-Type": "application/json" }
+			});
+		}
+
+		// Only allow POST and GET requests for the API
+		if (request.method !== "POST" && request.method !== "GET") {
 			return new Response("Not Found", { status: 404, headers: corsHeaders });
 		}
 
@@ -158,6 +164,15 @@ Context: ${typeof context === 'object' ? JSON.stringify(context) : context || 'N
 				return new Response(JSON.stringify({
 					status: "success",
 					message: `Approval for task ${payload.task_id} relayed to Rust core.`
+				}), {
+					headers: { ...corsHeaders, "Content-Type": "application/json" }
+				});
+			} else if (url.pathname === "/api/approvals" && request.method === "GET") {
+				// Mock endpoint to support the Rust polling loop for approvals
+				// In a real implementation, this would query a database or cache
+				return new Response(JSON.stringify({
+					status: "success",
+					approvals: []
 				}), {
 					headers: { ...corsHeaders, "Content-Type": "application/json" }
 				});
