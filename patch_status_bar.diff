@@ -1,0 +1,24 @@
+--- rust/crates/onyx/src/tui/status_bar.rs
++++ rust/crates/onyx/src/tui/status_bar.rs
+@@ -3,17 +3,17 @@
+ use runtime::fleet_health::GlobalFleetStatus;
+
+ pub fn render_status_bar(model: &str, session_id: &str, usage: &TokenUsage, cost: f64, fleet_status: Option<&GlobalFleetStatus>) -> String {
+-    let action_required = fleet_status.map(|status| {
++    let action_required = fleet_status.is_some_and(|status| {
+         let state = status.read().unwrap();
+         !state.pending_actions.is_empty()
+-    }).unwrap_or(false);
++    });
+
+     let mut text = format!(
+         "Model: {} | Session: {} | Tokens: In {}, Out {} | Cost: ${:.4}",
+         model, session_id, usage.input_tokens, usage.output_tokens, cost
+     );
+
+     if action_required {
+-        text = format!("{} | \x1b[38;5;214;5m[ACTION_REQUIRED]\x1b[0m", text);
++        text = format!("{text} | \x1b[38;5;214;5m[ACTION_REQUIRED]\x1b[0m");
+     }
+
+     text

@@ -141,26 +141,6 @@ Context: ${typeof context === 'object' ? JSON.stringify(context) : context || 'N
 					headers: { ...corsHeaders, "Content-Type": "application/json" }
 				});
 
-			} else if (url.pathname === "/api/approve") {
-				// POST /api/approve endpoint to receive HITL signals from Core
-				const payload = await request.json() as { task_id?: string; signed_payload?: any };
-
-				if (!payload.task_id || !payload.signed_payload) {
-					return new Response(JSON.stringify({ error: "Missing task_id or signed_payload" }), {
-						status: 400,
-						headers: { ...corsHeaders, "Content-Type": "application/json" }
-					});
-				}
-
-				// Relay approval back to Onyx Rust runtime (simulation of SSE/Socket signal)
-				console.log(`Relaying approval for task: ${payload.task_id}`);
-
-				return new Response(JSON.stringify({
-					status: "success",
-					message: `Approval for task ${payload.task_id} relayed to Rust core.`
-				}), {
-					headers: { ...corsHeaders, "Content-Type": "application/json" }
-				});
 			} else if (url.pathname === "/api/v1/webhooks") {
 				// Handle GitHub/WordPress webhooks
 				const rawBody = await request.clone().text();

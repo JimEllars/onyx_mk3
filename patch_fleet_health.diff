@@ -1,0 +1,39 @@
+--- rust/crates/runtime/src/fleet_health.rs
++++ rust/crates/runtime/src/fleet_health.rs
+@@ -5,10 +5,18 @@
+     Degraded(String),
+ }
+
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct ProposedAction {
++    pub tool_name: String,
++    pub arguments: serde_json::Value,
++    pub id: String,
++}
++
+ #[derive(Debug, Clone, Default)]
+ pub struct FleetStatus {
+     pub apps: HashMap<String, AppStatus>,
+     pub last_updated: u64,
++    pub pending_actions: Vec<ProposedAction>,
+ }
+
+ pub type GlobalFleetStatus = Arc<RwLock<FleetStatus>>;
+@@ -35,8 +43,15 @@
+         for (app, count) in error_counts {
+             if count > 5 {
+                 current_status.apps.insert(app.clone(), AppStatus::Degraded(format!("Spike in 500 errors ({count} recent)")));
+-                // Intended autonomous remediation action: purge Cloudflare zone cache for degraded app.
+-                println!("[Self-Healing: Spiking errors detected in {app}. Status set to DEGRADED. Attempting to call cloudflare_ops::purge_zone_cache]");
++
++                let action_id = format!("action-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
++                let proposed_action = ProposedAction {
++                    tool_name: "purge_zone_cache".to_string(),
++                    arguments: serde_json::json!({ "zone_id": app }), // Simple mapping for now
++                    id: action_id.clone(),
++                };
++                println!("[Self-Healing: Spiking errors detected in {app}. Status set to DEGRADED. Pushing ProposedAction: {}]", action_id);
++                current_status.pending_actions.push(proposed_action);
+             } else {
+                 current_status.apps.insert(app.clone(), AppStatus::Operational);
+             }
