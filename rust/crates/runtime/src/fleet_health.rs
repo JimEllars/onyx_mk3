@@ -21,6 +21,7 @@ pub struct ProposedAction {
     pub arguments: serde_json::Value,
     pub id: String,
     pub status: ActionStatus,
+    pub created_at: u64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -63,6 +64,7 @@ pub fn evaluate_fleet_health(status: &GlobalFleetStatus, telemetry_logs: &serde_
                     arguments: serde_json::json!({ "zone_id": app }), // Simple mapping for now
                     id: action_id.clone(),
                     status: ActionStatus::Pending,
+                    created_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
                 };
                 println!("[Self-Healing: Spiking errors detected in {app}. Status set to DEGRADED. Pushing ProposedAction: {action_id}]");
                 current_status.pending_actions.push(proposed_action);
@@ -79,6 +81,8 @@ pub async fn start_approval_polling_loop(status: GlobalFleetStatus, client: reqw
         interval.tick().await;
 
         let url = format!("{}/api/approvals", edge_url);
+        let mut approved_tasks = std::collections::HashSet::new();
+
         match client.get(&url)
             .header("Authorization", format!("Bearer {}", secret))
             .send()
@@ -86,29 +90,9 @@ pub async fn start_approval_polling_loop(status: GlobalFleetStatus, client: reqw
             Ok(resp) if resp.status().is_success() => {
                 if let Ok(body) = resp.json::<serde_json::Value>().await {
                     if let Some(approvals) = body.get("approvals").and_then(|v| v.as_array()) {
-                        let mut current_status = status.write().unwrap();
                         for approval in approvals {
                             if let Some(task_id) = approval.get("task_id").and_then(|v| v.as_str()) {
-                                for action in current_status.pending_actions.iter_mut() {
-                                    if action.id == task_id && action.status == ActionStatus::Pending {
-                                        action.status = ActionStatus::Executing;
-                                        println!("[Approval received for task_id {}. Transitioning to Executing]", task_id);
-
-                                        // Note: Assuming Supabase/Cloudflare tool is mapped to purge_zone_cache as per evaluate_fleet_health.
-                                        if action.tool_name == "purge_zone_cache" {
-                                            if let Some(zone_id) = action.arguments.get("zone_id").and_then(|v| v.as_str()) {
-                                                println!("[Simulating execution: Purging cache for zone_id {}...]", zone_id);
-                                                // Actually making the call to CF API or Supabase here...
-                                                // In a full implementation, we'd spawn a tool execution task.
-                                                action.status = ActionStatus::Completed;
-                                                println!("[Execution completed for task_id {}]", task_id);
-                                            } else {
-                                                action.status = ActionStatus::Failed;
-                                                eprintln!("[Execution failed: Missing zone_id]");
-                                            }
-                                        }
-                                    }
-                                }
+                                approved_tasks.insert(task_id.to_string());
                             }
                         }
                     }
@@ -119,6 +103,117 @@ pub async fn start_approval_polling_loop(status: GlobalFleetStatus, client: reqw
             }
             Err(e) => {
                 eprintln!("[Approval polling error: {}]", e);
+            }
+        }
+
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let mut actions_to_execute = Vec::new();
+
+        {
+            let mut current_status = status.write().unwrap();
+            for action in current_status.pending_actions.iter_mut() {
+                if action.status == ActionStatus::Pending {
+                    let mut should_execute = false;
+
+                    if approved_tasks.contains(&action.id) {
+                        println!("[Approval received for task_id {}. Transitioning to Executing]", action.id);
+                        should_execute = true;
+                    } else if now >= action.created_at + (12 * 3600) {
+                        println!("[Auto-approving task_id {} after 12 hours. Transitioning to Executing]", action.id);
+                        should_execute = true;
+                    }
+
+                    if should_execute {
+                        action.status = ActionStatus::Executing;
+                        actions_to_execute.push(action.clone());
+                    }
+                }
+            }
+        }
+
+        for action in actions_to_execute {
+            let mut exec_status = "Failed";
+            #[allow(unused_assignments)]
+            let mut exec_details = "Unknown error".to_string();
+
+            if action.tool_name == "purge_zone_cache" {
+                if let Some(zone_id) = action.arguments.get("zone_id").and_then(|v| v.as_str()) {
+                    println!("[Executing: Purging cache for zone_id {}...]", zone_id);
+                    let api_key = std::env::var("CLOUDFLARE_API_TOKEN").unwrap_or_default();
+                    let email = std::env::var("CLOUDFLARE_EMAIL").unwrap_or_default();
+                    let cf_client = reqwest::Client::new();
+                    let cf_url = format!("https://api.cloudflare.com/client/v4/zones/{}/purge_cache", zone_id);
+                    let result: Result<(), String> = match cf_client.post(&cf_url)
+                        .header("X-Auth-Key", api_key)
+                        .header("X-Auth-Email", email)
+                        .header("Content-Type", "application/json")
+                        .json(&serde_json::json!({ "purge_everything": true }))
+                        .send()
+                        .await {
+                        Ok(res) if res.status().is_success() => {
+                            Ok(())
+                        }
+                        Ok(res) => {
+                            Err(format!("Cloudflare API error: {}", res.status()))
+                        }
+                        Err(e) => {
+                            Err(e.to_string())
+                        }
+                    };
+
+                    match result {
+                        Ok(_) => {
+                            exec_status = "Completed";
+                            exec_details = "Cache purged successfully".to_string();
+                            println!("[Execution completed for task_id {}]", action.id);
+                        }
+                        Err(e) => {
+                            exec_status = "Failed";
+                            exec_details = format!("Error: {}", e);
+                            eprintln!("[Execution failed for task_id {}: {}]", action.id, e);
+                        }
+                    }
+                } else {
+                    exec_details = "Missing zone_id".to_string();
+                    eprintln!("[Execution failed: Missing zone_id]");
+                }
+            } else {
+                exec_details = format!("Unknown tool: {}", action.tool_name);
+                eprintln!("[Execution failed: Unknown tool {}]", action.tool_name);
+            }
+
+            {
+                let mut current_status = status.write().unwrap();
+                for a in current_status.pending_actions.iter_mut() {
+                    if a.id == action.id {
+                        a.status = if exec_status == "Completed" { ActionStatus::Completed } else { ActionStatus::Failed };
+                    }
+                }
+            }
+
+            // Task 2: Feedback Loop
+            let feedback_url = format!("{}/api/v1/task-status", edge_url);
+            let payload = serde_json::json!({
+                "task_id": action.id,
+                "status": exec_status,
+                "details": exec_details
+            });
+
+            match client.post(&feedback_url)
+                .header("Authorization", format!("Bearer {}", secret))
+                .header("Content-Type", "application/json")
+                .json(&payload)
+                .send()
+                .await {
+                Ok(resp) if resp.status().is_success() => {
+                    println!("[Feedback sent for task_id {}]", action.id);
+                }
+                Ok(resp) => {
+                    eprintln!("[Feedback failed for task_id {} with status: {}]", action.id, resp.status());
+                }
+                Err(e) => {
+                    eprintln!("[Feedback error for task_id {}: {}]", action.id, e);
+                }
             }
         }
     }
