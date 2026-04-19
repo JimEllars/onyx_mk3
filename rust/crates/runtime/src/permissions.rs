@@ -290,8 +290,10 @@ impl PermissionPolicy {
             "purge_zone_cache",
             "trigger_pages_deployment",
             "create_branch",
-            "create_pull_request"
-        ].contains(&tool_name) {
+            "create_pull_request",
+        ]
+        .contains(&tool_name)
+        {
             let reason = Some(format!(
                 "tool '{tool_name}' Requires Human Approval to perform destructive action."
             ));

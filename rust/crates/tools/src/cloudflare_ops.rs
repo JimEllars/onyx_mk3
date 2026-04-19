@@ -10,12 +10,18 @@ pub struct PurgeZoneCacheOutput {
     pub success: bool,
 }
 
-pub async fn execute_purge_zone_cache(input: PurgeZoneCacheInput) -> Result<PurgeZoneCacheOutput, String> {
-    let api_key = std::env::var("CLOUDFLARE_API_TOKEN").map_err(|_| "CLOUDFLARE_API_TOKEN is not set")?;
+pub async fn execute_purge_zone_cache(
+    input: PurgeZoneCacheInput,
+) -> Result<PurgeZoneCacheOutput, String> {
+    let api_key =
+        std::env::var("CLOUDFLARE_API_TOKEN").map_err(|_| "CLOUDFLARE_API_TOKEN is not set")?;
     let email = std::env::var("CLOUDFLARE_EMAIL").map_err(|_| "CLOUDFLARE_EMAIL is not set")?;
 
     let client = reqwest::Client::new();
-    let url = format!("https://api.cloudflare.com/client/v4/zones/{}/purge_cache", input.zone_id);
+    let url = format!(
+        "https://api.cloudflare.com/client/v4/zones/{}/purge_cache",
+        input.zone_id
+    );
 
     let res = client
         .post(&url)
@@ -44,13 +50,20 @@ pub struct TriggerPagesDeploymentOutput {
     pub success: bool,
 }
 
-pub async fn execute_trigger_pages_deployment(input: TriggerPagesDeploymentInput) -> Result<TriggerPagesDeploymentOutput, String> {
-    let account_id = std::env::var("CLOUDFLARE_ACCOUNT_ID").map_err(|_| "CLOUDFLARE_ACCOUNT_ID is not set")?;
-    let api_key = std::env::var("CLOUDFLARE_API_TOKEN").map_err(|_| "CLOUDFLARE_API_TOKEN is not set")?;
+pub async fn execute_trigger_pages_deployment(
+    input: TriggerPagesDeploymentInput,
+) -> Result<TriggerPagesDeploymentOutput, String> {
+    let account_id =
+        std::env::var("CLOUDFLARE_ACCOUNT_ID").map_err(|_| "CLOUDFLARE_ACCOUNT_ID is not set")?;
+    let api_key =
+        std::env::var("CLOUDFLARE_API_TOKEN").map_err(|_| "CLOUDFLARE_API_TOKEN is not set")?;
     let email = std::env::var("CLOUDFLARE_EMAIL").map_err(|_| "CLOUDFLARE_EMAIL is not set")?;
 
     let client = reqwest::Client::new();
-    let url = format!("https://api.cloudflare.com/client/v4/accounts/{}/pages/projects/{}/deployments", account_id, input.project_name);
+    let url = format!(
+        "https://api.cloudflare.com/client/v4/accounts/{}/pages/projects/{}/deployments",
+        account_id, input.project_name
+    );
 
     let res = client
         .post(&url)

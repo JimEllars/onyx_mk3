@@ -13,7 +13,8 @@ pub struct FetchPostOutput {
 
 pub async fn execute_fetch_post(input: FetchPostInput) -> Result<FetchPostOutput, String> {
     let wp_url = std::env::var("WP_REST_URL").map_err(|_| "WP_REST_URL is not set")?;
-    let app_password = std::env::var("WP_APPLICATION_PASSWORD").map_err(|_| "WP_APPLICATION_PASSWORD is not set")?;
+    let app_password = std::env::var("WP_APPLICATION_PASSWORD")
+        .map_err(|_| "WP_APPLICATION_PASSWORD is not set")?;
 
     let client = reqwest::Client::new();
     let url = format!("{}/wp/v2/posts/{}", wp_url, input.post_id);
@@ -29,7 +30,10 @@ pub async fn execute_fetch_post(input: FetchPostInput) -> Result<FetchPostOutput
 
     if res.status().is_success() {
         let data: Value = res.json().await.map_err(|e| e.to_string())?;
-        let content = data["content"]["rendered"].as_str().unwrap_or("").to_string();
+        let content = data["content"]["rendered"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
         Ok(FetchPostOutput { content })
     } else {
         Err(format!("Failed to fetch post: {}", res.status()))
@@ -47,9 +51,12 @@ pub struct UpdatePostContentOutput {
     pub success: bool,
 }
 
-pub async fn execute_update_post_content(input: UpdatePostContentInput) -> Result<UpdatePostContentOutput, String> {
+pub async fn execute_update_post_content(
+    input: UpdatePostContentInput,
+) -> Result<UpdatePostContentOutput, String> {
     let wp_url = std::env::var("WP_REST_URL").map_err(|_| "WP_REST_URL is not set")?;
-    let app_password = std::env::var("WP_APPLICATION_PASSWORD").map_err(|_| "WP_APPLICATION_PASSWORD is not set")?;
+    let app_password = std::env::var("WP_APPLICATION_PASSWORD")
+        .map_err(|_| "WP_APPLICATION_PASSWORD is not set")?;
 
     let client = reqwest::Client::new();
     let url = format!("{}/wp/v2/posts/{}", wp_url, input.post_id);
@@ -85,9 +92,12 @@ pub struct UpdateSeoMetadataOutput {
     pub success: bool,
 }
 
-pub async fn execute_update_seo_metadata(input: UpdateSeoMetadataInput) -> Result<UpdateSeoMetadataOutput, String> {
+pub async fn execute_update_seo_metadata(
+    input: UpdateSeoMetadataInput,
+) -> Result<UpdateSeoMetadataOutput, String> {
     let wp_url = std::env::var("WP_REST_URL").map_err(|_| "WP_REST_URL is not set")?;
-    let app_password = std::env::var("WP_APPLICATION_PASSWORD").map_err(|_| "WP_APPLICATION_PASSWORD is not set")?;
+    let app_password = std::env::var("WP_APPLICATION_PASSWORD")
+        .map_err(|_| "WP_APPLICATION_PASSWORD is not set")?;
 
     let client = reqwest::Client::new();
     let url = format!("{}/wp/v2/posts/{}", wp_url, input.post_id);
