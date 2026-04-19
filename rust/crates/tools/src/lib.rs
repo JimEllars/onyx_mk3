@@ -1,7 +1,7 @@
-pub mod wordpress_admin;
 pub mod cloudflare_ops;
 pub mod github_ops;
 pub mod supabase_ops;
+pub mod wordpress_admin;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -1322,7 +1322,10 @@ fn execute_tool_with_enforcer(
             if let Some(enf) = enforcer {
                 if let Ok(cmd_input) = from_value::<BashCommandInput>(input) {
                     let bash_check = enf.check_bash(&cmd_input.command);
-                    if let runtime::permission_enforcer::EnforcementResult::Denied { reason, .. } = bash_check {
+                    if let runtime::permission_enforcer::EnforcementResult::Denied {
+                        reason, ..
+                    } = bash_check
+                    {
                         return Err(reason);
                     }
                 }
@@ -1410,57 +1413,102 @@ fn execute_tool_with_enforcer(
         "fetch_post" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<wordpress_admin::FetchPostInput>(input).and_then(|i| {
-                tokio::runtime::Handle::current().block_on(wordpress_admin::execute_fetch_post(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+                tokio::runtime::Handle::current()
+                    .block_on(wordpress_admin::execute_fetch_post(i))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
         }
         "update_post_content" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<wordpress_admin::UpdatePostContentInput>(input).and_then(|i| {
-                tokio::runtime::Handle::current().block_on(wordpress_admin::execute_update_post_content(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+                tokio::runtime::Handle::current()
+                    .block_on(wordpress_admin::execute_update_post_content(i))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
         }
         "update_seo_metadata" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<wordpress_admin::UpdateSeoMetadataInput>(input).and_then(|i| {
-                tokio::runtime::Handle::current().block_on(wordpress_admin::execute_update_seo_metadata(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+                tokio::runtime::Handle::current()
+                    .block_on(wordpress_admin::execute_update_seo_metadata(i))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
         }
         "purge_zone_cache" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<cloudflare_ops::PurgeZoneCacheInput>(input).and_then(|i| {
-                tokio::runtime::Handle::current().block_on(cloudflare_ops::execute_purge_zone_cache(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+                tokio::runtime::Handle::current()
+                    .block_on(cloudflare_ops::execute_purge_zone_cache(i))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
         }
         "trigger_pages_deployment" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<cloudflare_ops::TriggerPagesDeploymentInput>(input).and_then(|i| {
-                tokio::runtime::Handle::current().block_on(cloudflare_ops::execute_trigger_pages_deployment(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+                tokio::runtime::Handle::current()
+                    .block_on(cloudflare_ops::execute_trigger_pages_deployment(i))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
         }
         "create_branch" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<github_ops::CreateBranchInput>(input).and_then(|i| {
-                tokio::runtime::Handle::current().block_on(github_ops::execute_create_branch(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+                tokio::runtime::Handle::current()
+                    .block_on(github_ops::execute_create_branch(i))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
         }
         "create_pull_request" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<github_ops::CreatePullRequestInput>(input).and_then(|i| {
-                tokio::runtime::Handle::current().block_on(github_ops::execute_create_pull_request(i)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+                tokio::runtime::Handle::current()
+                    .block_on(github_ops::execute_create_pull_request(i))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
         }
         "query_telemetry_logs" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<supabase_ops::QueryTelemetryLogsInput>(input).and_then(|i| {
-                let config = ConfigLoader::default_for(".").load().unwrap_or_else(|_| runtime::RuntimeConfig::empty());
-                tokio::runtime::Handle::current().block_on(supabase_ops::execute_query_telemetry_logs(i, &config)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+                let config = ConfigLoader::default_for(".")
+                    .load()
+                    .unwrap_or_else(|_| runtime::RuntimeConfig::empty());
+                tokio::runtime::Handle::current()
+                    .block_on(supabase_ops::execute_query_telemetry_logs(i, &config))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
         }
         "check_micro_app_transactions" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<supabase_ops::CheckMicroAppTransactionsInput>(input).and_then(|i| {
-                let config = ConfigLoader::default_for(".").load().unwrap_or_else(|_| runtime::RuntimeConfig::empty());
-                tokio::runtime::Handle::current().block_on(supabase_ops::execute_check_micro_app_transactions(i, &config)).map_err(|e| e.to_string()).and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+                let config = ConfigLoader::default_for(".")
+                    .load()
+                    .unwrap_or_else(|_| runtime::RuntimeConfig::empty());
+                tokio::runtime::Handle::current()
+                    .block_on(supabase_ops::execute_check_micro_app_transactions(
+                        i, &config,
+                    ))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
+        }
+        "record_incident_resolution" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<supabase_ops::RecordIncidentResolutionInput>(input).and_then(|i| {
+                let config = ConfigLoader::default_for(".")
+                    .load()
+                    .unwrap_or_else(|_| runtime::RuntimeConfig::empty());
+                tokio::runtime::Handle::current()
+                    .block_on(supabase_ops::execute_record_incident_resolution(i, &config))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
         }
 
@@ -3996,9 +4044,7 @@ impl ProviderRuntimeClient {
         allowed_tools: BTreeSet<String>,
         fallback_config: &ProviderFallbackConfig,
     ) -> Result<Self, String> {
-        let primary_model = fallback_config
-            .primary()
-            .map_or(model, str::to_string);
+        let primary_model = fallback_config.primary().map_or(model, str::to_string);
         let primary = build_provider_entry(&primary_model)?;
         let mut chain = vec![primary];
         for fallback_model in fallback_config.fallbacks() {
@@ -4081,9 +4127,10 @@ impl ApiClient for ProviderRuntimeClient {
             }
         }
 
-        Err(RuntimeError::new(
-            last_error.map_or_else(|| String::from("provider chain exhausted with no attempts"), |error| error.to_string()),
-        ))
+        Err(RuntimeError::new(last_error.map_or_else(
+            || String::from("provider chain exhausted with no attempts"),
+            |error| error.to_string(),
+        )))
     }
 }
 

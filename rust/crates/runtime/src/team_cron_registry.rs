@@ -30,7 +30,7 @@ use crate::fleet_health::{evaluate_fleet_health, GlobalFleetStatus};
 pub fn start_background_tick_loop(
     cron_registry: Arc<CronRegistry>,
     fleet_status: GlobalFleetStatus,
-) {
+) -> tokio::task::JoinHandle<()> {
     // 1. Spawns an asynchronous background task.
     tokio::spawn(async move {
         loop {
@@ -51,14 +51,22 @@ pub fn start_background_tick_loop(
             }
 
             // Execute fleet health checks autonomously using reqwest directly
-            if let Ok(supabase_url) = std::env::var("SUPABASE_URL").or_else(|_| std::env::var("SUPABASE_URL")) {
-                if let Ok(supabase_key) = std::env::var("SUPABASE_SERVICE_ROLE_KEY").or_else(|_| std::env::var("SUPABASE_SERVICE_ROLE_KEY")) {
+            if let Ok(supabase_url) =
+                std::env::var("SUPABASE_URL").or_else(|_| std::env::var("SUPABASE_URL"))
+            {
+                if let Ok(supabase_key) = std::env::var("SUPABASE_SERVICE_ROLE_KEY")
+                    .or_else(|_| std::env::var("SUPABASE_SERVICE_ROLE_KEY"))
+                {
                     let client = reqwest::Client::new();
-                    let url = format!("{supabase_url}/rest/v1/telemetry_logs?brand_id=eq.axim_enterprise");
-                    if let Ok(res) = client.get(&url)
+                    let url = format!(
+                        "{supabase_url}/rest/v1/telemetry_logs?brand_id=eq.axim_enterprise"
+                    );
+                    if let Ok(res) = client
+                        .get(&url)
                         .header("apikey", &supabase_key)
                         .header("Authorization", format!("Bearer {supabase_key}"))
-                        .send().await
+                        .send()
+                        .await
                     {
                         if let Ok(logs) = res.json::<serde_json::Value>().await {
                             evaluate_fleet_health(&fleet_status, &logs);
@@ -70,7 +78,7 @@ pub fn start_background_tick_loop(
             // 5. Sleep for a tick duration (e.g., 60 seconds)
             tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
         }
-    });
+    })
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Team {
@@ -562,4 +570,3 @@ mod tests {
         assert!(fetched.updated_at >= entry.updated_at);
     }
 }
-

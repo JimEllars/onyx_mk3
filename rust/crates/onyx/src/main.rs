@@ -1457,10 +1457,7 @@ async fn ingest_task_packet(
             let res = match tools::run_task_packet(packet.clone()) {
                 Ok(res) => res,
                 Err(e) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({"error": e.clone()})),
-                    )
+                    return (StatusCode::BAD_REQUEST, Json(json!({"error": e.clone()})))
                         .into_response();
                 }
             };
@@ -1489,6 +1486,7 @@ async fn stream_events(State(_state): State<Arc<AppState>>) -> impl IntoResponse
     "event: heartbeat\ndata: {}\n\n"
 }
 
+#[allow(clippy::too_many_lines)]
 fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -1499,22 +1497,29 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         let fleet_status = runtime::fleet_health::create_global_fleet_status();
         let fleet_status_clone = fleet_status.clone();
 
-        let _bg = tokio::spawn(async move {
-            runtime::team_cron_registry::start_background_tick_loop(cron_registry, fleet_status_clone);
-        });
+        let _bg = runtime::team_cron_registry::start_background_tick_loop(
+            cron_registry,
+            fleet_status_clone,
+        );
 
         let fleet_status_polling = fleet_status.clone();
-        tokio::spawn(async move {
+        let _bg_polling = {
             let secret = std::env::var("AXIM_ONYX_SECRET").unwrap_or_default();
-            let edge_url = std::env::var("VITE_ONYX_WORKER_URL").unwrap_or_else(|_| "https://onyx-edge-worker.yourdomain.workers.dev".to_string());
+            let edge_url = std::env::var("VITE_ONYX_WORKER_URL")
+                .unwrap_or_else(|_| "https://onyx-edge-worker.yourdomain.workers.dev".to_string());
             let client = reqwest::Client::new();
-            runtime::fleet_health::start_approval_polling_loop(fleet_status_polling, client, edge_url, secret).await;
-        });
-
+            runtime::fleet_health::start_approval_polling_loop(
+                fleet_status_polling,
+                client,
+                edge_url,
+                secret,
+            )
+        };
 
         let fleet_status_heartbeat = fleet_status.clone();
         tokio::spawn(async move {
-            let edge_url = std::env::var("VITE_ONYX_WORKER_URL").unwrap_or_else(|_| "https://onyx-edge-worker.yourdomain.workers.dev".to_string());
+            let edge_url = std::env::var("VITE_ONYX_WORKER_URL")
+                .unwrap_or_else(|_| "https://onyx-edge-worker.yourdomain.workers.dev".to_string());
             let secret = std::env::var("AXIM_ONYX_SECRET").unwrap_or_default();
             let client = reqwest::Client::new();
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
@@ -1523,8 +1528,16 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
 
                 let (pending_tasks, active_tasks) = {
                     let status = fleet_status_heartbeat.read().unwrap();
-                    let pending = status.pending_actions.iter().filter(|a| a.status == runtime::fleet_health::ActionStatus::Pending).count();
-                    let active = status.pending_actions.iter().filter(|a| a.status == runtime::fleet_health::ActionStatus::Executing).count();
+                    let pending = status
+                        .pending_actions
+                        .iter()
+                        .filter(|a| a.status == runtime::fleet_health::ActionStatus::Pending)
+                        .count();
+                    let active = status
+                        .pending_actions
+                        .iter()
+                        .filter(|a| a.status == runtime::fleet_health::ActionStatus::Executing)
+                        .count();
                     (pending, active)
                 };
 
@@ -1535,39 +1548,49 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
                     "active_tasks": active_tasks
                 });
 
-                let telemetry_url = format!("{}/api/v1/telemetry", edge_url);
-                match client.post(&telemetry_url)
-                    .header("Authorization", format!("Bearer {}", secret))
+                let telemetry_url = format!("{edge_url}/api/v1/telemetry");
+                match client
+                    .post(&telemetry_url)
+                    .header("Authorization", format!("Bearer {secret}"))
                     .header("Content-Type", "application/json")
                     .json(&payload)
                     .send()
-                    .await {
+                    .await
+                {
                     Ok(resp) if resp.status().is_success() => {
-                        println!("[Heartbeat] Successfully broadcast load: {} pending, {} active", pending_tasks, active_tasks);
+                        println!(
+                            "[Heartbeat] Successfully broadcast load: {pending_tasks} pending, {active_tasks} active"
+                        );
                     }
                     Ok(resp) => {
-                        eprintln!("[Heartbeat] Failed to broadcast load: status {}", resp.status());
+                        eprintln!(
+                            "[Heartbeat] Failed to broadcast load: status {}",
+                            resp.status()
+                        );
                     }
                     Err(e) => {
-                        eprintln!("[Heartbeat] Error broadcasting load: {}", e);
+                        eprintln!("[Heartbeat] Error broadcasting load: {e}");
                     }
                 }
             }
         });
 
-let fleet_status_telemetry = fleet_status.clone();
+        let fleet_status_telemetry = fleet_status.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
             loop {
                 interval.tick().await;
 
                 let workspace_root = std::env::current_dir().unwrap_or_default();
-                let config_home_dir = std::env::var("ONYX_CONFIG_HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| {
-                    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-                    std::path::PathBuf::from(home).join(".onyx")
-                });
+                let config_home_dir = std::env::var("ONYX_CONFIG_HOME")
+                    .map_or_else(|_| {
+                        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+                        std::path::PathBuf::from(home).join(".onyx")
+                    }, std::path::PathBuf::from);
                 let loader = runtime::ConfigLoader::new(&workspace_root, &config_home_dir);
-                let runtime_config = loader.load().unwrap_or_else(|_| runtime::RuntimeConfig::empty());
+                let runtime_config = loader
+                    .load()
+                    .unwrap_or_else(|_| runtime::RuntimeConfig::empty());
 
                 let input = tools::supabase_ops::QueryTelemetryLogsInput {
                     brand_id: "all".to_string(),
@@ -1575,12 +1598,18 @@ let fleet_status_telemetry = fleet_status.clone();
                     approval_token: Some("auto".to_string()),
                 };
 
-                match tools::supabase_ops::execute_query_telemetry_logs(input, &runtime_config).await {
+                match tools::supabase_ops::execute_query_telemetry_logs(input, &runtime_config)
+                    .await
+                {
                     Ok(output) => {
-                        runtime::fleet_health::evaluate_health_with_ai(&fleet_status_telemetry, &output.logs).await;
+                        runtime::fleet_health::evaluate_health_with_ai(
+                            &fleet_status_telemetry,
+                            &output.logs,
+                        )
+                        .await;
                     }
                     Err(e) => {
-                        eprintln!("[Telemetry Polling] Error querying telemetry logs: {}", e);
+                        eprintln!("[Telemetry Polling] Error querying telemetry logs: {e}");
                     }
                 }
             }

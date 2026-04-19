@@ -580,7 +580,11 @@ fn format_no_managed_sessions() -> String {
 /// Ties the session lifecycle to the global cron registry to dispatch scheduled tasks
 /// into the appropriate active or background session context.
 #[allow(clippy::needless_pass_by_value)]
-pub fn start_session_background_loop(store: SessionStore, cron_registry: std::sync::Arc<crate::team_cron_registry::CronRegistry>) {
+#[must_use]
+pub fn start_session_background_loop(
+    store: SessionStore,
+    cron_registry: std::sync::Arc<crate::team_cron_registry::CronRegistry>,
+) -> tokio::task::JoinHandle<()> {
     // Scaffold implementation for the background loop linking session and cron
     tokio::spawn(async move {
         let _ = store;
@@ -590,7 +594,7 @@ pub fn start_session_background_loop(store: SessionStore, cron_registry: std::sy
         // 2. Identify target workspaces or sessions
         // 3. Inject commands or trigger tools within `Session`
         tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-    });
+    })
 }
 
 #[cfg(test)]
@@ -890,4 +894,3 @@ mod tests {
         fs::remove_dir_all(base).expect("temp dir should clean up");
     }
 }
-

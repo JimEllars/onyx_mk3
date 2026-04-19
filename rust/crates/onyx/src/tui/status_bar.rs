@@ -1,8 +1,14 @@
+use runtime::fleet_health::{ActionStatus, GlobalFleetStatus};
 use runtime::TokenUsage;
 use std::io::Write;
-use runtime::fleet_health::{ActionStatus, GlobalFleetStatus};
 
-pub fn render_status_bar(model: &str, session_id: &str, usage: &TokenUsage, cost: f64, fleet_status: Option<&GlobalFleetStatus>) -> String {
+pub fn render_status_bar(
+    model: &str,
+    session_id: &str,
+    usage: &TokenUsage,
+    cost: f64,
+    fleet_status: Option<&GlobalFleetStatus>,
+) -> String {
     let mut has_executing = false;
     let mut has_pending = false;
 

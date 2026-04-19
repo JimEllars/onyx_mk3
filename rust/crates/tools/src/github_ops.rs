@@ -17,7 +17,10 @@ pub async fn execute_create_branch(input: CreateBranchInput) -> Result<CreateBra
     let client = reqwest::Client::new();
 
     // First, get the SHA of the base branch
-    let base_url = format!("https://api.github.com/repos/{}/git/ref/heads/{}", input.repo, input.base_branch);
+    let base_url = format!(
+        "https://api.github.com/repos/{}/git/ref/heads/{}",
+        input.repo, input.base_branch
+    );
     let base_res = client
         .get(&base_url)
         .header("Authorization", format!("Bearer {token}"))
@@ -27,11 +30,16 @@ pub async fn execute_create_branch(input: CreateBranchInput) -> Result<CreateBra
         .map_err(|e| e.to_string())?;
 
     if !base_res.status().is_success() {
-        return Err(format!("Failed to fetch base branch: {}", base_res.status()));
+        return Err(format!(
+            "Failed to fetch base branch: {}",
+            base_res.status()
+        ));
     }
 
     let base_data: serde_json::Value = base_res.json().await.map_err(|e| e.to_string())?;
-    let sha = base_data["object"]["sha"].as_str().ok_or("Invalid SHA format")?;
+    let sha = base_data["object"]["sha"]
+        .as_str()
+        .ok_or("Invalid SHA format")?;
 
     // Create the new branch
     let create_url = format!("https://api.github.com/repos/{}/git/refs", input.repo);
@@ -69,7 +77,9 @@ pub struct CreatePullRequestOutput {
     pub pr_url: String,
 }
 
-pub async fn execute_create_pull_request(input: CreatePullRequestInput) -> Result<CreatePullRequestOutput, String> {
+pub async fn execute_create_pull_request(
+    input: CreatePullRequestInput,
+) -> Result<CreatePullRequestOutput, String> {
     let token = std::env::var("GITHUB_PAT").map_err(|_| "GITHUB_PAT is not set")?;
     let client = reqwest::Client::new();
 

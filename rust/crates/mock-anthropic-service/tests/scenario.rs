@@ -93,7 +93,10 @@ async fn axim_headless() {
     assert!(resp.is_ok());
     let status = resp.as_ref().unwrap().status();
     let body = resp.unwrap().text().await.unwrap();
-    assert!(status == reqwest::StatusCode::ACCEPTED, "Failed to submit task packet: {status} - {body}");
+    assert!(
+        status == reqwest::StatusCode::ACCEPTED,
+        "Failed to submit task packet: {status} - {body}"
+    );
 
     let parsed_body: serde_json::Value = serde_json::from_str(&body).unwrap();
     let _task_id = parsed_body["task_id"].as_str().unwrap();
@@ -107,5 +110,8 @@ async fn axim_headless() {
 
     child.kill().expect("failed to kill headless server");
 
-    assert!(!reported_states.is_empty(), "Expected state transitions to be streamed via background execution loop");
+    assert!(
+        !reported_states.is_empty(),
+        "Expected state transitions to be streamed via background execution loop"
+    );
 }
