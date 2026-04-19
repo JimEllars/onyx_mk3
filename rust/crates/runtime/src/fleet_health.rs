@@ -38,6 +38,66 @@ pub fn create_global_fleet_status() -> GlobalFleetStatus {
     Arc::new(RwLock::new(FleetStatus::default()))
 }
 
+
+pub async fn evaluate_health_with_ai(status: &GlobalFleetStatus, telemetry_logs: &serde_json::Value) {
+    let mut current_status = status.write().unwrap();
+    current_status.last_updated = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+
+    // In a real implementation, this would make a network call to the LLM
+    // with a prompt like:
+    // "You are Onyx, AXiM's infrastructure AI. Review the following recent telemetry logs. Identify any degraded micro-apps and return a JSON array of tools to execute to fix them: {logs}"
+
+    // For this sprint, we mock the LLM network call and its response.
+    // We simulate the AI analyzing logs and finding a degradation.
+    let _prompt = format!("You are Onyx, AXiM's infrastructure AI. Review the following recent telemetry logs. Identify any degraded micro-apps and return a JSON array of tools to execute to fix them: {}", telemetry_logs);
+
+    if let Some(logs) = telemetry_logs.as_array() {
+        let mut has_errors = false;
+        let mut degraded_app = String::new();
+        for log in logs {
+            if let (Some(app), Some(status_code)) = (log.get("app_name").and_then(|v| v.as_str()), log.get("status_code").and_then(serde_json::Value::as_u64)) {
+                if status_code >= 500 {
+                    has_errors = true;
+                    degraded_app = app.to_string();
+                    break;
+                }
+            }
+        }
+
+        if has_errors {
+            // Mocking the AI returning a dynamic JSON tool array
+            let ai_response = serde_json::json!([
+                {
+                    "tool_name": "purge_zone_cache",
+                    "arguments": { "zone_id": degraded_app }
+                }
+            ]);
+
+            current_status.apps.insert(degraded_app.clone(), AppStatus::Degraded("AI detected anomalies".to_string()));
+
+            if let Some(actions) = ai_response.as_array() {
+                for action_val in actions {
+                    if let (Some(tool_name), Some(args)) = (
+                        action_val.get("tool_name").and_then(|v| v.as_str()),
+                        action_val.get("arguments")
+                    ) {
+                        let action_id = format!("action-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
+                        let proposed_action = ProposedAction {
+                            tool_name: tool_name.to_string(),
+                            arguments: args.clone(),
+                            id: action_id.clone(),
+                            status: ActionStatus::Pending,
+                            created_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                        };
+                        println!("[AI Self-Healing: Anomaly detected in {}. Status set to DEGRADED. Pushing ProposedAction: {}]", degraded_app, action_id);
+                        current_status.pending_actions.push(proposed_action);
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn evaluate_fleet_health(status: &GlobalFleetStatus, telemetry_logs: &serde_json::Value) {
     let mut current_status = status.write().unwrap();
     current_status.last_updated = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
@@ -131,57 +191,99 @@ pub async fn start_approval_polling_loop(status: GlobalFleetStatus, client: reqw
             }
         }
 
+
         for action in actions_to_execute {
             let mut exec_status = "Failed";
             #[allow(unused_assignments)]
             let mut exec_details = "Unknown error".to_string();
 
-            if action.tool_name == "purge_zone_cache" {
-                if let Some(zone_id) = action.arguments.get("zone_id").and_then(|v| v.as_str()) {
-                    println!("[Executing: Purging cache for zone_id {}...]", zone_id);
-                    let api_key = std::env::var("CLOUDFLARE_API_TOKEN").unwrap_or_default();
-                    let email = std::env::var("CLOUDFLARE_EMAIL").unwrap_or_default();
-                    let cf_client = reqwest::Client::new();
-                    let cf_url = format!("https://api.cloudflare.com/client/v4/zones/{}/purge_cache", zone_id);
-                    let result: Result<(), String> = match cf_client.post(&cf_url)
-                        .header("X-Auth-Key", api_key)
-                        .header("X-Auth-Email", email)
-                        .header("Content-Type", "application/json")
-                        .json(&serde_json::json!({ "purge_everything": true }))
-                        .send()
-                        .await {
-                        Ok(res) if res.status().is_success() => {
-                            Ok(())
-                        }
-                        Ok(res) => {
-                            Err(format!("Cloudflare API error: {}", res.status()))
-                        }
-                        Err(e) => {
-                            Err(e.to_string())
-                        }
-                    };
+            match action.tool_name.as_str() {
+                "purge_zone_cache" => {
+                    #[derive(serde::Deserialize)]
+                    struct PurgeInput { zone_id: String }
 
-                    match result {
-                        Ok(_) => {
-                            exec_status = "Completed";
-                            exec_details = "Cache purged successfully".to_string();
-                            println!("[Execution completed for task_id {}]", action.id);
+                    if let Ok(input) = serde_json::from_value::<PurgeInput>(action.arguments.clone()) {
+                        println!("[Executing: Purging cache for zone_id {}...]", input.zone_id);
+
+                        let api_key = std::env::var("CLOUDFLARE_API_TOKEN").unwrap_or_default();
+                        let email = std::env::var("CLOUDFLARE_EMAIL").unwrap_or_default();
+                        let cf_client = reqwest::Client::new();
+                        let cf_url = format!("https://api.cloudflare.com/client/v4/zones/{}/purge_cache", input.zone_id);
+
+                        let result: Result<(), String> = match cf_client.post(&cf_url)
+                            .header("X-Auth-Key", api_key)
+                            .header("X-Auth-Email", email)
+                            .header("Content-Type", "application/json")
+                            .json(&serde_json::json!({ "purge_everything": true }))
+                            .send()
+                            .await {
+                            Ok(res) if res.status().is_success() => Ok(()),
+                            Ok(res) => Err(format!("Cloudflare API error: {}", res.status())),
+                            Err(e) => Err(e.to_string()),
+                        };
+
+                        match result {
+                            Ok(_) => {
+                                exec_status = "Completed";
+                                exec_details = "Cache purged successfully".to_string();
+                                println!("[Execution completed for task_id {}]", action.id);
+                            }
+                            Err(e) => {
+                                exec_status = "Failed";
+                                exec_details = format!("Error: {}", e);
+                                eprintln!("[Execution failed for task_id {}: {}]", action.id, e);
+                            }
                         }
-                        Err(e) => {
-                            exec_status = "Failed";
-                            exec_details = format!("Error: {}", e);
-                            eprintln!("[Execution failed for task_id {}: {}]", action.id, e);
-                        }
+                    } else {
+                        exec_details = "Missing or invalid zone_id".to_string();
+                        eprintln!("[Execution failed: Missing or invalid zone_id]");
                     }
-                } else {
-                    exec_details = "Missing zone_id".to_string();
-                    eprintln!("[Execution failed: Missing zone_id]");
                 }
-            } else {
-                exec_details = format!("Unknown tool: {}", action.tool_name);
-                eprintln!("[Execution failed: Unknown tool {}]", action.tool_name);
-            }
+                "trigger_pages_deployment" => {
+                    #[derive(serde::Deserialize)]
+                    struct TriggerInput { project_name: String }
 
+                    if let Ok(input) = serde_json::from_value::<TriggerInput>(action.arguments.clone()) {
+                        println!("[Executing: Triggering deployment for project {}...]", input.project_name);
+
+                        let account_id = std::env::var("CLOUDFLARE_ACCOUNT_ID").unwrap_or_default();
+                        let api_key = std::env::var("CLOUDFLARE_API_TOKEN").unwrap_or_default();
+                        let email = std::env::var("CLOUDFLARE_EMAIL").unwrap_or_default();
+                        let cf_client = reqwest::Client::new();
+                        let cf_url = format!("https://api.cloudflare.com/client/v4/accounts/{}/pages/projects/{}/deployments", account_id, input.project_name);
+
+                        let result: Result<(), String> = match cf_client.post(&cf_url)
+                            .header("X-Auth-Key", api_key)
+                            .header("X-Auth-Email", email)
+                            .send()
+                            .await {
+                            Ok(res) if res.status().is_success() => Ok(()),
+                            Ok(res) => Err(format!("Cloudflare API error: {}", res.status())),
+                            Err(e) => Err(e.to_string()),
+                        };
+
+                        match result {
+                            Ok(_) => {
+                                exec_status = "Completed";
+                                exec_details = "Deployment triggered successfully".to_string();
+                                println!("[Execution completed for task_id {}]", action.id);
+                            }
+                            Err(e) => {
+                                exec_status = "Failed";
+                                exec_details = format!("Error: {}", e);
+                                eprintln!("[Execution failed for task_id {}: {}]", action.id, e);
+                            }
+                        }
+                    } else {
+                        exec_details = "Missing or invalid project_name".to_string();
+                        eprintln!("[Execution failed: Missing or invalid project_name]");
+                    }
+                }
+                _ => {
+                    exec_details = format!("Unknown tool: {}", action.tool_name);
+                    eprintln!("[Execution failed: Unknown tool {}]", action.tool_name);
+                }
+            }
             {
                 let mut current_status = status.write().unwrap();
                 for a in current_status.pending_actions.iter_mut() {

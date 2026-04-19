@@ -1511,7 +1511,51 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
             runtime::fleet_health::start_approval_polling_loop(fleet_status_polling, client, edge_url, secret).await;
         });
 
-        let fleet_status_telemetry = fleet_status.clone();
+
+        let fleet_status_heartbeat = fleet_status.clone();
+        tokio::spawn(async move {
+            let edge_url = std::env::var("VITE_ONYX_WORKER_URL").unwrap_or_else(|_| "https://onyx-edge-worker.yourdomain.workers.dev".to_string());
+            let secret = std::env::var("AXIM_ONYX_SECRET").unwrap_or_default();
+            let client = reqwest::Client::new();
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+
+                let (pending_tasks, active_tasks) = {
+                    let status = fleet_status_heartbeat.read().unwrap();
+                    let pending = status.pending_actions.iter().filter(|a| a.status == runtime::fleet_health::ActionStatus::Pending).count();
+                    let active = status.pending_actions.iter().filter(|a| a.status == runtime::fleet_health::ActionStatus::Executing).count();
+                    (pending, active)
+                };
+
+                let payload = serde_json::json!({
+                    "brandId": "onyx-core",
+                    "pageViews": 0,
+                    "pending_tasks": pending_tasks,
+                    "active_tasks": active_tasks
+                });
+
+                let telemetry_url = format!("{}/api/v1/telemetry", edge_url);
+                match client.post(&telemetry_url)
+                    .header("Authorization", format!("Bearer {}", secret))
+                    .header("Content-Type", "application/json")
+                    .json(&payload)
+                    .send()
+                    .await {
+                    Ok(resp) if resp.status().is_success() => {
+                        println!("[Heartbeat] Successfully broadcast load: {} pending, {} active", pending_tasks, active_tasks);
+                    }
+                    Ok(resp) => {
+                        eprintln!("[Heartbeat] Failed to broadcast load: status {}", resp.status());
+                    }
+                    Err(e) => {
+                        eprintln!("[Heartbeat] Error broadcasting load: {}", e);
+                    }
+                }
+            }
+        });
+
+let fleet_status_telemetry = fleet_status.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
             loop {
@@ -1533,7 +1577,7 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
 
                 match tools::supabase_ops::execute_query_telemetry_logs(input, &runtime_config).await {
                     Ok(output) => {
-                        runtime::fleet_health::evaluate_fleet_health(&fleet_status_telemetry, &output.logs);
+                        runtime::fleet_health::evaluate_health_with_ai(&fleet_status_telemetry, &output.logs).await;
                     }
                     Err(e) => {
                         eprintln!("[Telemetry Polling] Error querying telemetry logs: {}", e);
