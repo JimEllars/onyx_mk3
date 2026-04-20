@@ -119,15 +119,37 @@ pub async fn evaluate_health_with_ai(
         }
 
         if has_errors {
-            // Mocking dynamic tool discovery via MCP. We would query McpServerManager for available tools here.
-            // Then we would prompt the LLM to choose among them.
-            // Assuming the LLM chooses dynamically:
-            let ai_response = serde_json::json!([
-                {
-                    "tool_name": "purge_zone_cache",
-                    "arguments": { "zone_id": degraded_app }
+            let mut ai_response_actions = Vec::new();
+
+            let mut manager = crate::mcp_stdio::McpServerManager::from_runtime_config(&runtime_config);
+            let discovery = manager.discover_tools_best_effort().await;
+
+            // Try to find a relevant tool dynamically by evaluating actual health capabilities
+            let mut selected_tool = None;
+            for tool in &discovery.tools {
+                if tool.qualified_name.contains("purge_zone_cache") || tool.raw_name.contains("purge_zone_cache") {
+                    selected_tool = Some(tool);
+                    break;
+                } else if tool.qualified_name.contains("restart_service") || tool.raw_name.contains("restart_service") {
+                    selected_tool = Some(tool);
+                    break;
+                } else if tool.qualified_name.contains("revert_deployment") || tool.raw_name.contains("revert_deployment") {
+                    selected_tool = Some(tool);
+                    break;
                 }
-            ]);
+            }
+
+            if let Some(tool) = selected_tool {
+                ai_response_actions.push(serde_json::json!({
+                    "tool_name": tool.qualified_name.clone(),
+                    "arguments": { "zone_id": degraded_app }
+                }));
+            } else {
+                // If no specific remediation tool is found, we should not blindly run random tools.
+                // We leave ai_response_actions empty.
+            }
+
+            let ai_response = serde_json::Value::Array(ai_response_actions);
 
             let mut current_status = status.write().unwrap();
             current_status.apps.insert(

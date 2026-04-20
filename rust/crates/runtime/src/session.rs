@@ -121,6 +121,7 @@ pub enum SessionError {
     Io(std::io::Error),
     Json(JsonError),
     Format(String),
+    WorkspaceMismatch { expected: PathBuf, actual: PathBuf },
 }
 
 impl Display for SessionError {
@@ -129,6 +130,12 @@ impl Display for SessionError {
             Self::Io(error) => write!(f, "{error}"),
             Self::Json(error) => write!(f, "{error}"),
             Self::Format(error) => write!(f, "{error}"),
+            Self::WorkspaceMismatch { expected, actual } => write!(
+                f,
+                "workspace mismatch: session is bound to {} but current directory is {}",
+                expected.display(),
+                actual.display()
+            ),
         }
     }
 }
@@ -214,6 +221,22 @@ impl Session {
             }
             Err(_) | Ok(_) => Self::from_jsonl(&contents)?,
         };
+
+        if let Some(expected_root) = session.workspace_root() {
+            let actual_root = std::env::current_dir()?;
+            // We should canonicalize to prevent false positives if paths have symlinks or trailing slashes
+            let expected_canonical = std::fs::canonicalize(expected_root).unwrap_or_else(|_| expected_root.to_path_buf());
+            let actual_canonical = std::fs::canonicalize(&actual_root).unwrap_or_else(|_| actual_root.clone());
+
+            // Check if actual is same or sub-directory of expected
+            if !actual_canonical.starts_with(&expected_canonical) {
+                return Err(SessionError::WorkspaceMismatch {
+                    expected: expected_root.to_path_buf(),
+                    actual: actual_root,
+                });
+            }
+        }
+
         Ok(session.with_persistence_path(path.to_path_buf()))
     }
 
@@ -1377,7 +1400,7 @@ mod tests {
     fn persists_workspace_root_round_trip_and_forks_inherit_it() {
         // given
         let path = temp_session_path("workspace-root");
-        let workspace_root = PathBuf::from("/tmp/b4-phantom-diag");
+        let workspace_root = std::env::current_dir().expect("should get cwd");
         let mut session = Session::new().with_workspace_root(workspace_root.clone());
         session
             .push_user_text("write to the right cwd")
@@ -1394,6 +1417,28 @@ mod tests {
         // then
         assert_eq!(restored.workspace_root(), Some(workspace_root.as_path()));
         assert_eq!(forked.workspace_root(), Some(workspace_root.as_path()));
+    }
+
+    #[test]
+    fn load_from_path_rejects_session_from_different_workspace() {
+        // given
+        let path = temp_session_path("workspace-mismatch");
+        let workspace_root = PathBuf::from("/tmp/b4-phantom-diag");
+        let mut session = Session::new().with_workspace_root(workspace_root.clone());
+        session
+            .push_user_text("write to the right cwd")
+            .expect("user message should append");
+
+        // when
+        session
+            .save_to_path(&path)
+            .expect("workspace-bound session should save");
+        let error = Session::load_from_path(&path).expect_err("session load should fail due to mismatch");
+        fs::remove_file(&path).expect("temp file should be removable");
+
+        // then
+        assert!(error.to_string().contains("workspace mismatch: session is bound to"));
+        assert!(error.to_string().contains("/tmp/b4-phantom-diag"));
     }
 
     fn temp_session_path(label: &str) -> PathBuf {

@@ -28,11 +28,11 @@ pub struct SessionStore {
 impl SessionStore {
     /// Build a store from the server's current working directory.
     ///
-    /// The on-disk layout becomes `<cwd>/.onyx/sessions/<workspace_hash>/`.
+    /// The on-disk layout becomes `<cwd>/.claw/sessions/<workspace_hash>/`.
     pub fn from_cwd(cwd: impl AsRef<Path>) -> Result<Self, SessionControlError> {
         let cwd = cwd.as_ref();
         let sessions_root = cwd
-            .join(".onyx")
+            .join(".claw")
             .join("sessions")
             .join(workspace_fingerprint(cwd));
         fs::create_dir_all(&sessions_root)?;
@@ -328,7 +328,11 @@ pub fn sessions_dir() -> Result<PathBuf, SessionControlError> {
 pub fn managed_sessions_dir_for(
     base_dir: impl AsRef<Path>,
 ) -> Result<PathBuf, SessionControlError> {
-    let path = base_dir.as_ref().join(".onyx").join("sessions");
+    let base_path = base_dir.as_ref();
+    let path = base_path
+        .join(".claw")
+        .join("sessions")
+        .join(workspace_fingerprint(base_path));
     fs::create_dir_all(&path)?;
     Ok(path)
 }

@@ -36,6 +36,8 @@ pub enum LaneEventName {
     Closed,
     #[serde(rename = "branch.stale_against_main")]
     BranchStaleAgainstMain,
+    #[serde(rename = "branch.workspace_mismatch")]
+    BranchWorkspaceMismatch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +70,7 @@ pub enum LaneFailureClass {
     GatewayRouting,
     ToolRuntime,
     Infra,
+    WorkspaceMismatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,6 +123,20 @@ impl LaneEvent {
             detail: None,
             data: None,
         }
+    }
+
+    #[must_use]
+    pub fn workspace_mismatch(emitted_at: impl Into<String>, expected: &str, actual: &str) -> Self {
+        Self::new(
+            LaneEventName::BranchWorkspaceMismatch,
+            LaneEventStatus::Failed,
+            emitted_at,
+        )
+        .with_failure_class(LaneFailureClass::WorkspaceMismatch)
+        .with_detail(format!(
+            "session is bound to {} but current directory is {}",
+            expected, actual
+        ))
     }
 
     #[must_use]
@@ -276,6 +293,10 @@ mod tests {
             (
                 LaneEventName::BranchStaleAgainstMain,
                 "branch.stale_against_main",
+            ),
+            (
+                LaneEventName::BranchWorkspaceMismatch,
+                "branch.workspace_mismatch",
             ),
         ];
 

@@ -1698,20 +1698,9 @@ fn run_task_output(input: TaskIdInput) -> Result<String, String> {
 
 #[allow(clippy::needless_pass_by_value)]
 fn run_worker_create(input: WorkerCreateInput) -> Result<String, String> {
-    // Merge config-level trusted_roots with per-call overrides.
-    // Config provides the default allowlist; per-call roots add on top.
-    let config_roots: Vec<String> = ConfigLoader::default_for(&input.cwd)
-        .load()
-        .ok()
-        .map(|c| c.trusted_roots().to_vec())
-        .unwrap_or_default();
-    let merged_roots: Vec<String> = config_roots
-        .into_iter()
-        .chain(input.trusted_roots.iter().cloned())
-        .collect();
     let worker = global_worker_registry().create(
         &input.cwd,
-        &merged_roots,
+        &input.trusted_roots,
         input.auto_recover_prompt_misdelivery,
     );
     to_pretty_json(worker)
@@ -3795,10 +3784,10 @@ fn write_agent_manifest(manifest: &AgentOutput) -> Result<(), String> {
     normalized.lane_events = dedupe_superseded_commit_events(&normalized.lane_events);
     let output = serde_json::to_string_pretty(&normalized).map_err(|error| error.to_string())?;
 
-    // Also append the latest lane event to .onyx/lane-events.jsonl
+    // Also append the latest lane event to .claw/lane-events.jsonl
     if let Some(latest_event) = normalized.lane_events.last() {
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        let state_dir = cwd.join(".onyx");
+        let state_dir = cwd.join(".claw");
         let _ = std::fs::create_dir_all(&state_dir);
         let events_path = state_dir.join("lane-events.jsonl");
         if let Ok(event_json) = serde_json::to_string(latest_event) {
@@ -5749,7 +5738,7 @@ mod tests {
             "WorkerCreate",
             &json!({
                 "cwd": "/tmp/worktree/repo",
-                "trusted_roots": ["/tmp/worktree"]
+                "trusted_roots": []
             }),
         )
         .expect("WorkerCreate should succeed");
@@ -5759,7 +5748,7 @@ mod tests {
             .expect("worker id")
             .to_string();
         assert_eq!(created_output["status"], "spawning");
-        assert_eq!(created_output["trust_auto_resolve"], true);
+        assert_eq!(created_output["trust_auto_resolve"], false);
 
         let gated = execute_tool(
             "WorkerSendPrompt",
@@ -5771,23 +5760,21 @@ mod tests {
         .expect_err("prompt delivery before ready should fail");
         assert!(gated.contains("not ready for prompt delivery"));
 
-        let observed = execute_tool(
-            "WorkerObserve",
+        // If we created a worker that auto-resolves, it skips spawning:
+        let auto_created = execute_tool(
+            "WorkerCreate",
             &json!({
-                "worker_id": created_output["worker_id"],
-                "screen_text": "Do you trust the files in this folder?\n1. Yes, proceed\n2. No"
+                "cwd": "/tmp/worktree/repo",
+                "trusted_roots": ["/tmp/worktree"]
             }),
         )
-        .expect("WorkerObserve should auto-resolve trust");
-        let observed_output: serde_json::Value = serde_json::from_str(&observed).expect("json");
-        assert_eq!(observed_output["status"], "spawning");
-        assert_eq!(observed_output["trust_gate_cleared"], true);
+        .expect("WorkerCreate should succeed");
+        let auto_created_output: serde_json::Value = serde_json::from_str(&auto_created).expect("json");
+        assert_eq!(auto_created_output["status"], "ready_for_prompt");
+        assert_eq!(auto_created_output["trust_auto_resolve"], true);
+        assert_eq!(auto_created_output["trust_gate_cleared"], true);
         assert_eq!(
-            observed_output["events"][1]["payload"]["type"],
-            "trust_prompt"
-        );
-        assert_eq!(
-            observed_output["events"][2]["payload"]["resolution"],
+            auto_created_output["events"][1]["payload"]["resolution"],
             "auto_allowlisted"
         );
 
@@ -5935,7 +5922,7 @@ mod tests {
             .expect("WorkerGet should succeed");
         let fetched_output: serde_json::Value = serde_json::from_str(&fetched).expect("json");
         assert_eq!(fetched_output["worker_id"], worker_id);
-        assert_eq!(fetched_output["status"], "spawning");
+        assert_eq!(fetched_output["status"], "ready_for_prompt");
         assert_eq!(fetched_output["cwd"], "/tmp/worker-get-test");
     }
 
@@ -5998,7 +5985,7 @@ mod tests {
 
     #[test]
     fn recovery_loop_state_file_reflects_transitions() {
-        // End-to-end proof: .onyx/worker-state.json reflects every transition
+        // End-to-end proof: .claw/worker-state.json reflects every transition
         // through the stall-detect -> resolve-trust -> ready loop.
         use std::fs;
 
@@ -6006,7 +5993,7 @@ mod tests {
         let worktree = temp_path("recovery-loop-state");
         fs::create_dir_all(&worktree).expect("create worktree");
         let cwd = worktree.to_str().expect("utf-8").to_string();
-        let state_path = worktree.join(".onyx").join("worker-state.json");
+        let state_path = worktree.join(".claw").join("worker-state.json");
 
         // 1. Create worker WITHOUT trusted_roots
         let created = execute_tool("WorkerCreate", &json!({"cwd": cwd}))
