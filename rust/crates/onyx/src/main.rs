@@ -2749,7 +2749,7 @@ fn render_resume_usage() -> String {
     format!(
         "Resume
   Usage            /resume <session-path|session-id|{LATEST_SESSION_REFERENCE}>
-  Auto-save        .onyx/sessions/<session-id>.{PRIMARY_SESSION_EXTENSION}
+  Auto-save        .claw/sessions/<session-id>.{PRIMARY_SESSION_EXTENSION}
   Tip              use /session list to inspect saved sessions"
     )
 }
@@ -3172,6 +3172,31 @@ fn run_repl(
         input::LineEditor::new("> ", cli.repl_completion_candidates().unwrap_or_default());
     println!("{}", cli.startup_banner());
     println!("{}", format_connected_line(&cli.model));
+
+    // Load initial worker status
+    let cwd = env::current_dir()?;
+    let state_path = cwd.join(".claw").join("worker-state.json");
+    let mut worker_status = None;
+    if state_path.exists() {
+        if let Ok(raw) = std::fs::read_to_string(&state_path) {
+            if let Ok(state) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if let Some(status_str) = state.get("status").and_then(|s| s.as_str()) {
+                    if let Ok(parsed_status) = status_str.parse::<runtime::WorkerStatus>() {
+                        worker_status = Some(parsed_status);
+                    }
+                }
+            }
+        }
+    }
+
+    println!("{}", tui::status_bar::render_status_bar(
+        &cli.model,
+        &cli.session.id,
+        &cli.runtime.usage().cumulative_usage(),
+        0.0, // Cost is not yet calculated here
+        None, // Fleet status not yet wired in REPL
+        worker_status.as_ref()
+    ));
 
     loop {
         editor.set_completions(cli.repl_completion_candidates().unwrap_or_default());
@@ -4869,8 +4894,8 @@ fn resolve_managed_session_path(session_id: &str) -> Result<PathBuf, Box<dyn std
         }
     }
     // Backward compatibility: pre-isolation sessions were stored at
-    // `.onyx/sessions/<id>.{jsonl,json}` without the per-workspace hash
-    // subdirectory. Walk up from `directory` to the `.onyx/sessions/` root
+    // `.claw/sessions/<id>.{jsonl,json}` without the per-workspace hash
+    // subdirectory. Walk up from `directory` to the `.claw/sessions/` root
     // and try the flat layout as a fallback so users do not lose access
     // to their pre-upgrade managed sessions.
     if let Some(legacy_root) = directory
@@ -4961,7 +4986,7 @@ fn list_managed_sessions() -> Result<Vec<ManagedSessionSummary>, Box<dyn std::er
     collect_sessions_from_dir(&primary_dir, &mut sessions)?;
 
     // Backward compatibility: include sessions stored in the pre-isolation
-    // flat `.onyx/sessions/` root so users do not lose access to existing
+    // flat `.claw/sessions/` root so users do not lose access to existing
     // managed sessions after the workspace-hashed subdirectory rollout.
     if let Some(legacy_root) = primary_dir
         .parent()
@@ -5006,13 +5031,13 @@ fn confirm_session_deletion(session_id: &str) -> bool {
 
 fn format_missing_session_reference(reference: &str) -> String {
     format!(
-        "session not found: {reference}\nHint: managed sessions live in .onyx/sessions/. Try `{LATEST_SESSION_REFERENCE}` for the most recent session or `/session list` in the REPL."
+        "session not found: {reference}\nHint: managed sessions live in .claw/sessions/. Try `{LATEST_SESSION_REFERENCE}` for the most recent session or `/session list` in the REPL."
     )
 }
 
 fn format_no_managed_sessions() -> String {
     format!(
-        "no managed sessions found in .onyx/sessions/\nStart `onyx` to create a session, then rerun with `--resume {LATEST_SESSION_REFERENCE}`."
+        "no managed sessions found in .claw/sessions/\nStart `onyx` to create a session, then rerun with `--resume {LATEST_SESSION_REFERENCE}`."
     )
 }
 
@@ -5104,7 +5129,7 @@ fn render_repl_help() -> String {
         "  Tab                  Complete commands, modes, and recent sessions".to_string(),
         "  Ctrl-C               Clear input (or exit on empty prompt)".to_string(),
         "  Shift+Enter/Ctrl+J   Insert a newline".to_string(),
-        "  Auto-save            .onyx/sessions/<session-id>.jsonl".to_string(),
+        "  Auto-save            .claw/sessions/<session-id>.jsonl".to_string(),
         "  Resume latest        /resume latest".to_string(),
         "  Browse sessions      /session list".to_string(),
         "  Show prompt history  /history [count]".to_string(),
@@ -8232,7 +8257,7 @@ fn print_help_to(out: &mut impl Write) -> io::Result<()> {
     writeln!(out, "Session shortcuts:")?;
     writeln!(
         out,
-        "  REPL turns auto-save to .onyx/sessions/<session-id>.{PRIMARY_SESSION_EXTENSION}"
+        "  REPL turns auto-save to .claw/sessions/<session-id>.{PRIMARY_SESSION_EXTENSION}"
     )?;
     writeln!(
         out,
@@ -9918,7 +9943,7 @@ mod tests {
         assert!(help.contains("/agents"));
         assert!(help.contains("/skills"));
         assert!(help.contains("/exit"));
-        assert!(help.contains("Auto-save            .onyx/sessions/<session-id>.jsonl"));
+        assert!(help.contains("Auto-save            .claw/sessions/<session-id>.jsonl"));
         assert!(help.contains("Resume latest        /resume latest"));
     }
 
@@ -10528,7 +10553,7 @@ UU conflicted.rs",
         let handle = create_managed_session_handle("session-alpha").expect("jsonl handle");
         assert!(handle.path.ends_with("session-alpha.jsonl"));
 
-        let legacy_path = workspace.join(".onyx/sessions/legacy.json");
+        let legacy_path = workspace.join(".claw/sessions/legacy.json");
         std::fs::create_dir_all(
             legacy_path
                 .parent()
@@ -10608,7 +10633,7 @@ UU conflicted.rs",
     fn resume_usage_mentions_latest_shortcut() {
         let usage = render_resume_usage();
         assert!(usage.contains("/resume <session-path|session-id|latest>"));
-        assert!(usage.contains(".onyx/sessions/<session-id>.jsonl"));
+        assert!(usage.contains(".claw/sessions/<session-id>.jsonl"));
         assert!(usage.contains("/session list"));
     }
 

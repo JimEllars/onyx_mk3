@@ -49,6 +49,22 @@ impl std::fmt::Display for WorkerStatus {
     }
 }
 
+impl std::str::FromStr for WorkerStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "spawning" => Ok(Self::Spawning),
+            "trust_required" => Ok(Self::TrustRequired),
+            "ready_for_prompt" => Ok(Self::ReadyForPrompt),
+            "running" => Ok(Self::Running),
+            "finished" => Ok(Self::Finished),
+            "failed" => Ok(Self::Failed),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkerFailureKind {
