@@ -1400,13 +1400,13 @@ fn run_doctor(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::
 ///
 /// Tool descriptors come from [`tools::mvp_tool_specs`] and calls are
 /// dispatched through [`tools::execute_tool`], so this server exposes exactly
-/// Read `.onyx/worker-state.json` from the current working directory and print it.
+/// Read `.claw/worker-state.json` from the current working directory and print it.
 /// This is the file-based worker observability surface: `push_event()` in `worker_boot.rs`
 /// atomically writes state transitions here so external observers (onyxhip, orchestrators)
 /// can poll current `WorkerStatus` without needing an HTTP route on the opencode binary.
 fn run_worker_state(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
-    let state_path = cwd.join(".onyx").join("worker-state.json");
+    let state_path = cwd.join(".claw").join("worker-state.json");
     if !state_path.exists() {
         match output_format {
             CliOutputFormat::Text => {
@@ -1460,7 +1460,7 @@ async fn get_worker_state(
     State(_state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let state_path = cwd.join(".onyx/worker-state.json");
+    let state_path = cwd.join(".claw/worker-state.json");
     if let Ok(contents) = std::fs::read_to_string(&state_path) {
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(&contents) {
             if val.get("worker_id").and_then(|v| v.as_str()) == Some(&worker_id) {
@@ -2465,6 +2465,41 @@ fn resume_session(session_path: &Path, commands: &[String], output_format: CliOu
 
     let session = match Session::load_from_path(&resolved_path) {
         Ok(session) => session,
+        Err(runtime::SessionError::WorkspaceMismatch { expected, actual }) => {
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+            let event = runtime::LaneEvent::workspace_mismatch(
+                format_history_timestamp(now),
+                &expected.display().to_string(),
+                &actual.display().to_string(),
+            );
+
+            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let state_dir = cwd.join(".claw");
+            let _ = std::fs::create_dir_all(&state_dir);
+            let events_path = state_dir.join("lane-events.jsonl");
+            if let Ok(event_json) = serde_json::to_string(&event) {
+                use std::io::Write;
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&events_path)
+                {
+                    let _ = writeln!(file, "{}", event_json);
+                }
+
+                // Stream lane events to AXiM Core if the endpoint is configured
+                if let Ok(axim_endpoint) = std::env::var("AXIM_CORE_LANE_EVENTS_ENDPOINT") {
+                    let _ = reqwest::blocking::Client::new()
+                        .post(&axim_endpoint)
+                        .header("Content-Type", "application/json")
+                        .body(event_json)
+                        .send();
+                }
+            }
+
+            eprintln!("failed to restore session: workspace mismatch. Session bound to {}, current directory is {}", expected.display(), actual.display());
+            std::process::exit(1);
+        }
         Err(error) => {
             eprintln!("failed to restore session: {error}");
             std::process::exit(1);
@@ -3745,7 +3780,7 @@ impl LiveCli {
         permission_mode: PermissionMode,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let system_prompt = build_system_prompt()?;
-        let session_state = Session::new();
+        let session_state = Session::new().with_workspace_root(env::current_dir()?);
         let session = create_managed_session_handle(&session_state.session_id)?;
         let runtime = build_runtime(
             session_state.with_persistence_path(session.path.clone()),
@@ -4319,7 +4354,7 @@ impl LiveCli {
         }
 
         let previous_session = self.session.clone();
-        let session_state = Session::new();
+        let session_state = Session::new().with_workspace_root(env::current_dir()?);
         self.session = create_managed_session_handle(&session_state.session_id)?;
         let runtime = build_runtime(
             session_state.with_persistence_path(self.session.path.clone()),

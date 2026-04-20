@@ -38,6 +38,7 @@ pub struct RuntimeConfig {
     merged: BTreeMap<String, JsonValue>,
     loaded_entries: Vec<ConfigEntry>,
     feature_config: RuntimeFeatureConfig,
+    pub trusted_roots: Vec<String>,
 }
 
 /// Parsed plugin-related settings extracted from runtime config.
@@ -301,6 +302,8 @@ impl ConfigLoader {
 
         let merged_value = JsonValue::Object(merged.clone());
 
+        let trusted_roots = parse_optional_trusted_roots(&merged_value)?;
+
         let feature_config = RuntimeFeatureConfig {
             hooks: parse_optional_hooks_config(&merged_value)?,
             plugins: parse_optional_plugin_config(&merged_value)?,
@@ -314,13 +317,14 @@ impl ConfigLoader {
             permission_rules: parse_optional_permission_rules(&merged_value)?,
             sandbox: parse_optional_sandbox_config(&merged_value)?,
             provider_fallbacks: parse_optional_provider_fallbacks(&merged_value)?,
-            trusted_roots: parse_optional_trusted_roots(&merged_value)?,
+            trusted_roots: trusted_roots.clone(),
         };
 
         Ok(RuntimeConfig {
             merged,
             loaded_entries,
             feature_config,
+            trusted_roots,
         })
     }
 }
@@ -332,6 +336,7 @@ impl RuntimeConfig {
             merged: BTreeMap::new(),
             loaded_entries: Vec::new(),
             feature_config: RuntimeFeatureConfig::default(),
+            trusted_roots: Vec::new(),
         }
     }
 

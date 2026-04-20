@@ -169,8 +169,16 @@ impl WorkerRegistry {
         inner.counter += 1;
         let ts = now_secs();
         let worker_id = format!("worker_{:08x}_{}", ts, inner.counter);
+
+        let config_roots: Vec<String> = crate::config::ConfigLoader::default_for(cwd)
+            .load()
+            .ok()
+            .map(|c| c.trusted_roots)
+            .unwrap_or_default();
+
         let trust_auto_resolve = trusted_roots
             .iter()
+            .chain(config_roots.iter())
             .any(|root| path_matches_allowlist(cwd, root));
         let mut worker = Worker {
             worker_id: worker_id.clone(),
@@ -195,6 +203,23 @@ impl WorkerRegistry {
             Some("worker created".to_string()),
             None,
         );
+
+        if trust_auto_resolve {
+            let cwd_clone = worker.cwd.clone();
+            worker.trust_gate_cleared = true;
+            worker.status = WorkerStatus::ReadyForPrompt;
+            push_event(
+                &mut worker,
+                WorkerEventKind::TrustResolved,
+                WorkerStatus::ReadyForPrompt,
+                Some("allowlisted repo auto-resolved trust prompt and bypassed spawning".to_string()),
+                Some(WorkerEventPayload::TrustPrompt {
+                    cwd: cwd_clone,
+                    resolution: Some(WorkerTrustResolution::AutoAllowlisted),
+                }),
+            );
+        }
+
         inner.workers.insert(worker_id, worker.clone());
         worker
     }
@@ -572,7 +597,7 @@ fn push_event(
     emit_state_file(worker);
 }
 
-/// Write current worker state to `.onyx/worker-state.json` under the worker's cwd.
+/// Write current worker state to `.claw/worker-state.json` under the worker's cwd.
 /// This is the file-based observability surface: external observers (onyxhip, orchestrators)
 /// poll this file instead of requiring an HTTP route on the opencode binary.
 #[derive(serde::Serialize)]
@@ -590,7 +615,7 @@ struct StateSnapshot<'a> {
 }
 
 fn emit_state_file(worker: &Worker) {
-    let state_dir = std::path::Path::new(&worker.cwd).join(".onyx");
+    let state_dir = std::path::Path::new(&worker.cwd).join(".claw");
     if std::fs::create_dir_all(&state_dir).is_err() {
         return;
     }
@@ -817,26 +842,17 @@ mod tests {
             true,
         );
 
+        assert_eq!(worker.status, WorkerStatus::ReadyForPrompt);
+        assert!(worker.trust_gate_cleared);
+
         let after_trust = registry
             .observe(
                 &worker.worker_id,
                 "Do you trust the files in this folder?\n1. Yes, proceed\n2. No",
             )
             .expect("trust observe should succeed");
-        assert_eq!(after_trust.status, WorkerStatus::Spawning);
+        assert_eq!(after_trust.status, WorkerStatus::ReadyForPrompt);
         assert!(after_trust.trust_gate_cleared);
-        let trust_required = after_trust
-            .events
-            .iter()
-            .find(|event| event.kind == WorkerEventKind::TrustRequired)
-            .expect("trust required event should exist");
-        assert_eq!(
-            trust_required.payload,
-            Some(WorkerEventPayload::TrustPrompt {
-                cwd: "/tmp/worktrees/repo-a".to_string(),
-                resolution: None,
-            })
-        );
         let trust_resolved = after_trust
             .events
             .iter()
@@ -1127,7 +1143,7 @@ mod tests {
         let worker = registry.create(cwd, &[], true);
 
         // After create the worker is Spawning — state file should exist
-        let state_path = cwd_path.join(".onyx").join("worker-state.json");
+        let state_path = cwd_path.join(".claw").join("worker-state.json");
         assert!(
             state_path.exists(),
             "state file should exist after worker creation"
