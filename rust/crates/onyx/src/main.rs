@@ -109,6 +109,47 @@ type RuntimePluginStateBuildOutput = (
 );
 
 fn main() {
+    runtime::internal_mcp::set_internal_tool_handler(Box::new(|tool_name, arguments, config| {
+        let tool_name = tool_name.to_string();
+        let arguments = arguments.clone();
+        let config = config.clone();
+        Box::pin(async move {
+            match tool_name.as_str() {
+                "execute_query_telemetry_logs" => {
+                    let input = serde_json::from_value(arguments).map_err(|e| format!("Invalid args: {e}"))?;
+                    let output = tools::supabase_ops::execute_query_telemetry_logs(input, &config).await?;
+                    Ok(serde_json::to_value(output).map_err(|e| format!("Serialization error: {e}"))?)
+                }
+                "execute_record_incident_resolution" => {
+                    let input = serde_json::from_value(arguments).map_err(|e| format!("Invalid args: {e}"))?;
+                    let output = tools::supabase_ops::execute_record_incident_resolution(input, &config).await?;
+                    Ok(serde_json::to_value(output).map_err(|e| format!("Serialization error: {e}"))?)
+                }
+                "execute_check_micro_app_transactions" => {
+                    let input = serde_json::from_value(arguments).map_err(|e| format!("Invalid args: {e}"))?;
+                    let output = tools::supabase_ops::execute_check_micro_app_transactions(input, &config).await?;
+                    Ok(serde_json::to_value(output).map_err(|e| format!("Serialization error: {e}"))?)
+                }
+                "execute_fetch_post" => {
+                    let input = serde_json::from_value(arguments).map_err(|e| format!("Invalid args: {e}"))?;
+                    let output = tools::wordpress_admin::execute_fetch_post(input).await?;
+                    Ok(serde_json::to_value(output).map_err(|e| format!("Serialization error: {e}"))?)
+                }
+                "execute_update_post_content" => {
+                    let input = serde_json::from_value(arguments).map_err(|e| format!("Invalid args: {e}"))?;
+                    let output = tools::wordpress_admin::execute_update_post_content(input).await?;
+                    Ok(serde_json::to_value(output).map_err(|e| format!("Serialization error: {e}"))?)
+                }
+                "execute_update_seo_metadata" => {
+                    let input = serde_json::from_value(arguments).map_err(|e| format!("Invalid args: {e}"))?;
+                    let output = tools::wordpress_admin::execute_update_seo_metadata(input).await?;
+                    Ok(serde_json::to_value(output).map_err(|e| format!("Serialization error: {e}"))?)
+                }
+                _ => Err(format!("Unknown internal tool: {tool_name}")),
+            }
+        })
+    }));
+
     if let Err(error) = run() {
         let message = error.to_string();
         if message.contains("`onyx --help`") {
