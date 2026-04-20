@@ -202,6 +202,8 @@ pub enum TelemetryEvent {
     SessionTrace(SessionTraceRecord),
 }
 
+pub mod supabase;
+
 pub trait TelemetrySink: Send + Sync {
     fn record(&self, event: TelemetryEvent);
 }

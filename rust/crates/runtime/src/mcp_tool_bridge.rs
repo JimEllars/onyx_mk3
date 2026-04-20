@@ -264,6 +264,24 @@ impl McpToolRegistry {
 
         drop(inner);
 
+        if server_name == "__internal__" {
+            let config = crate::config::ConfigLoader::default_for(".")
+                .load()
+                .unwrap_or_else(|_| crate::config::RuntimeConfig::empty());
+
+            let tool_name_owned = tool_name.to_string();
+            let arguments_owned = arguments.clone();
+            let mut result = Err("Failed to execute inside block_in_place".to_string());
+            tokio::task::block_in_place(|| {
+                if let Ok(rt) = tokio::runtime::Runtime::new() {
+                    result = rt.block_on(async move {
+                        crate::internal_mcp::call_internal_tool(&tool_name_owned, &arguments_owned, &config).await
+                    });
+                }
+            });
+            return result;
+        }
+
         let manager = self
             .manager
             .get()
