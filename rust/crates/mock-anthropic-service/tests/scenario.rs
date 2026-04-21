@@ -54,6 +54,12 @@ async fn axim_headless() {
         exe
     };
 
+
+    // Find a free port
+    let headless_port = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    };
     let mut command = Command::new(onyx_bin);
     command.env(
         "AXIM_CORE_STATE_ENDPOINT",
@@ -65,7 +71,7 @@ async fn axim_headless() {
     );
     command.env("ANTHROPIC_BASE_URL", mock_anthropic.base_url());
     command.env("ANTHROPIC_API_KEY", "test-parity-key");
-    command.args(["serve-headless", "--port", "13342"]);
+    command.args(["serve-headless", "--port", &headless_port.to_string()]);
     #[allow(clippy::zombie_processes)]
     let mut child = command.spawn().expect("failed to start headless server");
 
@@ -85,7 +91,7 @@ async fn axim_headless() {
     });
 
     let resp = client
-        .post("http://127.0.0.1:13342/tasks")
+        .post(format!("http://127.0.0.1:{headless_port}/tasks"))
         .json(&task_packet)
         .send()
         .await;
