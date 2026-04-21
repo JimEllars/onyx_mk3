@@ -24,7 +24,9 @@ impl SupabaseTelemetrySink {
 impl TelemetrySink for SupabaseTelemetrySink {
     fn record(&self, event: TelemetryEvent) {
         if let Ok(json) = serde_json::to_string(&event) {
-            let _ = self.client.post(&self.endpoint)
+            let _ = self
+                .client
+                .post(&self.endpoint)
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {}", self.bearer_token))
                 .body(json)

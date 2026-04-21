@@ -121,19 +121,21 @@ pub async fn evaluate_health_with_ai(
         if has_errors {
             let mut ai_response_actions = Vec::new();
 
-            let mut manager = crate::mcp_stdio::McpServerManager::from_runtime_config(&runtime_config);
+            let mut manager =
+                crate::mcp_stdio::McpServerManager::from_runtime_config(&runtime_config);
             let discovery = manager.discover_tools_best_effort().await;
 
             // Try to find a relevant tool dynamically by evaluating actual health capabilities
             let mut selected_tool = None;
             for tool in &discovery.tools {
-                if tool.qualified_name.contains("purge_zone_cache") || tool.raw_name.contains("purge_zone_cache") {
-                    selected_tool = Some(tool);
-                    break;
-                } else if tool.qualified_name.contains("restart_service") || tool.raw_name.contains("restart_service") {
-                    selected_tool = Some(tool);
-                    break;
-                } else if tool.qualified_name.contains("revert_deployment") || tool.raw_name.contains("revert_deployment") {
+                let matches = tool.qualified_name.contains("purge_zone_cache")
+                    || tool.raw_name.contains("purge_zone_cache")
+                    || tool.qualified_name.contains("restart_service")
+                    || tool.raw_name.contains("restart_service")
+                    || tool.qualified_name.contains("revert_deployment")
+                    || tool.raw_name.contains("revert_deployment");
+
+                if matches {
                     selected_tool = Some(tool);
                     break;
                 }

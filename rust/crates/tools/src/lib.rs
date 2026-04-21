@@ -5769,7 +5769,8 @@ mod tests {
             }),
         )
         .expect("WorkerCreate should succeed");
-        let auto_created_output: serde_json::Value = serde_json::from_str(&auto_created).expect("json");
+        let auto_created_output: serde_json::Value =
+            serde_json::from_str(&auto_created).expect("json");
         assert_eq!(auto_created_output["status"], "ready_for_prompt");
         assert_eq!(auto_created_output["trust_auto_resolve"], true);
         assert_eq!(auto_created_output["trust_gate_cleared"], true);

@@ -134,8 +134,7 @@ impl LaneEvent {
         )
         .with_failure_class(LaneFailureClass::WorkspaceMismatch)
         .with_detail(format!(
-            "session is bound to {} but current directory is {}",
-            expected, actual
+            "session is bound to {expected} but current directory is {actual}"
         ))
     }
 

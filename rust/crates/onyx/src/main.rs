@@ -116,34 +116,51 @@ fn main() {
         Box::pin(async move {
             match tool_name.as_str() {
                 "execute_query_telemetry_logs" => {
-                    let input = serde_json::from_value(arguments).map_err(|e| format!("Invalid args: {e}"))?;
-                    let output = tools::supabase_ops::execute_query_telemetry_logs(input, &config).await?;
-                    Ok(serde_json::to_value(output).map_err(|e| format!("Serialization error: {e}"))?)
+                    let input = serde_json::from_value(arguments)
+                        .map_err(|e| format!("Invalid args: {e}"))?;
+                    let output =
+                        tools::supabase_ops::execute_query_telemetry_logs(input, &config).await?;
+                    Ok(serde_json::to_value(output)
+                        .map_err(|e| format!("Serialization error: {e}"))?)
                 }
                 "execute_record_incident_resolution" => {
-                    let input = serde_json::from_value(arguments).map_err(|e| format!("Invalid args: {e}"))?;
-                    let output = tools::supabase_ops::execute_record_incident_resolution(input, &config).await?;
-                    Ok(serde_json::to_value(output).map_err(|e| format!("Serialization error: {e}"))?)
+                    let input = serde_json::from_value(arguments)
+                        .map_err(|e| format!("Invalid args: {e}"))?;
+                    let output =
+                        tools::supabase_ops::execute_record_incident_resolution(input, &config)
+                            .await?;
+                    Ok(serde_json::to_value(output)
+                        .map_err(|e| format!("Serialization error: {e}"))?)
                 }
                 "execute_check_micro_app_transactions" => {
-                    let input = serde_json::from_value(arguments).map_err(|e| format!("Invalid args: {e}"))?;
-                    let output = tools::supabase_ops::execute_check_micro_app_transactions(input, &config).await?;
-                    Ok(serde_json::to_value(output).map_err(|e| format!("Serialization error: {e}"))?)
+                    let input = serde_json::from_value(arguments)
+                        .map_err(|e| format!("Invalid args: {e}"))?;
+                    let output =
+                        tools::supabase_ops::execute_check_micro_app_transactions(input, &config)
+                            .await?;
+                    Ok(serde_json::to_value(output)
+                        .map_err(|e| format!("Serialization error: {e}"))?)
                 }
                 "execute_fetch_post" => {
-                    let input = serde_json::from_value(arguments).map_err(|e| format!("Invalid args: {e}"))?;
+                    let input = serde_json::from_value(arguments)
+                        .map_err(|e| format!("Invalid args: {e}"))?;
                     let output = tools::wordpress_admin::execute_fetch_post(input).await?;
-                    Ok(serde_json::to_value(output).map_err(|e| format!("Serialization error: {e}"))?)
+                    Ok(serde_json::to_value(output)
+                        .map_err(|e| format!("Serialization error: {e}"))?)
                 }
                 "execute_update_post_content" => {
-                    let input = serde_json::from_value(arguments).map_err(|e| format!("Invalid args: {e}"))?;
+                    let input = serde_json::from_value(arguments)
+                        .map_err(|e| format!("Invalid args: {e}"))?;
                     let output = tools::wordpress_admin::execute_update_post_content(input).await?;
-                    Ok(serde_json::to_value(output).map_err(|e| format!("Serialization error: {e}"))?)
+                    Ok(serde_json::to_value(output)
+                        .map_err(|e| format!("Serialization error: {e}"))?)
                 }
                 "execute_update_seo_metadata" => {
-                    let input = serde_json::from_value(arguments).map_err(|e| format!("Invalid args: {e}"))?;
+                    let input = serde_json::from_value(arguments)
+                        .map_err(|e| format!("Invalid args: {e}"))?;
                     let output = tools::wordpress_admin::execute_update_seo_metadata(input).await?;
-                    Ok(serde_json::to_value(output).map_err(|e| format!("Serialization error: {e}"))?)
+                    Ok(serde_json::to_value(output)
+                        .map_err(|e| format!("Serialization error: {e}"))?)
                 }
                 _ => Err(format!("Unknown internal tool: {tool_name}")),
             }
@@ -2466,7 +2483,11 @@ fn resume_session(session_path: &Path, commands: &[String], output_format: CliOu
     let session = match Session::load_from_path(&resolved_path) {
         Ok(session) => session,
         Err(runtime::SessionError::WorkspaceMismatch { expected, actual }) => {
-            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+            #[allow(clippy::cast_possible_truncation)]
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
             let event = runtime::LaneEvent::workspace_mismatch(
                 format_history_timestamp(now),
                 &expected.display().to_string(),
@@ -2484,7 +2505,7 @@ fn resume_session(session_path: &Path, commands: &[String], output_format: CliOu
                     .append(true)
                     .open(&events_path)
                 {
-                    let _ = writeln!(file, "{}", event_json);
+                    let _ = writeln!(file, "{event_json}");
                 }
 
                 // Stream lane events to AXiM Core if the endpoint is configured
@@ -3189,14 +3210,17 @@ fn run_repl(
         }
     }
 
-    println!("{}", tui::status_bar::render_status_bar(
-        &cli.model,
-        &cli.session.id,
-        &cli.runtime.usage().cumulative_usage(),
-        0.0, // Cost is not yet calculated here
-        None, // Fleet status not yet wired in REPL
-        worker_status.as_ref()
-    ));
+    println!(
+        "{}",
+        tui::status_bar::render_status_bar(
+            &cli.model,
+            &cli.session.id,
+            &cli.runtime.usage().cumulative_usage(),
+            0.0,  // Cost is not yet calculated here
+            None, // Fleet status not yet wired in REPL
+            worker_status.as_ref()
+        )
+    );
 
     loop {
         editor.set_completions(cli.repl_completion_candidates().unwrap_or_default());

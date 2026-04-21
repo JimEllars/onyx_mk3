@@ -228,7 +228,9 @@ impl WorkerRegistry {
                 &mut worker,
                 WorkerEventKind::TrustResolved,
                 WorkerStatus::ReadyForPrompt,
-                Some("allowlisted repo auto-resolved trust prompt and bypassed spawning".to_string()),
+                Some(
+                    "allowlisted repo auto-resolved trust prompt and bypassed spawning".to_string(),
+                ),
                 Some(WorkerEventPayload::TrustPrompt {
                     cwd: cwd_clone,
                     resolution: Some(WorkerTrustResolution::AutoAllowlisted),

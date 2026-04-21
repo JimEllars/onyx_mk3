@@ -25,7 +25,7 @@ pub fn render_status_bar(
     }
 
     let worker_state_str = if let Some(ws) = worker_status {
-        format!(" | State: {}", ws)
+        format!(" | State: {ws}")
     } else {
         String::new()
     };

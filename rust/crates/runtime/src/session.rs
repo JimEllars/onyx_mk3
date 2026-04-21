@@ -225,8 +225,10 @@ impl Session {
         if let Some(expected_root) = session.workspace_root() {
             let actual_root = std::env::current_dir()?;
             // We should canonicalize to prevent false positives if paths have symlinks or trailing slashes
-            let expected_canonical = std::fs::canonicalize(expected_root).unwrap_or_else(|_| expected_root.to_path_buf());
-            let actual_canonical = std::fs::canonicalize(&actual_root).unwrap_or_else(|_| actual_root.clone());
+            let expected_canonical = std::fs::canonicalize(expected_root)
+                .unwrap_or_else(|_| expected_root.to_path_buf());
+            let actual_canonical =
+                std::fs::canonicalize(&actual_root).unwrap_or_else(|_| actual_root.clone());
 
             // Check if actual is same or sub-directory of expected
             if !actual_canonical.starts_with(&expected_canonical) {
@@ -1433,11 +1435,14 @@ mod tests {
         session
             .save_to_path(&path)
             .expect("workspace-bound session should save");
-        let error = Session::load_from_path(&path).expect_err("session load should fail due to mismatch");
+        let error =
+            Session::load_from_path(&path).expect_err("session load should fail due to mismatch");
         fs::remove_file(&path).expect("temp file should be removable");
 
         // then
-        assert!(error.to_string().contains("workspace mismatch: session is bound to"));
+        assert!(error
+            .to_string()
+            .contains("workspace mismatch: session is bound to"));
         assert!(error.to_string().contains("/tmp/b4-phantom-diag"));
     }
 
