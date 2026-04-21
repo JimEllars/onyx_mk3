@@ -3219,7 +3219,7 @@ fn run_repl(
             &cli.runtime.usage().cumulative_usage(),
             0.0,  // Cost is not yet calculated here
             None, // Fleet status not yet wired in REPL
-            worker_status.as_ref()
+            worker_status.as_ref(), None
         )
     );
 

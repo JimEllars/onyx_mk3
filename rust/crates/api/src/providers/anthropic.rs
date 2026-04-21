@@ -468,7 +468,15 @@ impl AnthropicClient {
         request: &MessageRequest,
     ) -> Result<reqwest::Response, ApiError> {
         let request_url = format!("{}/v1/messages", self.base_url.trim_end_matches('/'));
-        let mut request_body = self.request_profile.render_json_body(request)?;
+        let mut modified_request = request.clone();
+        if let Some(format) = &modified_request.response_format {
+            if format == "json_object" {
+                let system_prompt = modified_request.system.unwrap_or_default();
+                modified_request.system = Some(format!("{system_prompt}\n\nYou must output ONLY valid JSON matching the requested schema. Do not include markdown formatting or extra text."));
+            }
+        }
+        let mut request_body = self.request_profile.render_json_body(&modified_request)?;
+
         strip_unsupported_beta_body_fields(&mut request_body);
         let request_builder = self.build_request(&request_url).json(&request_body);
         request_builder.send().await.map_err(ApiError::from)
@@ -529,7 +537,15 @@ impl AnthropicClient {
             "{}/v1/messages/count_tokens",
             self.base_url.trim_end_matches('/')
         );
-        let mut request_body = self.request_profile.render_json_body(request)?;
+        let mut modified_request = request.clone();
+        if let Some(format) = &modified_request.response_format {
+            if format == "json_object" {
+                let system_prompt = modified_request.system.unwrap_or_default();
+                modified_request.system = Some(format!("{system_prompt}\n\nYou must output ONLY valid JSON matching the requested schema. Do not include markdown formatting or extra text."));
+            }
+        }
+        let mut request_body = self.request_profile.render_json_body(&modified_request)?;
+
         strip_unsupported_beta_body_fields(&mut request_body);
         let response = self
             .build_request(&request_url)
