@@ -54,6 +54,7 @@ pub use fleet_health::{
 mod trust_resolver;
 mod usage;
 pub mod worker_boot;
+pub mod playbook;
 
 pub use bash::{execute_bash, BashCommandInput, BashCommandOutput};
 pub use bootstrap::{BootstrapPhase, BootstrapPlan};
