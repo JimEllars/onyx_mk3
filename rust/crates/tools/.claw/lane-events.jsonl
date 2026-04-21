@@ -53,3 +53,14 @@
 {"event":"lane.failed","status":"failed","emittedAt":"1776740812","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
 {"event":"lane.started","status":"running","emittedAt":"1776740812"}
 {"event":"lane.failed","status":"failed","emittedAt":"1776740812","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+{"event":"lane.started","status":"running","emittedAt":"1776784877"}
+{"event":"lane.commit.created","status":"completed","emittedAt":"1776784877","detail":"commit abc1234","data":{"branch":"jules-3584430043018511361-7b1c09da","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+{"event":"lane.started","status":"running","emittedAt":"1776784877"}
+{"event":"lane.failed","status":"failed","emittedAt":"1776784877","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+{"event":"lane.started","status":"running","emittedAt":"1776784877"}
+{"event":"lane.failed","status":"failed","emittedAt":"1776784877","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+{"event":"lane.started","status":"running","emittedAt":"1776784877"}
+{"event":"lane.started","status":"running","emittedAt":"1776784877"}
+{"event":"lane.failed","status":"failed","emittedAt":"1776784877","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+{"event":"lane.started","status":"running","emittedAt":"1776784877"}
+{"event":"lane.failed","status":"failed","emittedAt":"1776784877","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}

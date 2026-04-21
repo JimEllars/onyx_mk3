@@ -2467,6 +2467,7 @@ fn version_json_value() -> serde_json::Value {
     })
 }
 
+#[allow(clippy::too_many_lines)]
 fn resume_session(session_path: &Path, commands: &[String], output_format: CliOutputFormat) {
     let resolved_path = if session_path.exists() {
         session_path.to_path_buf()
