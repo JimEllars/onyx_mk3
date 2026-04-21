@@ -275,7 +275,12 @@ impl McpToolRegistry {
             tokio::task::block_in_place(|| {
                 if let Ok(rt) = tokio::runtime::Runtime::new() {
                     result = rt.block_on(async move {
-                        crate::internal_mcp::call_internal_tool(&tool_name_owned, &arguments_owned, &config).await
+                        crate::internal_mcp::call_internal_tool(
+                            &tool_name_owned,
+                            &arguments_owned,
+                            &config,
+                        )
+                        .await
                     });
                 }
             });

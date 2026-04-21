@@ -30,7 +30,9 @@ pub fn register_internal_mcp_server(registry: &McpToolRegistry) {
         },
         McpToolInfo {
             name: "execute_check_micro_app_transactions".to_string(),
-            description: Some("Check micro app transactions from Supabase for a specific app.".to_string()),
+            description: Some(
+                "Check micro app transactions from Supabase for a specific app.".to_string(),
+            ),
             input_schema: Some(serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -87,12 +89,16 @@ pub fn register_internal_mcp_server(registry: &McpToolRegistry) {
     );
 }
 
-use std::sync::OnceLock;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::OnceLock;
 
 type InternalToolHandler = Box<
-    dyn Fn(&str, &serde_json::Value, &crate::config::RuntimeConfig) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, String>> + Send>>
+    dyn Fn(
+            &str,
+            &serde_json::Value,
+            &crate::config::RuntimeConfig,
+        ) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, String>> + Send>>
         + Send
         + Sync,
 >;
