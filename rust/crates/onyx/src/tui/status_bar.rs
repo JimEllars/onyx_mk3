@@ -8,6 +8,7 @@ pub fn render_status_bar(
     usage: &TokenUsage,
     cost: f64,
     fleet_status: Option<&GlobalFleetStatus>,
+    worker_status: Option<&runtime::WorkerStatus>,
 ) -> String {
     let mut has_executing = false;
     let mut has_pending = false;
@@ -23,9 +24,15 @@ pub fn render_status_bar(
         }
     }
 
+    let worker_state_str = if let Some(ws) = worker_status {
+        format!(" | State: {}", ws)
+    } else {
+        String::new()
+    };
+
     let mut text = format!(
-        "Model: {} | Session: {} | Tokens: In {}, Out {} | Cost: ${:.4}",
-        model, session_id, usage.input_tokens, usage.output_tokens, cost
+        "Model: {} | Session: {} | Tokens: In {}, Out {} | Cost: ${:.4}{}",
+        model, session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str
     );
 
     if has_executing {
