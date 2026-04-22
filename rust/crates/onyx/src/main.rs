@@ -3163,7 +3163,8 @@ fn run_resume_command(
         | SlashCommand::Ide { .. }
         | SlashCommand::Tag { .. }
         | SlashCommand::OutputStyle { .. }
-        | SlashCommand::AddDir { .. } => Err("unsupported resumed slash command".into()),
+        | SlashCommand::AddDir { .. }
+        | SlashCommand::Fleet => Err("unsupported resumed slash command".into()),
     }
 }
 
@@ -4205,6 +4206,17 @@ impl LiveCli {
             | SlashCommand::OutputStyle { .. }
             | SlashCommand::AddDir { .. } => {
                 eprintln!("Command registered but not yet implemented.");
+                false
+            }
+            SlashCommand::Fleet => {
+                let result = commands::handle_slash_command(
+                    "/fleet",
+                    self.runtime.session(),
+                    runtime::CompactionConfig::default(),
+                );
+                if let Some(r) = result {
+                    println!("{}", r.message);
+                }
                 false
             }
             SlashCommand::Unknown(name) => {
