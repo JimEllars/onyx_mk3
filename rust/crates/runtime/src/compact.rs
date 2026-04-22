@@ -117,6 +117,7 @@ pub fn compact_session(session: &Session, config: CompactionConfig) -> Compactio
     let summary =
         merge_compact_summaries(existing_summary.as_deref(), &summarize_messages(removed));
     let formatted_summary = format_compact_summary(&summary);
+    crate::memory::sync_summary_to_cloud(session.session_id.clone(), summary.clone());
     let continuation = get_compact_continuation_message(&summary, true, !preserved.is_empty());
 
     let mut compacted_messages = vec![ConversationMessage {

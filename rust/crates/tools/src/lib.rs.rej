@@ -1,10 +1,13 @@
 --- rust/crates/tools/src/lib.rs
 +++ rust/crates/tools/src/lib.rs
-@@ -4074,7 +4075,6 @@
-                 if entry.file_type().is_file() {
-                     if let Some(name) = entry.file_name().to_str() {
-                         let _ = output.write_all(format!("{name}\n").as_bytes());
--                        continue;
-                     }
-                 }
-             }
+@@ -62,6 +62,10 @@
+         entries.push(ToolManifestEntry {
+             name: "wp_check_headless_seo".to_string(),
+             source: ToolSource::Base,
+         });
++        entries.push(ToolManifestEntry {
++            name: "vault_artifact".to_string(),
++            source: ToolSource::Base,
++        });
+
+         Self { entries }

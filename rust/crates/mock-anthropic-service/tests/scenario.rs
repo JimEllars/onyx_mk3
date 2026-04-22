@@ -54,7 +54,6 @@ async fn axim_headless() {
         exe
     };
 
-
     // Find a free port
     let headless_port = {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

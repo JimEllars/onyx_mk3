@@ -58,6 +58,14 @@ pub enum SkillSlashDispatch {
 
 const SLASH_COMMAND_SPECS: &[SlashCommandSpec] = &[
     SlashCommandSpec {
+        name: "playbook",
+        aliases: &["workflow"],
+        summary: "Fetch and run, or resume a cloud playbook",
+        argument_hint: Some("[run <cloud_id>|resume <instance_id>]"),
+        resume_supported: true,
+    },
+
+    SlashCommandSpec {
         name: "help",
         aliases: &[],
         summary: "Show available slash commands",
@@ -4470,7 +4478,7 @@ mod tests {
         assert!(help.contains("/agents [list|help]"));
         assert!(help.contains("/skills [list|install <path>|help|<skill> [args]]"));
         assert!(help.contains("aliases: /skill"));
-        assert_eq!(slash_command_specs().len(), 141);
+        assert_eq!(slash_command_specs().len(), 142);
         assert!(resume_supported_slash_commands().len() >= 39);
     }
 

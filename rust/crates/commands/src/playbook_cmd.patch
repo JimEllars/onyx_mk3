@@ -1,0 +1,18 @@
+--- rust/crates/commands/src/lib.rs
++++ rust/crates/commands/src/lib.rs
+@@ -51,6 +51,13 @@
+     Invoke(String),
+ }
+
++const PLAYBOOK_COMMAND_SPEC: SlashCommandSpec = SlashCommandSpec {
++    name: "playbook",
++    aliases: &["workflow"],
++    summary: "Fetch and run, or resume a cloud playbook",
++    argument_hint: Some("[run <cloud_id>|resume <instance_id>]"),
++    resume_supported: true,
++};
++
+ const SLASH_COMMAND_SPECS: &[SlashCommandSpec] = &[
++    PLAYBOOK_COMMAND_SPEC,
+     SlashCommandSpec {
+         name: "help",
