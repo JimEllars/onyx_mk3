@@ -1,9 +1,10 @@
+cat << 'INNER_EOF' > rust/crates/runtime/src/playbook.rs
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::fs;
+use tokio::task::JoinSet;
 use std::future::Future;
 use std::path::PathBuf;
-use tokio::task::JoinSet;
+use std::fs;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaybookTask {
@@ -36,13 +37,10 @@ struct PlaybookCheckpoint {
 impl PlaybookExecutor {
     #[must_use]
     pub fn new(definition: PlaybookDefinition, instance_id: String) -> Self {
-        Self {
-            definition,
-            instance_id,
-        }
+        Self { definition, instance_id }
     }
 
-    /// Fetches a cloud playbook from the `workflows_ax2024` table.
+    /// Fetches a cloud playbook from the workflows_ax2024 table.
     pub async fn fetch_cloud_playbook(cloud_id: &str) -> Result<PlaybookDefinition, String> {
         let supabase_url = std::env::var("SUPABASE_URL").unwrap_or_default();
         let supabase_key = std::env::var("SUPABASE_SERVICE_ROLE_KEY")
@@ -53,41 +51,32 @@ impl PlaybookExecutor {
         }
 
         let client = reqwest::Client::new();
-        let url = format!("{supabase_url}/rest/v1/workflows_ax2024?id=eq.{cloud_id}&select=*");
+        let url = format!("{}/rest/v1/workflows_ax2024?id=eq.{}&select=*", supabase_url, cloud_id);
 
         let res = client
             .get(&url)
             .header("apikey", &supabase_key)
-            .header("Authorization", format!("Bearer {supabase_key}"))
+            .header("Authorization", format!("Bearer {}", supabase_key))
             .send()
             .await
-            .map_err(|e| format!("Network error fetching playbook: {e}"))?;
+            .map_err(|e| format!("Network error fetching playbook: {}", e))?;
 
         if !res.status().is_success() {
             return Err(format!("Supabase API error: {}", res.status()));
         }
 
-        let workflows: Vec<serde_json::Value> = res
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse response: {e}"))?;
+        let workflows: Vec<serde_json::Value> = res.json().await.map_err(|e| format!("Failed to parse response: {}", e))?;
 
-        let workflow = workflows
-            .into_iter()
-            .next()
-            .ok_or_else(|| "Playbook not found in cloud".to_string())?;
+        let workflow = workflows.into_iter().next().ok_or_else(|| "Playbook not found in cloud".to_string())?;
 
         let definition: PlaybookDefinition = serde_json::from_value(workflow["definition"].clone())
-            .map_err(|e| format!("Failed to parse playbook definition: {e}"))?;
+            .map_err(|e| format!("Failed to parse playbook definition: {}", e))?;
 
         Ok(definition)
     }
 
     fn get_checkpoint_path(&self) -> PathBuf {
-        let mut path = std::env::var("HOME")
-            .map(PathBuf::from)
-            .ok()
-            .unwrap_or_else(|| PathBuf::from("."));
+        let mut path = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
         path.push(".onyx");
         path.push("playbooks");
         path.push("checkpoints");
@@ -165,11 +154,7 @@ impl PlaybookExecutor {
     }
 
     /// Executes the DAG playbook. Independent tasks are spawned concurrently.
-    pub async fn execute<F, Fut>(
-        &self,
-        spawn_agent: F,
-        resume: bool,
-    ) -> Result<HashMap<String, String>, String>
+    pub async fn execute<F, Fut>(&self, spawn_agent: F, resume: bool) -> Result<HashMap<String, String>, String>
     where
         F: Fn(PlaybookTask, HashMap<String, String>) -> Fut + Clone + Send + Sync + 'static,
         Fut: Future<Output = Result<String, String>> + Send + 'static,
@@ -238,12 +223,11 @@ impl PlaybookExecutor {
                     }
                 }
             } else if completed.len() < total_tasks {
-                return Err(
-                    "Deadlock detected: no tasks in progress but not all completed".to_string(),
-                );
+                return Err("Deadlock detected: no tasks in progress but not all completed".to_string());
             }
         }
 
         Ok(results)
     }
 }
+INNER_EOF

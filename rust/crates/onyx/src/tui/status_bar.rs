@@ -1,6 +1,6 @@
 use runtime::fleet_health::{ActionStatus, GlobalFleetStatus};
-use std::fmt::Write as _;
 use runtime::TokenUsage;
+use std::fmt::Write as _;
 use std::io::Write;
 
 pub fn render_status_bar(

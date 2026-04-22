@@ -1489,6 +1489,13 @@ fn execute_tool_with_enforcer(
                     .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
         }
+        "vault_artifact" => from_value::<supabase_ops::VaultArtifactInput>(input).and_then(|i| {
+            let config = runtime::RuntimeConfig::empty();
+            tokio::runtime::Handle::current()
+                .block_on(supabase_ops::execute_vault_artifact(i, &config))
+                .map_err(|e| e.to_string())
+                .map(|o| format!("Artifact successfully vaulted. [Download Here] ({})", o.url))
+        }),
         "check_micro_app_transactions" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<supabase_ops::CheckMicroAppTransactionsInput>(input).and_then(|i| {

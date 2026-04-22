@@ -211,3 +211,113 @@ pub async fn execute_check_micro_app_transactions(
         Err(format!("Supabase API error: {}", res.status()))
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultArtifactInput {
+    pub filename: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultArtifactOutput {
+    pub url: String,
+    pub success: bool,
+}
+
+pub async fn execute_vault_artifact(
+    input: VaultArtifactInput,
+    config: &RuntimeConfig,
+) -> Result<VaultArtifactOutput, String> {
+    let supabase_url = config
+        .get("SUPABASE_URL")
+        .and_then(|v| v.as_str())
+        .map_or_else(
+            || std::env::var("SUPABASE_URL").unwrap_or_default(),
+            String::from,
+        );
+    let supabase_key = config
+        .get("SUPABASE_SERVICE_ROLE_KEY")
+        .and_then(|v| v.as_str())
+        .map_or_else(
+            || {
+                std::env::var("SUPABASE_SERVICE_ROLE_KEY")
+                    .unwrap_or_else(|_| std::env::var("AXIM_ONYX_SECRET").unwrap_or_default())
+            },
+            String::from,
+        );
+
+    if supabase_url.is_empty() || supabase_key.is_empty() {
+        return Err("Missing Supabase credentials".to_string());
+    }
+
+    let client = reqwest::Client::new();
+
+    // We upload to the secure_artifacts bucket
+    let bucket = "secure_artifacts";
+    let url = format!(
+        "{}/storage/v1/object/{}/{}",
+        supabase_url, bucket, input.filename
+    );
+
+    let res = client
+        .post(&url)
+        .header("apikey", &supabase_key)
+        .header("Authorization", format!("Bearer {supabase_key}"))
+        .header("Content-Type", "application/octet-stream")
+        .body(input.content)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if res.status().is_success() {
+        let signed_url_endpoint = format!(
+            "{}/storage/v1/object/sign/{}/{}",
+            supabase_url, bucket, input.filename
+        );
+        let signed_res = client
+            .post(&signed_url_endpoint)
+            .header("apikey", &supabase_key)
+            .header("Authorization", format!("Bearer {supabase_key}"))
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({"expiresIn": 3600}))
+            .send()
+            .await;
+
+        let final_url = if let Ok(s_res) = signed_res {
+            if s_res.status().is_success() {
+                if let Ok(json) = s_res.json::<serde_json::Value>().await {
+                    if let Some(signed_url) = json.get("signedURL").and_then(|s| s.as_str()) {
+                        format!("{supabase_url}{signed_url}")
+                    } else {
+                        format!(
+                            "{}/storage/v1/object/public/{}/{}",
+                            supabase_url, bucket, input.filename
+                        )
+                    }
+                } else {
+                    format!(
+                        "{}/storage/v1/object/public/{}/{}",
+                        supabase_url, bucket, input.filename
+                    )
+                }
+            } else {
+                format!(
+                    "{}/storage/v1/object/public/{}/{}",
+                    supabase_url, bucket, input.filename
+                )
+            }
+        } else {
+            format!(
+                "{}/storage/v1/object/public/{}/{}",
+                supabase_url, bucket, input.filename
+            )
+        };
+
+        Ok(VaultArtifactOutput {
+            url: final_url,
+            success: true,
+        })
+    } else {
+        Err(format!("Supabase API error: {}", res.status()))
+    }
+}

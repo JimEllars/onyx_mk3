@@ -26,6 +26,7 @@ pub mod mcp_lifecycle_hardened;
 pub mod mcp_server;
 mod mcp_stdio;
 pub mod mcp_tool_bridge;
+pub mod memory;
 mod oauth;
 pub mod permission_enforcer;
 mod permissions;
@@ -50,11 +51,11 @@ pub use fleet_health::{
     create_global_fleet_status, evaluate_fleet_health, start_approval_polling_loop, ActionStatus,
     AppStatus, FleetStatus, GlobalFleetStatus, ProposedAction,
 };
+pub mod playbook;
 #[cfg(test)]
 mod trust_resolver;
 mod usage;
 pub mod worker_boot;
-pub mod playbook;
 
 pub use bash::{execute_bash, BashCommandInput, BashCommandOutput};
 pub use bootstrap::{BootstrapPhase, BootstrapPlan};
