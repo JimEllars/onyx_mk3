@@ -3164,7 +3164,9 @@ fn run_resume_command(
         | SlashCommand::Tag { .. }
         | SlashCommand::OutputStyle { .. }
         | SlashCommand::AddDir { .. }
-        | SlashCommand::Fleet => Err("unsupported resumed slash command".into()),
+        | SlashCommand::Fleet
+        | SlashCommand::Approve { .. }
+        | SlashCommand::Reject { .. } => Err("unsupported resumed slash command".into()),
     }
 }
 
@@ -4223,6 +4225,7 @@ impl LiveCli {
                 eprintln!("{}", format_unknown_slash_command(&name));
                 false
             }
+            SlashCommand::Approve { .. } | SlashCommand::Reject { .. } => false,
         })
     }
 

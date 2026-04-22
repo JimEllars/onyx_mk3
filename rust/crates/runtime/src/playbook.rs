@@ -1,3 +1,4 @@
+use crate::swarm_lock::DistributedLock;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -165,6 +166,7 @@ impl PlaybookExecutor {
     }
 
     /// Executes the DAG playbook. Independent tasks are spawned concurrently.
+    #[allow(clippy::too_many_lines)]
     pub async fn execute<F, Fut>(
         &self,
         spawn_agent: F,
@@ -175,6 +177,17 @@ impl PlaybookExecutor {
         Fut: Future<Output = Result<String, String>> + Send + 'static,
     {
         self.validate()?;
+
+        let lock_id = format!("playbook_{}", self.instance_id);
+        let acquired = DistributedLock::acquire(&lock_id, 300)
+            .await
+            .unwrap_or(false);
+        if !acquired {
+            return Err(format!(
+                "Could not acquire distributed lock for playbook {}",
+                self.instance_id
+            ));
+        }
 
         let mut results: HashMap<String, String> = HashMap::new();
         let mut completed: HashSet<String> = HashSet::new();
@@ -199,6 +212,51 @@ impl PlaybookExecutor {
 
                 let deps_met = task.dependencies.iter().all(|d| completed.contains(d));
                 if deps_met {
+                    // Human-in-the-Loop Interruption
+                    // Check if task needs approval
+                    // We will just do a quick Supabase check if the task is explicitly approved.
+                    let supabase_url = std::env::var("SUPABASE_URL").unwrap_or_default();
+                    let supabase_key = std::env::var("SUPABASE_SERVICE_ROLE_KEY")
+                        .unwrap_or_else(|_| std::env::var("AXIM_ONYX_SECRET").unwrap_or_default());
+                    if !supabase_url.is_empty() && !supabase_key.is_empty() {
+                        let client = reqwest::blocking::Client::new();
+                        let url = format!(
+                            "{}/rest/v1/playbook_tasks?id=eq.{}&select=status,requires_approval",
+                            supabase_url, task.id
+                        );
+                        if let Ok(res) = client
+                            .get(&url)
+                            .header("apikey", &supabase_key)
+                            .header("Authorization", format!("Bearer {supabase_key}"))
+                            .send()
+                        {
+                            if let Ok(tasks) = res.json::<serde_json::Value>() {
+                                if let Some(task_arr) = tasks.as_array() {
+                                    if let Some(t) = task_arr.first() {
+                                        let req_appr =
+                                            t["requires_approval"].as_bool().unwrap_or(false);
+                                        let status = t["status"].as_str().unwrap_or("pending");
+                                        if req_appr && status != "approved" {
+                                            println!("Playbook paused. Task {} requires human authorization.", task.id);
+                                            println!(
+                                                "Run /approve {} or /reject {}",
+                                                task.id, task.id
+                                            );
+                                            // Stash graph state
+                                            self.save_checkpoint(&completed, &results);
+                                            let _ = DistributedLock::release(&lock_id).await;
+                                            return Ok(results); // Pause execution gracefully
+                                        }
+                                        if req_appr && status == "rejected" {
+                                            let _ = DistributedLock::release(&lock_id).await;
+                                            return Err(format!("Task {} was rejected.", task.id));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     let task_clone = task.clone();
                     let spawn_agent_clone = spawn_agent.clone();
 
@@ -231,19 +289,23 @@ impl PlaybookExecutor {
                         self.save_checkpoint(&completed, &results);
                     }
                     Ok((task_id, Err(e))) => {
+                        let _ = DistributedLock::release(&lock_id).await;
                         return Err(format!("Task {task_id} failed: {e}"));
                     }
                     Err(e) => {
+                        let _ = DistributedLock::release(&lock_id).await;
                         return Err(format!("Join error executing tasks: {e}"));
                     }
                 }
             } else if completed.len() < total_tasks {
+                let _ = DistributedLock::release(&lock_id).await;
                 return Err(
                     "Deadlock detected: no tasks in progress but not all completed".to_string(),
                 );
             }
         }
 
+        let _ = DistributedLock::release(&lock_id).await;
         Ok(results)
     }
 }

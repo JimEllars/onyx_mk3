@@ -1066,6 +1066,12 @@ const SLASH_COMMAND_SPECS: &[SlashCommandSpec] = &[
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlashCommand {
+    Approve {
+        task_id: String,
+    },
+    Reject {
+        task_id: String,
+    },
     Fleet,
     Help,
     Status,
@@ -4037,6 +4043,62 @@ pub fn handle_slash_command(
         | SlashCommand::AddDir { .. }
         | SlashCommand::History { .. }
         | SlashCommand::Unknown(_) => None,
+        SlashCommand::Approve { task_id } => {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let output = rt.block_on(async {
+                let supabase_url = std::env::var("SUPABASE_URL").unwrap_or_default();
+                let supabase_key = std::env::var("SUPABASE_SERVICE_ROLE_KEY")
+                    .unwrap_or_else(|_| std::env::var("AXIM_ONYX_SECRET").unwrap_or_default());
+                if !supabase_url.is_empty() && !supabase_key.is_empty() {
+                    let client = reqwest::Client::new();
+                    let url = format!("{supabase_url}/rest/v1/playbook_tasks?id=eq.{task_id}");
+                    let payload = serde_json::json!({"status": "approved"});
+                    let _ = client
+                        .patch(&url)
+                        .header("apikey", &supabase_key)
+                        .header("Authorization", format!("Bearer {supabase_key}"))
+                        .header("Content-Type", "application/json")
+                        .json(&payload)
+                        .send()
+                        .await;
+                    format!("Approved task {task_id}")
+                } else {
+                    format!("Missing credentials to approve task {task_id}")
+                }
+            });
+            Some(SlashCommandResult {
+                message: output,
+                session: session.clone(),
+            })
+        }
+        SlashCommand::Reject { task_id } => {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let output = rt.block_on(async {
+                let supabase_url = std::env::var("SUPABASE_URL").unwrap_or_default();
+                let supabase_key = std::env::var("SUPABASE_SERVICE_ROLE_KEY")
+                    .unwrap_or_else(|_| std::env::var("AXIM_ONYX_SECRET").unwrap_or_default());
+                if !supabase_url.is_empty() && !supabase_key.is_empty() {
+                    let client = reqwest::Client::new();
+                    let url = format!("{supabase_url}/rest/v1/playbook_tasks?id=eq.{task_id}");
+                    let payload = serde_json::json!({"status": "rejected"});
+                    let _ = client
+                        .patch(&url)
+                        .header("apikey", &supabase_key)
+                        .header("Authorization", format!("Bearer {supabase_key}"))
+                        .header("Content-Type", "application/json")
+                        .json(&payload)
+                        .send()
+                        .await;
+                    format!("Rejected task {task_id}")
+                } else {
+                    format!("Missing credentials to reject task {task_id}")
+                }
+            });
+            Some(SlashCommandResult {
+                message: output,
+                session: session.clone(),
+            })
+        }
     }
 }
 
