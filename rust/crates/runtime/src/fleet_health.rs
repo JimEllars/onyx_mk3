@@ -1,3 +1,4 @@
+use crate::swarm_lock::DistributedLock;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -327,6 +328,28 @@ pub fn start_approval_polling_loop(
             }
 
             for action in actions_to_execute {
+                let lock_id = format!("action_{}", action.id);
+                let acquired = DistributedLock::acquire(&lock_id, 300)
+                    .await
+                    .unwrap_or(false);
+                if !acquired {
+                    println!(
+                        "[Skipping action {} - lock already held by another node]",
+                        action.id
+                    );
+                    {
+                        let mut current_status = status.write().unwrap();
+                        if let Some(a) = current_status
+                            .pending_actions
+                            .iter_mut()
+                            .find(|a| a.id == action.id)
+                        {
+                            a.status = ActionStatus::Pending;
+                        }
+                    }
+                    continue;
+                }
+
                 let mut exec_status = "Failed";
                 #[allow(unused_assignments)]
                 let mut exec_details = "Unknown error".to_string();

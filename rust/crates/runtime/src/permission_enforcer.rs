@@ -26,12 +26,22 @@ pub enum EnforcementResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PermissionEnforcer {
     policy: PermissionPolicy,
+    user_jwt: Option<String>,
 }
 
 impl PermissionEnforcer {
     #[must_use]
     pub fn new(policy: PermissionPolicy) -> Self {
-        Self { policy }
+        Self {
+            policy,
+            user_jwt: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_user_jwt(mut self, jwt: Option<String>) -> Self {
+        self.user_jwt = jwt;
+        self
     }
 
     /// Check whether a tool can be executed under the current permission policy.
@@ -235,6 +245,14 @@ fn is_read_only_command(command: &str) -> bool {
         && !command.contains("--in-place")
         && !command.contains(" > ")
         && !command.contains(" >> ")
+}
+
+#[cfg(test)]
+impl PermissionEnforcer {
+    #[must_use]
+    pub fn get_authorization_header(&self) -> Option<String> {
+        self.user_jwt.as_ref().map(|jwt| format!("Bearer {jwt}"))
+    }
 }
 
 #[cfg(test)]

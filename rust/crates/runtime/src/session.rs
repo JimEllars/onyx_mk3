@@ -96,6 +96,8 @@ pub struct Session {
     pub fork: Option<SessionFork>,
     pub workspace_root: Option<PathBuf>,
     pub prompt_history: Vec<SessionPromptEntry>,
+    pub user_jwt: Option<String>,
+    pub tenant_id: Option<String>,
     persistence: Option<SessionPersistence>,
 }
 
@@ -168,6 +170,8 @@ impl Session {
             fork: None,
             workspace_root: None,
             prompt_history: Vec::new(),
+            user_jwt: None,
+            tenant_id: None,
             persistence: None,
         }
     }
@@ -288,6 +292,8 @@ impl Session {
             }),
             workspace_root: self.workspace_root.clone(),
             prompt_history: self.prompt_history.clone(),
+            user_jwt: self.user_jwt.clone(),
+            tenant_id: self.tenant_id.clone(),
             persistence: None,
         }
     }
@@ -406,6 +412,14 @@ impl Session {
             fork,
             workspace_root,
             prompt_history,
+            user_jwt: object
+                .get("user_jwt")
+                .and_then(|v| v.as_str())
+                .map(std::string::ToString::to_string),
+            tenant_id: object
+                .get("tenant_id")
+                .and_then(|v| v.as_str())
+                .map(std::string::ToString::to_string),
             persistence: None,
         })
     }
@@ -500,6 +514,8 @@ impl Session {
             fork,
             workspace_root,
             prompt_history,
+            user_jwt: None,
+            tenant_id: None,
             persistence: None,
         })
     }
