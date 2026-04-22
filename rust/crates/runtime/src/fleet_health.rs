@@ -32,6 +32,8 @@ pub struct FleetStatus {
 }
 
 pub type GlobalFleetStatus = Arc<RwLock<FleetStatus>>;
+pub static DELEGATED_NODE_ID: std::sync::LazyLock<std::sync::RwLock<Option<String>>> =
+    std::sync::LazyLock::new(|| std::sync::RwLock::new(None));
 
 #[must_use]
 pub fn create_global_fleet_status() -> GlobalFleetStatus {

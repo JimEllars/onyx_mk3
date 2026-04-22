@@ -58,13 +58,19 @@ pub enum SkillSlashDispatch {
 
 const SLASH_COMMAND_SPECS: &[SlashCommandSpec] = &[
     SlashCommandSpec {
+        name: "fleet",
+        aliases: &["swarm"],
+        summary: "Show the AXiM Swarm Radar for active Onyx nodes",
+        argument_hint: None,
+        resume_supported: true,
+    },
+    SlashCommandSpec {
         name: "playbook",
         aliases: &["workflow"],
         summary: "Fetch and run, or resume a cloud playbook",
         argument_hint: Some("[run <cloud_id>|resume <instance_id>]"),
         resume_supported: true,
     },
-
     SlashCommandSpec {
         name: "help",
         aliases: &[],
@@ -1060,6 +1066,7 @@ const SLASH_COMMAND_SPECS: &[SlashCommandSpec] = &[
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlashCommand {
+    Fleet,
     Help,
     Status,
     Sandbox,
@@ -1252,6 +1259,10 @@ pub fn validate_slash_command_input(
     let remainder = remainder_after_command(trimmed, command);
 
     Ok(Some(match command {
+        "fleet" | "swarm" => {
+            validate_no_args(command, &args)?;
+            SlashCommand::Fleet
+        }
         "help" => {
             validate_no_args(command, &args)?;
             SlashCommand::Help
@@ -3870,6 +3881,7 @@ fn mcp_server_json(name: &str, server: &ScopedMcpServerConfig) -> Value {
 }
 
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn handle_slash_command(
     input: &str,
     session: &Session,
@@ -3887,6 +3899,58 @@ pub fn handle_slash_command(
     };
 
     match command {
+        SlashCommand::Fleet => {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let output = rt.block_on(async {
+                let supabase_url = std::env::var("SUPABASE_URL").unwrap_or_default();
+                let supabase_key = std::env::var("SUPABASE_SERVICE_ROLE_KEY").unwrap_or_else(|_| std::env::var("AXIM_ONYX_SECRET").unwrap_or_default());
+                if supabase_url.is_empty() || supabase_key.is_empty() {
+                    return "Error: Missing Supabase credentials for Swarm Radar.".to_string();
+                }
+                let url = format!("{supabase_url}/rest/v1/devices_ax2024?select=node_id,cpu_load,memory_used,active_tasks,last_seen");
+                let client = reqwest::Client::new();
+                match client.get(&url)
+                    .header("apikey", &supabase_key)
+                    .header("Authorization", format!("Bearer {supabase_key}"))
+                    .send().await
+                {
+                    Ok(res) => {
+                        if let Ok(nodes) = res.json::<serde_json::Value>().await {
+                            if let Some(node_array) = nodes.as_array() {
+                                let mut out = String::new();
+                                out.push_str("🌐 AXiM Swarm Radar (Active Nodes: " );
+                                out.push_str(&node_array.len().to_string());
+                                out.push_str(")
+");
+                                out.push_str("-------------------------------------------------------------------------
+");
+                                out.push_str(format!("{:<15} | {:<12} | {:<12} | {:<15} | {}
+", "NODE ID", "STATUS", "ACTIVE TASKS", "LOAD (CPU/MEM)", "UPTIME").as_str());
+                                out.push_str("-------------------------------------------------------------------------
+");
+                                for node in node_array {
+                                    let id = node["node_id"].as_str().unwrap_or("unknown");
+                                    let active = node["active_tasks"].as_u64().unwrap_or(0);
+                                    let cpu = node["cpu_load"].as_f64().unwrap_or(0.0);
+                                    let mem = node["memory_used"].as_f64().unwrap_or(0.0);
+                                    let status = if active > 0 { "🟡 Delegating" } else { "🟢 Idle" };
+                                    out.push_str(format!("{:<15} | {:<12} | {:<12} | {:.0}% / {:.1}GB    | 0h 0m
+", id, status, active, cpu, mem / 1024.0).as_str());
+                                }
+                                out.push_str("-------------------------------------------------------------------------");
+                                return out;
+                            }
+                        }
+                        "Error formatting nodes.".to_string()
+                    }
+                    Err(e) => format!("Error connecting to Swarm: {e}")
+                }
+            });
+            Some(SlashCommandResult {
+                message: output,
+                session: session.clone(),
+            })
+        }
         SlashCommand::Compact => {
             let result = compact_session(session, compaction);
             let message = if result.removed_message_count == 0 {
@@ -4478,7 +4542,7 @@ mod tests {
         assert!(help.contains("/agents [list|help]"));
         assert!(help.contains("/skills [list|install <path>|help|<skill> [args]]"));
         assert!(help.contains("aliases: /skill"));
-        assert_eq!(slash_command_specs().len(), 142);
+        assert_eq!(slash_command_specs().len(), 143);
         assert!(resume_supported_slash_commands().len() >= 39);
     }
 

@@ -1,3 +1,20 @@
+#!/bin/bash
+
+# Move the DELEGATED_NODE_ID to runtime::fleet_health so it's accessible by both.
+sed -i '/pub type GlobalFleetStatus = Arc<RwLock<FleetStatus>>;/a\pub static DELEGATED_NODE_ID: std::sync::LazyLock<std::sync::RwLock<Option<String>>> = std::sync::LazyLock::new(|| std::sync::RwLock::new(None));' rust/crates/runtime/src/fleet_health.rs
+
+sed -i 's/static DELEGATED_NODE_ID.*//g' rust/crates/onyx/src/tui/status_bar.rs
+sed -i 's/pub fn set_delegated_node.*//g' rust/crates/onyx/src/tui/status_bar.rs
+sed -i 's/if let Ok(mut lock) = DELEGATED_NODE_ID.write() {.*//g' rust/crates/onyx/src/tui/status_bar.rs
+sed -i 's/\*lock = Some(node_id);.*//g' rust/crates/onyx/src/tui/status_bar.rs
+sed -i 's/}.*//g' rust/crates/onyx/src/tui/status_bar.rs
+sed -i 's/pub fn clear_delegated_node.*//g' rust/crates/onyx/src/tui/status_bar.rs
+sed -i 's/if let Ok(mut lock) = DELEGATED_NODE_ID.write() {.*//g' rust/crates/onyx/src/tui/status_bar.rs
+sed -i 's/\*lock = None;.*//g' rust/crates/onyx/src/tui/status_bar.rs
+sed -i 's/}.*//g' rust/crates/onyx/src/tui/status_bar.rs
+
+# Let's fix the status bar manually
+cat << 'INNER' > rust/crates/onyx/src/tui/status_bar.rs
 use runtime::fleet_health::{ActionStatus, GlobalFleetStatus};
 use runtime::TokenUsage;
 use std::fmt::Write as _;
@@ -58,14 +75,12 @@ pub fn render_status_bar(
         text = format!("{text} | \x1b[38;5;214;5m[ACTION_REQUIRED]\x1b[0m");
     }
 
-    let delegated = runtime::fleet_health::DELEGATED_NODE_ID
-        .read()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone();
+    let delegated = runtime::fleet_health::DELEGATED_NODE_ID.read().unwrap_or_else(|e| e.into_inner()).clone();
     if let Some(node_id) = delegated {
-        text = format!("{text} | ⠼ Onyx is delegating to peer node [{node_id}]...");
+        text = format!("{text} | ⠼ Onyx is delegating to peer node [{}]...", node_id);
     }
     text = format!("{text}{playbook_str}");
 
     text
 }
+INNER

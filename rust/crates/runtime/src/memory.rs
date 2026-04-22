@@ -9,7 +9,12 @@ pub struct MemorySyncPayload {
 
 pub fn sync_summary_to_cloud(session_id: String, summary: String) {
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().unwrap_or_else(|_| tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap());
+        let rt = tokio::runtime::Runtime::new().unwrap_or_else(|_| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+        });
         rt.block_on(async move {
             let supabase_url = std::env::var("SUPABASE_URL").unwrap_or_default();
             let supabase_key = std::env::var("SUPABASE_SERVICE_ROLE_KEY").unwrap_or_else(|_| std::env::var("AXIM_ONYX_SECRET").unwrap_or_default());
