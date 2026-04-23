@@ -1673,6 +1673,49 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
             }
         });
 
+        let (telemetry_tx, mut telemetry_rx) = tokio_mpsc::channel::<String>(1000);
+        let _ = TELEMETRY_TX.set(telemetry_tx);
+
+        tokio::spawn(async move {
+            let secret = std::env::var("AXIM_ONYX_SECRET").unwrap_or_default();
+            let edge_url = std::env::var("VITE_ONYX_WORKER_URL")
+                .unwrap_or_else(|_| "https://onyx-edge-worker.yourdomain.workers.dev".to_string());
+            let telemetry_url = format!("{edge_url}/api/v1/telemetry");
+            let client = reqwest::Client::new();
+
+            let mut batch = String::new();
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
+
+            loop {
+                tokio::select! {
+                    msg = telemetry_rx.recv() => {
+                        match msg {
+                            Some(token) => batch.push_str(&token),
+                            None => break,
+                        }
+                    }
+                    _ = interval.tick() => {
+                        if !batch.is_empty() {
+                            let payload = serde_json::json!({
+                                "type": "agent_trace",
+                                "content": batch
+                            });
+
+                            let _ = client
+                                .post(&telemetry_url)
+                                .header("Authorization", format!("Bearer {secret}"))
+                                .header("Content-Type", "application/json")
+                                .json(&payload)
+                                .send()
+                                .await;
+
+                            batch.clear();
+                        }
+                    }
+                }
+            }
+        });
+
         let (task_queue, mut task_rx) = tokio_mpsc::channel::<TaskPacket>(100);
         let app_state = Arc::new(AppState { task_queue });
 
@@ -7137,10 +7180,13 @@ impl AnthropicRuntimeClient {
                             input.push_str(&partial_json);
                         }
                     }
-                    ContentBlockDelta::ThinkingDelta { .. } => {
+                    ContentBlockDelta::ThinkingDelta { thinking } => {
                         if !block_has_thinking_summary {
                             render_thinking_block_summary(out, None, false)?;
                             block_has_thinking_summary = true;
+                        }
+                        if let Some(tx) = TELEMETRY_TX.get() {
+                            let _ = tx.try_send(thinking);
                         }
                     }
                     ContentBlockDelta::SignatureDelta { .. } => {}
@@ -11666,3 +11712,6 @@ mod sandbox_report_tests {
         assert!(abort_signal.is_aborted());
     }
 }
+use std::sync::OnceLock;
+
+pub static TELEMETRY_TX: OnceLock<tokio::sync::mpsc::Sender<String>> = OnceLock::new();
