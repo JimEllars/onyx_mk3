@@ -1,3 +1,4 @@
+pub mod axim_vault;
 pub mod cloudflare_ops;
 pub mod github_ops;
 pub mod supabase_ops;

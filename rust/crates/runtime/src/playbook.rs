@@ -212,6 +212,24 @@ impl PlaybookExecutor {
 
                 let deps_met = task.dependencies.iter().all(|d| completed.contains(d));
                 if deps_met {
+                    // Handle analyzeInternalInfrastructure objective
+                    if task.description == "analyzeInternalInfrastructure" || task.id == "analyzeInternalInfrastructure" {
+                        println!("Executing analyzeInternalInfrastructure...");
+                        let supabase_url = std::env::var("SUPABASE_URL").unwrap_or_default();
+                        let supabase_key = std::env::var("SUPABASE_SERVICE_ROLE_KEY")
+                            .unwrap_or_else(|_| std::env::var("AXIM_ONYX_SECRET").unwrap_or_default());
+
+                        if !supabase_url.is_empty() && !supabase_key.is_empty() {
+                            let client = reqwest::blocking::Client::new();
+                            let url = format!("{supabase_url}/rest/v1/telemetry_logs?status=in.(500,502)&created_at=gte.now()-interval'24 hours'");
+                            // Simplified fetching logic for demonstration
+                            let _ = client.get(&url)
+                                .header("apikey", &supabase_key)
+                                .header("Authorization", format!("Bearer {supabase_key}"))
+                                .send();
+                        }
+                    }
+
                     // Human-in-the-Loop Interruption
                     // Check if task needs approval
                     // We will just do a quick Supabase check if the task is explicitly approved.
