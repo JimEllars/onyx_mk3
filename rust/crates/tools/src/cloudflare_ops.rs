@@ -25,7 +25,7 @@ pub async fn execute_purge_zone_cache(
 
     let res = client
         .post(&url)
-        .header("X-Auth-Key", api_key)
+        .header("Authorization", format!("Bearer {api_key}"))
         .header("X-Auth-Email", email)
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({ "purge_everything": true }))
@@ -67,7 +67,7 @@ pub async fn execute_trigger_pages_deployment(
 
     let res = client
         .post(&url)
-        .header("X-Auth-Key", api_key)
+        .header("Authorization", format!("Bearer {api_key}"))
         .header("X-Auth-Email", email)
         .send()
         .await

@@ -321,3 +321,55 @@ pub async fn execute_vault_artifact(
         Err(format!("Supabase API error: {}", res.status()))
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DispatchCriticalAlertInput {
+    pub event: String,
+    pub severity: String,
+    pub details: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DispatchCriticalAlertOutput {
+    pub success: bool,
+}
+
+pub async fn execute_dispatch_critical_alert(
+    input: DispatchCriticalAlertInput,
+    config: &RuntimeConfig,
+) -> Result<DispatchCriticalAlertOutput, String> {
+    let axim_core_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+
+    let axim_secret = config
+        .get("AXIM_ONYX_SECRET")
+        .and_then(|v| v.as_str())
+        .map_or_else(
+            || std::env::var("AXIM_ONYX_SECRET").unwrap_or_default(),
+            String::from,
+        );
+
+    let client = reqwest::Client::new();
+    let url = format!("{axim_core_url}/api/v1/telemetry/ingest");
+
+    let payload = serde_json::json!({
+        "event": input.event,
+        "severity": input.severity,
+        "details": input.details,
+    });
+
+    let res = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {axim_secret}"))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if res.status().is_success() {
+        Ok(DispatchCriticalAlertOutput { success: true })
+    } else {
+        Err(format!("Alert API error: {}", res.status()))
+    }
+}
