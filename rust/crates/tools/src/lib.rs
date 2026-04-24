@@ -1,10 +1,11 @@
+pub mod axim_ops;
 pub mod axim_vault;
 pub mod cloudflare_ops;
+pub mod communication_ops;
 pub mod github_ops;
+pub mod network_ops;
 pub mod supabase_ops;
 pub mod wordpress_admin;
-pub mod network_ops;
-pub mod axim_ops;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -1378,13 +1379,31 @@ fn execute_tool_with_enforcer(
         "REPL" => from_value::<ReplInput>(input).and_then(run_repl),
         "PowerShell" => from_value::<PowerShellInput>(input).and_then(run_powershell),
         "VerifyUrlStatus" => {
-            let input = serde_json::from_value::<crate::network_ops::VerifyUrlStatusInput>(input.clone()).map_err(|e| e.to_string())?;
-            let res = tokio::runtime::Runtime::new().unwrap().block_on(crate::network_ops::execute_verify_url_status(input));
+            let input =
+                serde_json::from_value::<crate::network_ops::VerifyUrlStatusInput>(input.clone())
+                    .map_err(|e| e.to_string())?;
+            let res = tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(crate::network_ops::execute_verify_url_status(input));
             serde_json::to_string(&res).map_err(|e| e.to_string())
         }
         "EscalateToAdmin" => {
-            let input = serde_json::from_value::<crate::axim_ops::EscalateToAdminInput>(input.clone()).map_err(|e| e.to_string())?;
-            let res = tokio::runtime::Runtime::new().unwrap().block_on(crate::axim_ops::execute_escalate_to_admin(input));
+            let input =
+                serde_json::from_value::<crate::axim_ops::EscalateToAdminInput>(input.clone())
+                    .map_err(|e| e.to_string())?;
+            let res = tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(crate::axim_ops::execute_escalate_to_admin(input));
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "DispatchSecureMessage" => {
+            let input = serde_json::from_value::<
+                crate::communication_ops::DispatchSecureMessageInput,
+            >(input.clone())
+            .map_err(|e| e.to_string())?;
+            let res = tokio::runtime::Runtime::new().unwrap().block_on(
+                crate::communication_ops::execute_dispatch_secure_message(input),
+            );
             serde_json::to_string(&res).map_err(|e| e.to_string())
         }
         "AskUserQuestion" => {

@@ -36,6 +36,10 @@ struct PlaybookCheckpoint {
 
 impl PlaybookExecutor {
     #[must_use]
+    pub fn get_omnichannel_guidelines() -> &'static str {
+        "Omnichannel Guidelines: You are Onyx, the enterprise orchestrator for AXiM Systems. You communicate securely with Mr. Ellars. When responding to an 'admin_inbound_message', you must use the DispatchSecureMessage tool to reply to the exact channel the message originated from. Keep SMS responses under 160 characters. Use detailed Markdown for Email responses."
+    }
+    #[must_use]
     pub fn new(definition: PlaybookDefinition, instance_id: String) -> Self {
         Self {
             definition,
@@ -235,7 +239,9 @@ impl PlaybookExecutor {
                         }
                     }
 
-                    if task.description == "Daily Executive Brief" || task.id == "Daily Executive Brief" {
+                    if task.description == "Daily Executive Brief"
+                        || task.id == "Daily Executive Brief"
+                    {
                         println!("Executing Daily Executive Brief...");
                         let supabase_url = std::env::var("SUPABASE_URL").unwrap_or_default();
                         let supabase_key = std::env::var("SUPABASE_SERVICE_ROLE_KEY")
@@ -249,28 +255,45 @@ impl PlaybookExecutor {
                                 .build()
                                 .unwrap();
                             let url = format!("{supabase_url}/rest/v1/telemetry_logs?created_at=gte.now()-interval'24 hours'");
-                            if let Ok(res) = client.get(&url).header("apikey", &supabase_key).header("Authorization", format!("Bearer {supabase_key}")).send() {
+                            if let Ok(res) = client
+                                .get(&url)
+                                .header("apikey", &supabase_key)
+                                .header("Authorization", format!("Bearer {supabase_key}"))
+                                .send()
+                            {
                                 if let Ok(logs) = res.json::<serde_json::Value>() {
                                     let total_conversions = 0; // Placeholder logic
-                                    let total_errors = logs.as_array().map_or(0, std::vec::Vec::len);
+                                    let total_errors =
+                                        logs.as_array().map_or(0, std::vec::Vec::len);
                                     let active_outages = 0; // Placeholder logic
 
                                     let markdown = format!("# AXiM Daily Executive Briefing\n\n**Total Conversions:** {total_conversions}\n**Total Errors:** {total_errors}\n**Active Outages:** {active_outages}");
 
-                                    if let Ok(axim_service_key) = std::env::var("AXIM_SERVICE_KEY") {
-                                        let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+                                    if let Ok(axim_service_key) = std::env::var("AXIM_SERVICE_KEY")
+                                    {
+                                        let axim_core_url = std::env::var("AXIM_CORE_URL")
+                                            .unwrap_or_else(|_| {
+                                                "https://api.axim.us.com".to_string()
+                                            });
                                         let email_url = format!("{axim_core_url}/api/send-email");
                                         let payload = serde_json::json!({
                                             "subject": "AXiM Daily Executive Briefing",
                                             "severity": "info",
                                             "message": markdown,
                                         });
-                                        let _ = client.post(&email_url).header("Authorization", format!("Bearer {axim_service_key}")).header("Content-Type", "application/json").json(&payload).send();
+                                        let _ = client
+                                            .post(&email_url)
+                                            .header(
+                                                "Authorization",
+                                                format!("Bearer {axim_service_key}"),
+                                            )
+                                            .header("Content-Type", "application/json")
+                                            .json(&payload)
+                                            .send();
                                     }
                                 }
                             }
                         }
-
                     }
 
                     // Human-in-the-Loop Interruption

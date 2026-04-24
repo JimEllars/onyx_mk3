@@ -38,6 +38,8 @@ pub enum LaneEventName {
     BranchStaleAgainstMain,
     #[serde(rename = "branch.workspace_mismatch")]
     BranchWorkspaceMismatch,
+    #[serde(rename = "admin_inbound_message")]
+    AdminInboundMessage,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -420,6 +422,29 @@ pub fn handle_telemetry_event(event: &TelemetryEvent) -> Option<String> {
         if let Some(url) = event.payload.get("url").and_then(|v| v.as_str()) {
             return Some(format!(
                 "CRITICAL: Micro-app {url} is down. Execute the PurgeCloudflareCache tool immediately for this zone."
+            ));
+        }
+    } else if event.r#type == "admin_inbound_message" {
+        let text = event
+            .payload
+            .get("message_text")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let source = event
+            .payload
+            .get("channel_source")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let authorized = event
+            .payload
+            .get("sender_authorization_flag")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+
+        if authorized {
+            return Some(format!(
+                "Admin message received via {source}: {text}. Execute required actions and respond using the DispatchSecureMessage tool to the same channel.",
+
             ));
         }
     }
