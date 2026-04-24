@@ -152,6 +152,18 @@ pub fn resolve_model_alias(model: &str) -> String {
 }
 
 #[must_use]
+pub fn heuristic_router(task: &str) -> String {
+    if task.contains("fetch_vault_artifact") || task.contains("document auditing") {
+        return "claude-3-5-sonnet-20241022".to_string();
+    }
+    if task.contains("analyzeInternalInfrastructure") || task.contains("anomaly detection") {
+        return "deepseek-reasoner".to_string();
+    }
+
+    "claude-3-5-sonnet-20241022".to_string()
+}
+
+#[must_use]
 pub fn metadata_for_model(model: &str) -> Option<ProviderMetadata> {
     let canonical = resolve_model_alias(model);
     if canonical.starts_with("claude") {
