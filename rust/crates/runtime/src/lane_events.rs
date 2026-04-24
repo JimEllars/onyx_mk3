@@ -401,3 +401,27 @@ mod tests {
         assert_eq!(retained[0].detail.as_deref(), Some("new"));
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelemetryEvent {
+    pub r#type: String,
+    pub payload: serde_json::Value,
+}
+
+#[must_use]
+pub fn handle_telemetry_event(event: &TelemetryEvent) -> Option<String> {
+    if event.r#type == "document_vaulted" {
+        if let Some(id) = event.payload.get("id").and_then(|v| v.as_str()) {
+            return Some(format!(
+                "A new PDF has been vaulted with Trace ID: {id}. Execute the FetchVaultArtifact tool, read the document, and verify formatting."
+            ));
+        }
+    } else if event.r#type == "uptime_failure" {
+        if let Some(url) = event.payload.get("url").and_then(|v| v.as_str()) {
+            return Some(format!(
+                "CRITICAL: Micro-app {url} is down. Execute the PurgeCloudflareCache tool immediately for this zone."
+            ));
+        }
+    }
+    None
+}

@@ -1,5 +1,5 @@
-use runtime::ToolError;
 use reqwest::Client;
+use runtime::ToolError;
 use std::env;
 
 pub async fn fetch_vault_artifact(trace_id: &str) -> Result<String, ToolError> {
@@ -20,7 +20,10 @@ pub async fn fetch_vault_artifact(trace_id: &str) -> Result<String, ToolError> {
         .map_err(|e| ToolError::new(format!("Request failed: {e}")))?;
 
     if !res.status().is_success() {
-        return Err(ToolError::new(format!("API returned error: {}", res.status())));
+        return Err(ToolError::new(format!(
+            "API returned error: {}",
+            res.status()
+        )));
     }
 
     let pdf_bytes = res
@@ -31,7 +34,9 @@ pub async fn fetch_vault_artifact(trace_id: &str) -> Result<String, ToolError> {
     let extracted_text = crate::pdf_extract::extract_text_from_bytes(pdf_bytes.as_ref());
 
     if extracted_text.is_empty() {
-        return Err(ToolError::new("Extracted text is empty or PDF is invalid".to_string()));
+        return Err(ToolError::new(
+            "Extracted text is empty or PDF is invalid".to_string(),
+        ));
     }
 
     Ok(extracted_text)
