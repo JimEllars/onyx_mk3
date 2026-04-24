@@ -1,20 +1,21 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EscalateToAdminInput {
-    pub subject: String,
-    pub severity: String,
-    pub message: String,
+pub struct DispatchSecureMessageInput {
+    pub channel: String, // 'email', 'sms', 'system_alert'
+    pub body: String,
+    pub thread_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EscalateToAdminOutput {
+pub struct DispatchSecureMessageOutput {
     pub success: bool,
+    pub error: Option<String>,
 }
 
-pub async fn execute_escalate_to_admin(
-    input: EscalateToAdminInput,
-) -> Result<EscalateToAdminOutput, String> {
+pub async fn execute_dispatch_secure_message(
+    input: DispatchSecureMessageInput,
+) -> Result<DispatchSecureMessageOutput, String> {
     let axim_core_url =
         std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
 
@@ -26,14 +27,12 @@ pub async fn execute_escalate_to_admin(
         .build()
         .map_err(|e| format!("Failed to build reqwest client: {e}"))?;
 
-    let url = format!("{axim_core_url}/api/send-email");
+    let url = format!("{axim_core_url}/api/send-message");
 
     let payload = serde_json::json!({
-        "to": "james.ellars@axim.us.com",
-        "cc": "jrellars@gmail.com",
-        "subject": input.subject,
-        "severity": input.severity,
-        "message": input.message,
+        "channel": input.channel,
+        "body": input.body,
+        "thread_id": input.thread_id,
     });
 
     let res = client
@@ -46,7 +45,10 @@ pub async fn execute_escalate_to_admin(
         .map_err(|e| format!("Request failed: {e}"))?;
 
     if res.status().is_success() {
-        Ok(EscalateToAdminOutput { success: true })
+        Ok(DispatchSecureMessageOutput {
+            success: true,
+            error: None,
+        })
     } else {
         Err(format!("Axim API error: {}", res.status()))
     }

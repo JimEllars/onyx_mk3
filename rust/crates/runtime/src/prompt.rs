@@ -161,6 +161,7 @@ impl SystemPromptBuilder {
         if let Some(config) = &self.config {
             sections.push(render_config_section(config));
         }
+        sections.push(crate::playbook::PlaybookExecutor::get_omnichannel_guidelines().to_string());
         sections.extend(self.append_sections.iter().cloned());
         sections
     }
