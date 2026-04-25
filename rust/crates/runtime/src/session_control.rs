@@ -408,6 +408,18 @@ pub fn resolve_managed_session_path_for(
             return Ok(path);
         }
     }
+
+    if let Some(legacy_root) = directory
+        .parent()
+        .filter(|parent| parent.file_name().is_some_and(|name| name == "sessions"))
+    {
+        for extension in [PRIMARY_SESSION_EXTENSION, LEGACY_SESSION_EXTENSION] {
+            let path = legacy_root.join(format!("{session_id}.{extension}"));
+            if path.exists() {
+                return Ok(path);
+            }
+        }
+    }
     Err(SessionControlError::Format(
         format_missing_session_reference(session_id),
     ))
@@ -429,57 +441,75 @@ pub fn list_managed_sessions() -> Result<Vec<ManagedSessionSummary>, SessionCont
 pub fn list_managed_sessions_for(
     base_dir: impl AsRef<Path>,
 ) -> Result<Vec<ManagedSessionSummary>, SessionControlError> {
+    let directory = managed_sessions_dir_for(base_dir)?;
     let mut sessions = Vec::new();
-    for entry in fs::read_dir(managed_sessions_dir_for(base_dir)?)? {
-        let entry = entry?;
-        let path = entry.path();
-        if !is_managed_session_file(&path) {
-            continue;
+
+    let mut read_entries = |dir: &Path| -> Result<(), SessionControlError> {
+        if !dir.exists() {
+            return Ok(());
         }
-        let metadata = entry.metadata()?;
-        let modified_epoch_millis = metadata
-            .modified()
-            .ok()
-            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-            .map(|duration| duration.as_millis())
-            .unwrap_or_default();
-        let (id, message_count, parent_session_id, branch_name) =
-            match Session::load_from_path(&path) {
-                Ok(session) => {
-                    let parent_session_id = session
-                        .fork
-                        .as_ref()
-                        .map(|fork| fork.parent_session_id.clone());
-                    let branch_name = session
-                        .fork
-                        .as_ref()
-                        .and_then(|fork| fork.branch_name.clone());
-                    (
-                        session.session_id,
-                        session.messages.len(),
-                        parent_session_id,
-                        branch_name,
-                    )
-                }
-                Err(_) => (
-                    path.file_stem()
-                        .and_then(|value| value.to_str())
-                        .unwrap_or("unknown")
-                        .to_string(),
-                    0,
-                    None,
-                    None,
-                ),
-            };
-        sessions.push(ManagedSessionSummary {
-            id,
-            path,
-            modified_epoch_millis,
-            message_count,
-            parent_session_id,
-            branch_name,
-        });
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !is_managed_session_file(&path) {
+                continue;
+            }
+            let metadata = entry.metadata()?;
+            let modified_epoch_millis = metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| duration.as_millis())
+                .unwrap_or_default();
+            let (id, message_count, parent_session_id, branch_name) =
+                match Session::load_from_path(&path) {
+                    Ok(session) => {
+                        let parent_session_id = session
+                            .fork
+                            .as_ref()
+                            .map(|fork| fork.parent_session_id.clone());
+                        let branch_name = session
+                            .fork
+                            .as_ref()
+                            .and_then(|fork| fork.branch_name.clone());
+                        (
+                            session.session_id,
+                            session.messages.len(),
+                            parent_session_id,
+                            branch_name,
+                        )
+                    }
+                    Err(_) => (
+                        path.file_stem()
+                            .and_then(|value| value.to_str())
+                            .unwrap_or("unknown")
+                            .to_string(),
+                        0,
+                        None,
+                        None,
+                    ),
+                };
+            sessions.push(ManagedSessionSummary {
+                id,
+                path,
+                modified_epoch_millis,
+                message_count,
+                parent_session_id,
+                branch_name,
+            });
+        }
+        Ok(())
+    };
+
+    read_entries(&directory)?;
+
+    if let Some(legacy_root) = directory
+        .parent()
+        .filter(|parent| parent.file_name().is_some_and(|name| name == "sessions"))
+    {
+        read_entries(legacy_root)?;
     }
+
     sessions.sort_by(|left, right| {
         right
             .modified_epoch_millis
