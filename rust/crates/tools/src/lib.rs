@@ -1396,6 +1396,25 @@ fn execute_tool_with_enforcer(
                 .block_on(crate::axim_ops::execute_escalate_to_admin(input));
             serde_json::to_string(&res).map_err(|e| e.to_string())
         }
+        "TriggerMarketingLoop" => {
+            let input =
+                serde_json::from_value::<crate::axim_ops::TriggerMarketingLoopInput>(input.clone())
+                    .map_err(|e| e.to_string())?;
+            let res = tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(crate::axim_ops::execute_trigger_marketing_loop(input));
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "ReconcileMicroAppRevenue" => {
+            let input = serde_json::from_value::<crate::axim_ops::ReconcileMicroAppRevenueInput>(
+                input.clone(),
+            )
+            .map_err(|e| e.to_string())?;
+            let res = tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(crate::axim_ops::execute_reconcile_micro_app_revenue(input));
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
         "DispatchSecureMessage" => {
             let input = serde_json::from_value::<
                 crate::communication_ops::DispatchSecureMessageInput,
@@ -1403,6 +1422,16 @@ fn execute_tool_with_enforcer(
             .map_err(|e| e.to_string())?;
             let res = tokio::runtime::Runtime::new().unwrap().block_on(
                 crate::communication_ops::execute_dispatch_secure_message(input),
+            );
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "DispatchExecutiveBrief" => {
+            let input = serde_json::from_value::<
+                crate::communication_ops::DispatchExecutiveBriefInput,
+            >(input.clone())
+            .map_err(|e| e.to_string())?;
+            let res = tokio::runtime::Runtime::new().unwrap().block_on(
+                crate::communication_ops::execute_dispatch_executive_brief(input),
             );
             serde_json::to_string(&res).map_err(|e| e.to_string())
         }
@@ -3841,11 +3870,55 @@ fn write_agent_manifest(manifest: &AgentOutput) -> Result<(), String> {
 
             // Stream lane events to AXiM Core if the endpoint is configured
             if let Ok(axim_endpoint) = std::env::var("AXIM_CORE_LANE_EVENTS_ENDPOINT") {
-                let _ = reqwest::blocking::Client::new()
-                    .post(&axim_endpoint)
-                    .header("Content-Type", "application/json")
-                    .body(event_json)
-                    .send();
+                let event_json_clone = event_json.clone();
+                std::thread::spawn(move || {
+                    let client = reqwest::blocking::Client::builder()
+                        .timeout(std::time::Duration::from_secs(5))
+                        .build()
+                        .unwrap_or_else(|_| reqwest::blocking::Client::new());
+
+                    let mut attempts = 0;
+                    let max_attempts = 5;
+                    let base_delay = std::time::Duration::from_millis(500);
+
+                    while attempts < max_attempts {
+                        let res = client
+                            .post(&axim_endpoint)
+                            .header("Content-Type", "application/json")
+                            .body(event_json_clone.clone())
+                            .send();
+
+                        match res {
+                            Ok(response) if response.status().is_success() => {
+                                break;
+                            }
+                            _ => {
+                                attempts += 1;
+                                if attempts < max_attempts {
+                                    // Jittered exponential backoff
+                                    let subsec_nanos = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .subsec_nanos();
+                                    #[allow(clippy::cast_lossless)]
+                                    let frac = subsec_nanos as f64 / 1_000_000_000.0;
+                                    let jitter: f64 = 1.0 + frac * 0.4 - 0.2; // approx 0.8 to 1.2
+
+                                    #[allow(
+                                        clippy::cast_precision_loss,
+                                        clippy::cast_possible_truncation,
+                                        clippy::cast_sign_loss
+                                    )]
+                                    let delay_ms = (base_delay.as_millis() as f64
+                                        * (2.0_f64.powi(attempts - 1))
+                                        * jitter)
+                                        as u64;
+                                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                                }
+                            }
+                        }
+                    }
+                });
             }
         }
     }

@@ -79,3 +79,60 @@ pub async fn execute_trigger_pages_deployment(
         Err(format!("Cloudflare API error: {}", res.status()))
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplyEdgeBlockInput {
+    pub zone_id: String,
+    pub ip_address: String,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplyEdgeBlockOutput {
+    pub success: bool,
+    pub error: Option<String>,
+}
+
+pub async fn execute_apply_edge_block(
+    input: ApplyEdgeBlockInput,
+) -> Result<ApplyEdgeBlockOutput, String> {
+    let api_key =
+        std::env::var("CLOUDFLARE_API_TOKEN").map_err(|_| "CLOUDFLARE_API_TOKEN is not set")?;
+    let email = std::env::var("CLOUDFLARE_EMAIL").map_err(|_| "CLOUDFLARE_EMAIL is not set")?;
+
+    let client = reqwest::Client::new();
+    let url = format!(
+        "https://api.cloudflare.com/client/v4/zones/{}/firewall/access_rules/rules",
+        input.zone_id
+    );
+
+    let notes = input.notes.unwrap_or_else(|| "Blocked by Onyx".to_string());
+
+    let payload = serde_json::json!({
+        "mode": "block",
+        "configuration": {
+            "target": "ip",
+            "value": input.ip_address
+        },
+        "notes": notes
+    });
+
+    let res = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("X-Auth-Email", email)
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if res.status().is_success() {
+        Ok(ApplyEdgeBlockOutput {
+            success: true,
+            error: None,
+        })
+    } else {
+        Err(format!("Cloudflare API error: {}", res.status()))
+    }
+}
