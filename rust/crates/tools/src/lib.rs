@@ -8858,8 +8858,8 @@ printf 'pwsh:%s' "$1"
             commit_policy: "single commit".to_string(),
             reporting_contract: "print build/test result and sha".to_string(),
             escalation_policy: "manual escalation".to_string(),
-            context: "".to_string(),
-            goal: "".to_string(),
+            context: String::new(),
+            goal: String::new(),
             expected_schema: serde_json::Value::Null,
         })
         .expect("task packet should create a task");

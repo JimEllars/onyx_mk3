@@ -427,7 +427,7 @@ impl WorkerRegistry {
     ) -> Result<Worker, String> {
         if let Some(lock_id) = resource_lock {
             if !crate::swarm_lock::DistributedLock::acquire(lock_id, 300).await? {
-                return Err(format!("Could not acquire distributed lock for resource: {}", lock_id));
+                return Err(format!("Could not acquire distributed lock for resource: {lock_id}"));
             }
         }
 

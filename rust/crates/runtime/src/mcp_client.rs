@@ -72,7 +72,7 @@ impl McpClientBootstrap {
 
 
 impl McpClientTransport {
-    pub async fn resolve_dynamic_servers(
+    pub fn resolve_dynamic_servers(
         manager: &mut crate::mcp_stdio::McpServerManager,
         tool_registry: &crate::mcp_tool_bridge::McpToolRegistry,
         configs: std::collections::BTreeMap<String, crate::config::ScopedMcpServerConfig>

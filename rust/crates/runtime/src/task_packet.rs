@@ -134,8 +134,8 @@ mod tests {
             commit_policy: String::new(),
             reporting_contract: String::new(),
             escalation_policy: String::new(),
-            context: "".to_string(),
-            goal: "".to_string(),
+            context: String::new(),
+            goal: String::new(),
             expected_schema: serde_json::Value::Null,
         };
 
