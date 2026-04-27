@@ -90,7 +90,7 @@ impl McpToolRegistry {
     }
 
 
-    pub async fn dynamically_load_tools(&self, server_name: &str) -> Result<(), String> {
+    pub fn dynamically_load_tools(&self, server_name: &str) -> Result<(), String> {
         let manager_lock = self.manager.get().ok_or("Manager not set")?.clone();
         let _manager = manager_lock.lock().map_err(|_| "Poisoned")?;
 
