@@ -169,6 +169,14 @@ pub struct SessionTraceRecord {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TelemetryEvent {
+
+    SubAgentEvent {
+        session_id: String,
+        event_type: String,
+        agent_id: String,
+        #[serde(default, skip_serializing_if = "Map::is_empty")]
+        attributes: Map<String, Value>,
+    },
     HttpRequestStarted {
         session_id: String,
         attempt: u32,

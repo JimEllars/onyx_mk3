@@ -11,6 +11,9 @@ pub struct TaskPacket {
     pub commit_policy: String,
     pub reporting_contract: String,
     pub escalation_policy: String,
+    pub context: String,
+    pub goal: String,
+    pub expected_schema: serde_json::Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,6 +109,9 @@ mod tests {
             commit_policy: "single verified commit".to_string(),
             reporting_contract: "print build result, test result, commit sha".to_string(),
             escalation_policy: "stop only on destructive ambiguity".to_string(),
+            context: "context".to_string(),
+            goal: "goal".to_string(),
+            expected_schema: serde_json::Value::Null,
         }
     }
 
@@ -128,6 +134,9 @@ mod tests {
             commit_policy: String::new(),
             reporting_contract: String::new(),
             escalation_policy: String::new(),
+            context: "".to_string(),
+            goal: "".to_string(),
+            expected_schema: serde_json::Value::Null,
         };
 
         let error = validate_packet(packet).expect_err("packet should be rejected");

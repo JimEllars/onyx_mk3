@@ -24,6 +24,13 @@ pub enum LaneEventName {
     MergeReady,
     #[serde(rename = "lane.finished")]
     Finished,
+    #[serde(rename = "lane.sub_agent.spawned")]
+    SubAgentSpawned,
+    #[serde(rename = "lane.sub_agent.working")]
+    SubAgentWorking,
+    #[serde(rename = "lane.sub_agent.completed")]
+    SubAgentCompleted,
+
     #[serde(rename = "lane.failed")]
     Failed,
     #[serde(rename = "lane.reconciled")]
