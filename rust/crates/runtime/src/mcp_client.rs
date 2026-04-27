@@ -72,23 +72,18 @@ impl McpClientBootstrap {
     #[must_use]
     pub fn for_sub_agent(
         server_name: &str,
-        packet: &crate::task_packet::TaskPacket,
-        tool_call_timeout_ms: Option<u64>,
+        executable_path: &str,
     ) -> Self {
-        let packet_json = serde_json::to_string(packet).unwrap_or_default();
-        let cmd = std::env::var("CARGO_BIN_EXE_onyx")
-            .unwrap_or_else(|_| std::env::current_exe().map_or_else(|_| "onyx".to_string(), |p| p.to_string_lossy().to_string()));
-
         Self {
             server_name: server_name.to_string(),
             normalized_name: normalize_name_for_mcp(server_name),
             tool_prefix: mcp_tool_prefix(server_name),
             signature: None,
             transport: McpClientTransport::Stdio(McpStdioTransport {
-                command: cmd,
-                args: vec!["--output-format".to_string(), "json".to_string(), "prompt".to_string(), packet_json],
+                command: executable_path.to_string(),
+                args: vec!["mcp-server".to_string()],
                 env: BTreeMap::from([("ONYX_IS_SUB_AGENT".to_string(), "true".to_string())]),
-                tool_call_timeout_ms,
+                tool_call_timeout_ms: Some(300_000),
             }),
         }
     }
@@ -293,32 +288,14 @@ mod tests {
 
     #[test]
     fn bootstraps_sub_agent_into_stdio_transport() {
-        use crate::task_packet::TaskPacket;
-
-        let packet = TaskPacket {
-            objective: "obj".to_string(),
-            scope: "scope".to_string(),
-            repo: "repo".to_string(),
-            branch_policy: "bp".to_string(),
-            acceptance_tests: vec![],
-            commit_policy: "cp".to_string(),
-            reporting_contract: "rc".to_string(),
-            escalation_policy: "ep".to_string(),
-            context: "ctx".to_string(),
-            goal: "goal".to_string(),
-            expected_schema: serde_json::Value::Null,
-        };
-
-        let bootstrap = McpClientBootstrap::for_sub_agent("sub-agent", &packet, Some(30_000));
+        let bootstrap = McpClientBootstrap::for_sub_agent("sub-agent", "/path/to/onyx");
         assert_eq!(bootstrap.normalized_name, "sub-agent");
         match bootstrap.transport {
             McpClientTransport::Stdio(transport) => {
-                assert_eq!(transport.args[0], "--output-format");
-                assert_eq!(transport.args[1], "json");
-                assert_eq!(transport.args[2], "prompt");
-                assert!(transport.args[3].contains("obj"));
+                assert_eq!(transport.command, "/path/to/onyx");
+                assert_eq!(transport.args, vec!["mcp-server".to_string()]);
                 assert_eq!(transport.env.get("ONYX_IS_SUB_AGENT").map(String::as_str), Some("true"));
-                assert_eq!(transport.tool_call_timeout_ms, Some(30_000));
+                assert_eq!(transport.tool_call_timeout_ms, Some(300_000));
             }
             other => panic!("expected stdio transport, got {other:?}"),
         }
