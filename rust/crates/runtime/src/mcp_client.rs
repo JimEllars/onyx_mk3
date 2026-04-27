@@ -70,6 +70,27 @@ impl McpClientBootstrap {
     }
 }
 
+
+impl McpClientTransport {
+    pub async fn resolve_dynamic_servers(
+        manager: &mut crate::mcp_stdio::McpServerManager,
+        tool_registry: &crate::mcp_tool_bridge::McpToolRegistry,
+        configs: std::collections::BTreeMap<String, crate::config::ScopedMcpServerConfig>
+    ) -> Result<(), String> {
+        for (server_name, config) in configs {
+            manager.add_server(&server_name, &config);
+            tool_registry.register_server(
+                &server_name,
+                crate::mcp_tool_bridge::McpConnectionStatus::Connecting,
+                vec![],
+                vec![],
+                None,
+            );
+        }
+        Ok(())
+    }
+}
+
 impl McpClientTransport {
     #[must_use]
     pub fn from_config(config: &McpServerConfig) -> Self {

@@ -55,3 +55,25 @@ impl SupabaseTelemetrySink {
         }
     }
 }
+
+impl SupabaseTelemetrySink {
+    pub fn dispatch_sub_agent_event(&self, event_type: &str, agent_id: &str, attributes: &serde_json::Map<String, serde_json::Value>) {
+        let event = serde_json::json!({
+            "type": "sub_agent_event",
+            "event_type": event_type,
+            "agent_id": agent_id,
+            "attributes": attributes,
+            "timestamp": crate::current_timestamp_ms(),
+        });
+
+        if let Ok(json) = serde_json::to_string(&event) {
+            let _ = self
+                .client
+                .post(&self.endpoint)
+                .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {}", self.bearer_token))
+                .body(json)
+                .send();
+        }
+    }
+}

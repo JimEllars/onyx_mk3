@@ -259,6 +259,9 @@ mod tests {
             commit_policy: "single commit".to_string(),
             reporting_contract: "print commit sha".to_string(),
             escalation_policy: "manual escalation".to_string(),
+            context: "context".to_string(),
+            goal: "goal".to_string(),
+            expected_schema: serde_json::Value::Null,
         };
 
         let task = registry

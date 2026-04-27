@@ -417,6 +417,41 @@ impl WorkerRegistry {
         Ok(worker.clone())
     }
 
+
+
+    pub async fn spawn_sub_agent(
+        &self,
+        packet: crate::task_packet::TaskPacket,
+        resource_lock: Option<&str>,
+        cwd: &str,
+    ) -> Result<Worker, String> {
+        if let Some(lock_id) = resource_lock {
+            if !crate::swarm_lock::DistributedLock::acquire(lock_id, 300).await? {
+                return Err(format!("Could not acquire distributed lock for resource: {}", lock_id));
+            }
+        }
+
+        let worker = self.create(cwd, &[], true);
+
+        // Asynchronously set up the sub agent.
+        // We'll simulate spinning up an isolated worker by transitioning it to running.
+        let worker_id = worker.worker_id.clone();
+
+        let prompt = format!("Execute sub-task objective: {}. Scope: {}. Goal: {}. Report via {}.",
+                             packet.objective, packet.scope, packet.goal, packet.reporting_contract);
+
+        let mut inner = self.inner.lock().expect("worker registry lock poisoned");
+        if let Some(w) = inner.workers.get_mut(&worker_id) {
+            w.trust_gate_cleared = true;
+            w.status = WorkerStatus::ReadyForPrompt;
+        }
+        drop(inner);
+
+        let started_worker = self.send_prompt(&worker_id, Some(&prompt))?;
+
+        Ok(started_worker)
+    }
+
     pub fn send_prompt(&self, worker_id: &str, prompt: Option<&str>) -> Result<Worker, String> {
         let mut inner = self.inner.lock().expect("worker registry lock poisoned");
         let worker = inner

@@ -86,7 +86,10 @@ async fn axim_headless() {
         "acceptance_tests": [],
         "commit_policy": "skip",
         "reporting_contract": "default",
-        "escalation_policy": "abort"
+        "escalation_policy": "abort",
+        "context": "",
+        "goal": "",
+        "expected_schema": null
     });
 
     let resp = client
