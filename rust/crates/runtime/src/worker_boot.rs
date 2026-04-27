@@ -437,8 +437,12 @@ impl WorkerRegistry {
         // We'll simulate spinning up an isolated worker by transitioning it to running.
         let worker_id = worker.worker_id.clone();
 
-        let prompt = format!("Execute sub-task objective: {}. Scope: {}. Goal: {}. Report via {}.",
-                             packet.objective, packet.scope, packet.goal, packet.reporting_contract);
+        let tool_call = serde_json::json!({
+            "type": "tool_call",
+            "tool": "RunTaskPacket",
+            "parameters": packet
+        });
+        let prompt = tool_call.to_string();
 
         let mut inner = self.inner.lock().expect("worker registry lock poisoned");
         if let Some(w) = inner.workers.get_mut(&worker_id) {
@@ -665,6 +669,7 @@ struct StateSnapshot<'a> {
     /// Seconds since last state transition. Clawhip uses this to detect
     /// stalled workers without computing epoch deltas.
     seconds_since_update: u64,
+    is_sub_agent: bool,
 }
 
 fn emit_state_file(worker: &Worker) {
@@ -685,6 +690,7 @@ fn emit_state_file(worker: &Worker) {
         last_event: worker.events.last(),
         updated_at: worker.updated_at,
         seconds_since_update: now.saturating_sub(worker.updated_at),
+        is_sub_agent: std::env::var("ONYX_IS_SUB_AGENT").unwrap_or_else(|_| "false".to_string()) == "true",
     };
 
     if let Ok(json) = serde_json::to_string_pretty(&snapshot) {
