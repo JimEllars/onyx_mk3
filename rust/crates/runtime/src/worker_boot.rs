@@ -423,6 +423,13 @@ impl WorkerRegistry {
         resource_lock: Option<&str>,
         cwd: &str,
     ) -> Result<Worker, String> {
+        crate::ui_stream::stream_log_to_ui(
+            "worker_system",
+            &format!("Spawning sub-agent task: {}", packet.objective),
+            "system",
+        )
+        .await;
+
         if let Some(lock_id) = resource_lock {
             if !crate::swarm_lock::DistributedLock::acquire(lock_id, 300).await? {
                 return Err(format!(
@@ -569,7 +576,21 @@ impl WorkerRegistry {
             .get_mut(worker_id)
             .ok_or_else(|| format!("worker not found: {worker_id}"))?;
 
+        // Asynchronously stream log - needs a separate tokio spawn since observe_completion is not async
+        let worker_id_clone = worker_id.to_string();
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::spawn(async move {
+                crate::ui_stream::stream_log_to_ui(
+                    &worker_id_clone,
+                    "Worker finished execution.",
+                    "system",
+                )
+                .await;
+            });
+        }
+
         let is_provider_failure =
+
             (finish_reason == "unknown" && tokens_output == 0) || finish_reason == "error";
 
         if is_provider_failure {

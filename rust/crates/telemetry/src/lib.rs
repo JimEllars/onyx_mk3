@@ -12,6 +12,15 @@ use serde_json::{Map, Value};
 pub const DEFAULT_ANTHROPIC_VERSION: &str = "2023-06-01";
 pub const DEFAULT_APP_NAME: &str = "claude-code";
 pub const DEFAULT_RUNTIME: &str = "rust";
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AximTelemetryPayload {
+    pub app_id: String,
+    pub timestamp: u64,
+    pub active_users: u32,
+    pub revenue_cents: u64,
+    pub error_rate_percent: f32,
+    pub server_status: String,
+}
 pub const DEFAULT_AGENTIC_BETA: &str = "claude-code-20250219";
 pub const DEFAULT_PROMPT_CACHING_SCOPE_BETA: &str = "prompt-caching-scope-2026-01-05";
 
