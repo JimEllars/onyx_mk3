@@ -1,2 +1,0 @@
-{"created_at_ms":1777159700122,"session_id":"session-1777159700122-0","type":"session_meta","updated_at_ms":1777159700122,"version":1,"workspace_root":"/app/rust/crates/mock-anthropic-service"}
-{"message":{"blocks":[{"text":"Execute task onyx-ai. Objective: Fix the bug. Branch policy: read-only. Scope: src/","type":"text"}],"role":"user"},"type":"message"}
