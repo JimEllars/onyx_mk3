@@ -125,3 +125,46 @@ pub async fn execute_consult_chatbase_agent(
         conversation_id,
     })
 }
+
+pub async fn submit_chatbase_tool_result(
+    agent_role: &str,
+    conversation_id: &str,
+    tool_call_id: &str,
+    output: serde_json::Value,
+) -> Result<(), String> {
+    let api_key = std::env::var("CHATBASE_API_KEY").map_err(|_| "CHATBASE_API_KEY is not set")?;
+
+    let agent_id = match agent_role {
+        "CEO" => "fViIyS2-64jXMyakjf70T",
+        "CTO" => "CgplD95DZW5tnXRPEGV2A",
+        "CFO" => "NHjryFStm6hn2kg6q7KgN",
+        "COO" => "7biTg1Hu6DMWXUpTWfCLu",
+        "Legal" => "ioJLtMqvhqx69Mokhad64",
+        _ => return Err(format!("Invalid agent role: {agent_role}")),
+    };
+
+    let client = reqwest::Client::new();
+    let url = format!(
+        "https://www.chatbase.co/api/v2/agents/{agent_id}/conversations/{conversation_id}/tool-result"
+    );
+
+    let payload = serde_json::json!({
+        "toolCallId": tool_call_id,
+        "output": output
+    });
+
+    let res = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        return Err(format!("Chatbase API error: {}", res.status()));
+    }
+
+    Ok(())
+}

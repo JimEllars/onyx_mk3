@@ -92,3 +92,47 @@ impl EcosystemToolRegistry {
         self.schemas.read().unwrap().iter().find(|s| s.name == name).cloned()
     }
 }
+
+pub async fn trigger_external_workflow(
+    target_service: String,
+    endpoint_url: String,
+    json_payload: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let axim_core_url = std::env::var("AXIM_CORE_URL").map_err(|_| "AXIM_CORE_URL is not set")?;
+    let axim_service_key =
+        std::env::var("AXIM_SERVICE_KEY").map_err(|_| "AXIM_SERVICE_KEY is not set")?;
+
+    let dispatcher_url = format!("{}/api/v1/dispatcher", axim_core_url.trim_end_matches('/'));
+
+    let client = reqwest::Client::new();
+
+    let payload = serde_json::json!({
+        "target_service": target_service,
+        "endpoint_url": endpoint_url,
+        "payload": json_payload
+    });
+
+    let res = client
+        .post(&dispatcher_url)
+        .header("Authorization", format!("Bearer {axim_service_key}"))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Network error triggering external workflow: {}", e))?;
+
+    if !res.status().is_success() {
+        return Err(format!(
+            "Dispatcher API error: {} - {}",
+            res.status(),
+            res.text().await.unwrap_or_default()
+        ));
+    }
+
+    let response_body: serde_json::Value = res
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse dispatcher response: {}", e))?;
+
+    Ok(response_body)
+}
