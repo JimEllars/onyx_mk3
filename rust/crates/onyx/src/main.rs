@@ -108,6 +108,7 @@ type RuntimePluginStateBuildOutput = (
     Vec<RuntimeToolDefinition>,
 );
 
+#[allow(clippy::too_many_lines)]
 fn main() {
     runtime::internal_mcp::set_internal_tool_handler(Box::new(|tool_name, arguments, config| {
         let tool_name = tool_name.to_string();
@@ -156,9 +157,65 @@ fn main() {
                         .map_err(|e| format!("Serialization error: {e}"))?)
                 }
                 "execute_update_seo_metadata" => {
-                    let input = serde_json::from_value(arguments)
+                    let input = serde_json::from_value(arguments.clone())
                         .map_err(|e| format!("Invalid args: {e}"))?;
                     let output = tools::wordpress_admin::execute_update_seo_metadata(input).await?;
+                    Ok(serde_json::to_value(output)
+                        .map_err(|e| format!("Serialization error: {e}"))?)
+                }
+                "execute_create_wordpress_post" => {
+                    let title = arguments
+                        .get("title")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let content = arguments
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let status = arguments
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let output = tools::wordpress_admin::execute_create_wordpress_post(
+                        title, content, status,
+                    )
+                    .await?;
+                    Ok(serde_json::to_value(output)
+                        .map_err(|e| format!("Serialization error: {e}"))?)
+                }
+                "execute_update_wordpress_post" => {
+                    let post_id = arguments
+                        .get("post_id")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0);
+                    let content = arguments
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let output =
+                        tools::wordpress_admin::execute_update_wordpress_post(post_id, content)
+                            .await?;
+                    Ok(serde_json::to_value(output)
+                        .map_err(|e| format!("Serialization error: {e}"))?)
+                }
+                "execute_send_email" => {
+                    let to = arguments.get("to").and_then(|v| v.as_str()).unwrap_or("");
+                    let subject = arguments
+                        .get("subject")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let body = arguments.get("body").and_then(|v| v.as_str()).unwrap_or("");
+                    tools::communication_ops::execute_send_email(to, subject, body).await?;
+                    Ok(serde_json::json!({ "success": true }))
+                }
+                "execute_read_recent_emails" => {
+                    let limit = arguments
+                        .get("limit")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(10);
+                    let limit = u32::try_from(limit).unwrap_or(10);
+                    let output =
+                        tools::communication_ops::execute_read_recent_emails(limit).await?;
                     Ok(serde_json::to_value(output)
                         .map_err(|e| format!("Serialization error: {e}"))?)
                 }
@@ -8943,13 +9000,15 @@ mod tests {
     fn merge_prompt_with_stdin_appends_piped_content_as_context() {
         // given
         let prompt = "Review this";
-        let piped = "fn main() { println!(\"hi\"); }\n";
+        let piped = "#[allow(clippy::too_many_lines)]
+fn main() { println!(\"hi\"); }\n";
 
         // when
         let merged = merge_prompt_with_stdin(prompt, Some(piped));
 
         // then
-        assert_eq!(merged, "Review this\n\nfn main() { println!(\"hi\"); }");
+        assert_eq!(merged, "Review this\n\n#[allow(clippy::too_many_lines)]
+fn main() { println!(\"hi\"); }");
     }
 
     #[test]

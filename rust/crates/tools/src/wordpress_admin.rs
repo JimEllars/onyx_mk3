@@ -124,3 +124,70 @@ pub async fn execute_update_seo_metadata(
         Err(format!("Failed to update SEO metadata: {}", res.status()))
     }
 }
+
+pub async fn execute_create_wordpress_post(
+    title: &str,
+    content: &str,
+    status: &str,
+) -> Result<serde_json::Value, String> {
+    let wp_url = std::env::var("WP_API_URL").map_err(|_| "WP_API_URL is not set")?;
+    let app_password = std::env::var("WP_API_KEY").map_err(|_| "WP_API_KEY is not set")?;
+    let wp_user = std::env::var("WP_USER").unwrap_or_else(|_| "admin".to_string()); // Assume admin if not set? Actually instructions didn't specify WP_USER, but basic auth needs a username. I'll use WP_USER or empty. Let's use WP_USER like other functions.
+
+    let client = reqwest::Client::new();
+    let url = format!("{wp_url}/wp/v2/posts");
+
+    let res = client
+        .post(&url)
+        .basic_auth(wp_user, Some(app_password))
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "title": title,
+            "content": content,
+            "status": status
+        }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if res.status().is_success() {
+        let data: Value = res.json().await.map_err(|e| e.to_string())?;
+        Ok(data)
+    } else {
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        Err(format!("Failed to create post: {status} - {text}"))
+    }
+}
+
+pub async fn execute_update_wordpress_post(
+    post_id: u64,
+    content: &str,
+) -> Result<serde_json::Value, String> {
+    let wp_url = std::env::var("WP_API_URL").map_err(|_| "WP_API_URL is not set")?;
+    let app_password = std::env::var("WP_API_KEY").map_err(|_| "WP_API_KEY is not set")?;
+    let wp_user = std::env::var("WP_USER").unwrap_or_else(|_| "admin".to_string());
+
+    let client = reqwest::Client::new();
+    let url = format!("{wp_url}/wp/v2/posts/{post_id}");
+
+    let res = client
+        .post(&url)
+        .basic_auth(wp_user, Some(app_password))
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "content": content
+        }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if res.status().is_success() {
+        let data: Value = res.json().await.map_err(|e| e.to_string())?;
+        Ok(data)
+    } else {
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        Err(format!("Failed to update post: {status} - {text}"))
+    }
+}

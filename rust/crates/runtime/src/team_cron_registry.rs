@@ -98,7 +98,9 @@ pub fn start_background_tick_loop(
                                 evaluate_fleet_health(&fleet_status, &value_logs);
                             }
                         } else {
-                            eprintln!("Schema mismatch in telemetry from AXiM Core. Skipping cycle.");
+                            eprintln!(
+                                "Schema mismatch in telemetry from AXiM Core. Skipping cycle."
+                            );
                         }
                     }
                 }
