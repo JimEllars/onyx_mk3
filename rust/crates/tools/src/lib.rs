@@ -3,6 +3,7 @@ pub mod axim_vault;
 pub mod chatbase_ops;
 pub mod cloudflare_ops;
 pub mod communication_ops;
+pub mod executive_sync;
 pub mod github_ops;
 pub mod network_ops;
 pub mod supabase_ops;
@@ -54,6 +55,7 @@ fn global_mcp_registry() -> &'static McpToolRegistry {
     REGISTRY.get_or_init(|| {
         let registry = McpToolRegistry::new();
         runtime::internal_mcp::register_internal_mcp_server(&registry);
+        register_daily_sync_handler();
         registry
     })
 }
@@ -74,6 +76,14 @@ fn global_task_registry() -> &'static TaskRegistry {
     use std::sync::OnceLock;
     static REGISTRY: OnceLock<TaskRegistry> = OnceLock::new();
     REGISTRY.get_or_init(TaskRegistry::new)
+}
+
+pub fn register_daily_sync_handler() {
+    use runtime::team_cron_registry::DAILY_SYNC_HANDLER;
+    let _ = DAILY_SYNC_HANDLER.set(Box::new(|update: &str| {
+        let update = update.to_string();
+        Box::pin(async move { crate::executive_sync::run_daily_department_sync(&update).await })
+    }));
 }
 
 fn global_worker_registry() -> &'static WorkerRegistry {

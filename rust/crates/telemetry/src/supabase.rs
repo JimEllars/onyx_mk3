@@ -57,7 +57,12 @@ impl SupabaseTelemetrySink {
 }
 
 impl SupabaseTelemetrySink {
-    pub fn dispatch_sub_agent_event(&self, event_type: &str, agent_id: &str, attributes: &serde_json::Map<String, serde_json::Value>) {
+    pub fn dispatch_sub_agent_event(
+        &self,
+        event_type: &str,
+        agent_id: &str,
+        attributes: &serde_json::Map<String, serde_json::Value>,
+    ) {
         let event = serde_json::json!({
             "type": "sub_agent_event",
             "event_type": event_type,

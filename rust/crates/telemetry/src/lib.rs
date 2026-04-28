@@ -169,7 +169,6 @@ pub struct SessionTraceRecord {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TelemetryEvent {
-
     SubAgentEvent {
         session_id: String,
         event_type: String,
