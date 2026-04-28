@@ -50,3 +50,61 @@ pub async fn execute_generate_ecosystem_strategy(
         recommended_keywords,
     })
 }
+
+pub async fn generate_ecosystem_strategy(
+    telemetry_data: serde_json::Value,
+) -> Result<String, String> {
+    let traffic = telemetry_data
+        .get("traffic")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let revenue = telemetry_data
+        .get("revenue")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    let mut strategy = String::new();
+
+    // Determine if there is a revenue leak (e.g. traffic > 1000 and revenue < 100)
+    let has_revenue_leak = traffic > 1000 && revenue < 100;
+
+    if has_revenue_leak {
+        strategy.push_str("Revenue leak detected. Trigger Roundups workflow to generate promotional SEO articles.");
+    } else {
+        strategy.push_str("System functioning nominally. No immediate strategic intervention required.");
+    }
+
+    // POST this generated strategy to AXiM Core via /api/v1/strategy-snapshot
+    let axim_core_url = std::env::var("AXIM_CORE_URL").map_err(|_| "AXIM_CORE_URL is not set")?;
+    let snapshot_url = format!("{}/api/v1/strategy-snapshot", axim_core_url.trim_end_matches('/'));
+
+    let client = reqwest::Client::new();
+    let payload = serde_json::json!({
+        "strategy": strategy,
+        "metrics": {
+            "traffic": traffic,
+            "revenue": revenue
+        }
+    });
+
+    let res = client
+        .post(&snapshot_url)
+        .header("Content-Type", "application/json")
+        // Note: Assuming we might need auth here as well, if we do we can fetch it,
+        // but for now we just POST. If the spec doesn't specify auth for this endpoint we'll omit it,
+        // or add it if needed.
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send strategy snapshot: {}", e))?;
+
+    if !res.status().is_success() {
+        return Err(format!(
+            "Strategy snapshot API error: {} - {}",
+            res.status(),
+            res.text().await.unwrap_or_default()
+        ));
+    }
+
+    Ok(strategy)
+}
