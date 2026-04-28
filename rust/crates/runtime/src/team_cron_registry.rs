@@ -93,8 +93,12 @@ pub fn start_background_tick_loop(
                         .send()
                         .await
                     {
-                        if let Ok(logs) = res.json::<serde_json::Value>().await {
-                            evaluate_fleet_health(&fleet_status, &logs);
+                        if let Ok(logs) = res.json::<Vec<telemetry::AximTelemetryPayload>>().await {
+                            if let Ok(value_logs) = serde_json::to_value(&logs) {
+                                evaluate_fleet_health(&fleet_status, &value_logs);
+                            }
+                        } else {
+                            eprintln!("Schema mismatch in telemetry from AXiM Core. Skipping cycle.");
                         }
                     }
                 }

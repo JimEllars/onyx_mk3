@@ -454,6 +454,13 @@ pub fn handle_telemetry_event(event: &TelemetryEvent) -> Option<String> {
 
             ));
         }
+    } else if event.r#type == "ui_command" {
+        if let Some(data) = event.payload.get("data") {
+            if let Some(prompt) = data.get("prompt").and_then(|v| v.as_str()) {
+                // Extract the prompt and dynamically route it into the active Onyx session/worker queue
+                return Some(prompt.to_string());
+            }
+        }
     }
     None
 }
