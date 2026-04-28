@@ -1,21 +1,20 @@
-1. Modify `rust/crates/runtime/src/fleet_health.rs`:
-   - Add `created_at: u64` to `ProposedAction`.
-   - Update `evaluate_fleet_health` to populate `created_at` with `std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()`.
-   - Change `start_approval_polling_loop` signature to take `config: std::sync::Arc<crate::RuntimeConfig>` or similarly handle config so tools can be called. Wait, `execute_purge_zone_cache` doesn't take config, it reads env vars. So no config needed for that one. Let's look at `execute_query_telemetry_logs`, it does take `&RuntimeConfig`. In `main.rs` I will need `RuntimeConfig` for the telemetry polling loop anyway.
-   - Update `start_approval_polling_loop` body:
-     - check for approvals
-     - also check if `action.status == ActionStatus::Pending` and `current_time - action.created_at >= 12 * 3600`. If so, auto-approve and transition to Executing.
-     - when in Executing state, call the tool:
-       - if `action.tool_name == "purge_zone_cache"`, `tools::cloudflare_ops::execute_purge_zone_cache(tools::cloudflare_ops::PurgeZoneCacheInput { zone_id: ... }).await`.
-       - if `action.tool_name == "restart_database"`, simulate or handle appropriately.
-       - on success or failure, send POST to `{edge_url}/api/v1/task-status` with `{"task_id": "...", "status": "Completed" | "Failed", "details": "..."}`.
+1. **Task 1: WordPress Article Management (`rust/crates/tools/src/wordpress_admin.rs`)**
+   - Add structures `CreatePostInput` and `CreatePostOutput`.
+   - Implement `execute_create_wordpress_post(input: CreatePostInput) -> Result<CreatePostOutput, String>`. It will use `/wp/v2/posts` endpoint with a `POST` request.
+   - The user asked to implement: `pub async fn execute_create_wordpress_post(title: &str, content: &str, status: &str) -> Result<serde_json::Value, String>`. Wait, let me check the instruction again. "Implement two new async functions: pub async fn execute_create_wordpress_post(title: &str, content: &str, status: &str) -> Result<serde_json::Value, String> and pub async fn execute_update_wordpress_post(post_id: u64, content: &str) -> Result<serde_json::Value, String>."
+   - Ah! Wait, the instruction says to implement functions with these specific signatures. Or maybe I should just use the structs like `execute_update_post_content` already does? Let's implement the specific signature as requested or a close variant that works with `Value` if needed. Let's see how they are called from `main.rs`. Wait, in `main.rs`, we just have a match over `tool_name` and then parse arguments. If I implement exactly `pub async fn execute_create_wordpress_post(title: &str, content: &str, status: &str) -> Result<serde_json::Value, String>`, then in `main.rs` I will have to parse these fields from `serde_json::Value`.
+   - In `execute_update_post_content` it takes a struct. I'll just write exactly what's requested but also maybe the struct way is safer. No, I must follow the prompt: "Implement two new async functions: pub async fn execute_create_wordpress_post(title: &str, content: &str, status: &str) -> Result<serde_json::Value, String> and pub async fn execute_update_wordpress_post(post_id: u64, content: &str) -> Result<serde_json::Value, String>." So I will implement them exactly with that signature.
+   - Use `std::env::var("WP_API_URL")` and `std::env::var("WP_API_KEY")`. Wait, existing tools use `WP_REST_URL`, `WP_APPLICATION_PASSWORD`, `WP_USER`. The instructions specifically said: "Pull the API URL from std::env::var("WP_API_URL") and the Application Password from std::env::var("WP_API_KEY"). Use HTTP Basic Auth."
 
-2. Modify `rust/crates/onyx/src/main.rs`:
-   - In `run_serve_headless`, we need a `RuntimeConfig`. We can load it using `ConfigLoader` like in other parts of `main.rs`.
-   - Spawn a Tokio background task:
-     - Runs every 60 seconds.
-     - Calls `tools::supabase_ops::execute_query_telemetry_logs` with `QueryTelemetryLogsInput { brand_id: "all".to_string(), since_minutes: 60, approval_token: Some("background_polling".to_string()) }`.
-     - Calls `runtime::fleet_health::evaluate_fleet_health(&fleet_status, &output.logs)`.
+2. **Task 2: Email Management (`rust/crates/tools/src/communication_ops.rs`)**
+   - Implement `pub async fn execute_send_email(to: &str, subject: &str, body: &str) -> Result<(), String>`. Hit `std::env::var("AXIM_CORE_URL") + "/api/v1/email/send"` using `AXIM_SERVICE_KEY`.
+   - Implement `pub async fn execute_read_recent_emails(limit: u32) -> Result<serde_json::Value, String>`. Hit `/api/v1/email/inbox`.
 
-3. Compile and fix any issues (`cargo check --workspace`).
-4. Pre-commit tests.
+3. **Task 3: MCP Tool Registration**
+   - Modify `rust/crates/runtime/src/internal_mcp.rs` to register the tool schemas for `create_wordpress_post`, `update_wordpress_post`, `send_email`, and `read_recent_emails`.
+   - Modify `rust/crates/onyx/src/main.rs` to map these schemas to the execution functions. The instructions specify to map them so when the LLM requests a tool call, the logic fires.
+
+4. **Testing**
+   - Pre-commit checks.
+   - `cargo check` and `cargo test` in the `rust/` directory.
+

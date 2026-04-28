@@ -1,5 +1,6 @@
 use crate::mcp_tool_bridge::{McpConnectionStatus, McpToolInfo, McpToolRegistry};
 
+#[allow(clippy::too_many_lines)]
 pub fn register_internal_mcp_server(registry: &McpToolRegistry) {
     let tools = vec![
         McpToolInfo {
@@ -76,6 +77,55 @@ pub fn register_internal_mcp_server(registry: &McpToolRegistry) {
                     "helmet_payload": {"type": "object"}
                 },
                 "required": ["post_id", "helmet_payload"]
+            })),
+        },
+        McpToolInfo {
+            name: "execute_create_wordpress_post".to_string(),
+            description: Some("Create a new post in Headless WordPress".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "content": {"type": "string"},
+                    "status": {"type": "string"}
+                },
+                "required": ["title", "content", "status"]
+            })),
+        },
+        McpToolInfo {
+            name: "execute_update_wordpress_post".to_string(),
+            description: Some("Update an existing post in Headless WordPress".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "post_id": {"type": "integer"},
+                    "content": {"type": "string"}
+                },
+                "required": ["post_id", "content"]
+            })),
+        },
+        McpToolInfo {
+            name: "execute_send_email".to_string(),
+            description: Some("Send an email via AXiM Core".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "to": {"type": "string"},
+                    "subject": {"type": "string"},
+                    "body": {"type": "string"}
+                },
+                "required": ["to", "subject", "body"]
+            })),
+        },
+        McpToolInfo {
+            name: "execute_read_recent_emails".to_string(),
+            description: Some("Read recent emails from AXiM Core inbox".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer"}
+                },
+                "required": ["limit"]
             })),
         },
     ];

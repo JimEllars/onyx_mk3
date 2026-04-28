@@ -590,7 +590,6 @@ impl WorkerRegistry {
         }
 
         let is_provider_failure =
-
             (finish_reason == "unknown" && tokens_output == 0) || finish_reason == "error";
 
         if is_provider_failure {
