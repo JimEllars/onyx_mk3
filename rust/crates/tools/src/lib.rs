@@ -1,5 +1,6 @@
 pub mod axim_ops;
 pub mod axim_vault;
+pub mod chatbase_ops;
 pub mod cloudflare_ops;
 pub mod communication_ops;
 pub mod github_ops;
@@ -397,6 +398,21 @@ fn permission_mode_from_plugin(value: &str) -> Result<PermissionMode, String> {
 #[allow(clippy::too_many_lines)]
 pub fn mvp_tool_specs() -> Vec<ToolSpec> {
     vec![
+        ToolSpec {
+            name: "consult_chatbase_agent",
+            description: "Consult one of the Chatbase Executive Agents for domain-specific knowledge (CEO, CTO, CFO, COO, Legal).",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "agent_role": { "type": "string", "enum": ["CEO", "CTO", "CFO", "COO", "Legal"] },
+                    "message": { "type": "string" },
+                    "conversation_id": { "type": "string" }
+                },
+                "required": ["agent_role", "message"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
         ToolSpec {
             name: "bash",
             description: "Execute a shell command in the current workspace.",
@@ -1498,6 +1514,16 @@ fn execute_tool_with_enforcer(
             from_value::<wordpress_admin::UpdateSeoMetadataInput>(input).and_then(|i| {
                 tokio::runtime::Handle::current()
                     .block_on(wordpress_admin::execute_update_seo_metadata(i))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
+        }
+
+        "consult_chatbase_agent" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<chatbase_ops::ConsultChatbaseAgentInput>(input).and_then(|i| {
+                tokio::runtime::Handle::current()
+                    .block_on(chatbase_ops::execute_consult_chatbase_agent(i))
                     .map_err(|e| e.to_string())
                     .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
