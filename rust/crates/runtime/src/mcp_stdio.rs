@@ -490,16 +490,20 @@ impl McpServerManager {
         Self::from_servers(config.mcp().servers())
     }
 
-
     pub fn add_server(&mut self, server_name: &str, config: &crate::config::ScopedMcpServerConfig) {
         if config.transport() == crate::config::McpTransport::Stdio {
-            let bootstrap = crate::mcp_client::McpClientBootstrap::from_scoped_config(server_name, config);
-            self.servers.insert(server_name.to_string(), ManagedMcpServer::new(bootstrap));
+            let bootstrap =
+                crate::mcp_client::McpClientBootstrap::from_scoped_config(server_name, config);
+            self.servers
+                .insert(server_name.to_string(), ManagedMcpServer::new(bootstrap));
         } else {
             self.unsupported_servers.push(UnsupportedMcpServer {
                 server_name: server_name.to_string(),
                 transport: config.transport(),
-                reason: format!("transport {:?} is not supported by McpServerManager", config.transport()),
+                reason: format!(
+                    "transport {:?} is not supported by McpServerManager",
+                    config.transport()
+                ),
             });
         }
     }

@@ -5,6 +5,8 @@
 //! to replace the stub implementations in the tools crate.
 
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -16,6 +18,11 @@ fn now_secs() -> u64 {
         .unwrap_or_default()
         .as_secs()
 }
+
+pub type DailySyncCallback =
+    Box<dyn Fn(&str) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>> + Send + Sync>;
+
+pub static DAILY_SYNC_HANDLER: std::sync::OnceLock<DailySyncCallback> = std::sync::OnceLock::new();
 
 /// The Background "Tick" Architecture for Onyx Overwatch Tasks
 ///
@@ -31,12 +38,14 @@ pub fn start_background_tick_loop(
     cron_registry: Arc<CronRegistry>,
     fleet_status: GlobalFleetStatus,
 ) -> tokio::task::JoinHandle<()> {
+    static LAST_SYNC: std::sync::OnceLock<Mutex<u64>> = std::sync::OnceLock::new();
+
     // 1. Spawns an asynchronous background task.
     tokio::spawn(async move {
         loop {
             // 2. Fetch all registered crons
             let crons = cron_registry.list(false);
-            let _current_time = now_secs();
+            let current_time = now_secs();
 
             for _cron in crons {
                 // 3. For each cron, check if it is time to execute
@@ -48,6 +57,22 @@ pub fn start_background_tick_loop(
                 //     // E.g., send an event to `ConversationRuntime` to execute the specific tool
                 //     // cron_registry.update_last_run(cron.id, current_time);
                 // }
+            }
+
+            let mut run_sync = false;
+            {
+                let last_sync_mutex = LAST_SYNC.get_or_init(|| Mutex::new(0));
+                let mut last_sync = last_sync_mutex.lock().unwrap();
+                if current_time - *last_sync >= 86400 {
+                    *last_sync = current_time;
+                    run_sync = true;
+                }
+            }
+
+            if run_sync {
+                if let Some(handler) = DAILY_SYNC_HANDLER.get() {
+                    let _ = handler("SYSTEM: Daily check-in. Please provide your department's top priority for today based on current active context.").await;
+                }
             }
 
             // Execute fleet health checks autonomously using reqwest directly

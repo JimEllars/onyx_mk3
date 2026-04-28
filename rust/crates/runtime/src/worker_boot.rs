@@ -417,8 +417,6 @@ impl WorkerRegistry {
         Ok(worker.clone())
     }
 
-
-
     pub async fn spawn_sub_agent(
         &self,
         packet: crate::task_packet::TaskPacket,
@@ -427,7 +425,9 @@ impl WorkerRegistry {
     ) -> Result<Worker, String> {
         if let Some(lock_id) = resource_lock {
             if !crate::swarm_lock::DistributedLock::acquire(lock_id, 300).await? {
-                return Err(format!("Could not acquire distributed lock for resource: {lock_id}"));
+                return Err(format!(
+                    "Could not acquire distributed lock for resource: {lock_id}"
+                ));
             }
         }
 
@@ -690,7 +690,8 @@ fn emit_state_file(worker: &Worker) {
         last_event: worker.events.last(),
         updated_at: worker.updated_at,
         seconds_since_update: now.saturating_sub(worker.updated_at),
-        is_sub_agent: std::env::var("ONYX_IS_SUB_AGENT").unwrap_or_else(|_| "false".to_string()) == "true",
+        is_sub_agent: std::env::var("ONYX_IS_SUB_AGENT").unwrap_or_else(|_| "false".to_string())
+            == "true",
     };
 
     if let Ok(json) = serde_json::to_string_pretty(&snapshot) {

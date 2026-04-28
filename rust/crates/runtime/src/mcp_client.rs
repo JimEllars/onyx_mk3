@@ -70,10 +70,7 @@ impl McpClientBootstrap {
     }
 
     #[must_use]
-    pub fn for_sub_agent(
-        server_name: &str,
-        executable_path: &str,
-    ) -> Self {
+    pub fn for_sub_agent(server_name: &str, executable_path: &str) -> Self {
         Self {
             server_name: server_name.to_string(),
             normalized_name: normalize_name_for_mcp(server_name),
@@ -89,12 +86,11 @@ impl McpClientBootstrap {
     }
 }
 
-
 impl McpClientTransport {
     pub fn resolve_dynamic_servers(
         manager: &mut crate::mcp_stdio::McpServerManager,
         tool_registry: &crate::mcp_tool_bridge::McpToolRegistry,
-        configs: std::collections::BTreeMap<String, crate::config::ScopedMcpServerConfig>
+        configs: std::collections::BTreeMap<String, crate::config::ScopedMcpServerConfig>,
     ) -> Result<(), String> {
         for (server_name, config) in configs {
             manager.add_server(&server_name, &config);
@@ -294,7 +290,10 @@ mod tests {
             McpClientTransport::Stdio(transport) => {
                 assert_eq!(transport.command, "/path/to/onyx");
                 assert_eq!(transport.args, vec!["mcp-server".to_string()]);
-                assert_eq!(transport.env.get("ONYX_IS_SUB_AGENT").map(String::as_str), Some("true"));
+                assert_eq!(
+                    transport.env.get("ONYX_IS_SUB_AGENT").map(String::as_str),
+                    Some("true")
+                );
                 assert_eq!(transport.tool_call_timeout_ms, Some(300_000));
             }
             other => panic!("expected stdio transport, got {other:?}"),
