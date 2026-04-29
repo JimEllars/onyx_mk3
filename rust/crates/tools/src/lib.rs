@@ -1,3 +1,4 @@
+pub mod playbooks;
 pub mod axim_ops;
 pub mod axim_vault;
 pub mod chatbase_ops;

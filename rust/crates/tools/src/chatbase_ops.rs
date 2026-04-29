@@ -21,7 +21,7 @@ pub struct ConsultChatbaseAgentOutput {
 pub async fn execute_consult_chatbase_agent(
     input: ConsultChatbaseAgentInput,
 ) -> Result<ConsultChatbaseAgentOutput, String> {
-    let api_key = std::env::var("CHATBASE_API_KEY").map_err(|_| "CHATBASE_API_KEY is not set")?;
+    let api_key = match std::env::var("CHATBASE_API_KEY") { Ok(k) => k, Err(_) => crate::axim_vault::fetch_vault_secret("CHATBASE_API_KEY").await.map_err(|e| format!("CHATBASE_API_KEY is not set and vault fetch failed: {e}"))? };
 
     let agent_id = match input.agent_role.as_str() {
         "CEO" => "fViIyS2-64jXMyakjf70T",
@@ -132,7 +132,7 @@ pub async fn submit_chatbase_tool_result(
     tool_call_id: &str,
     output: serde_json::Value,
 ) -> Result<(), String> {
-    let api_key = std::env::var("CHATBASE_API_KEY").map_err(|_| "CHATBASE_API_KEY is not set")?;
+    let api_key = match std::env::var("CHATBASE_API_KEY") { Ok(k) => k, Err(_) => crate::axim_vault::fetch_vault_secret("CHATBASE_API_KEY").await.map_err(|e| format!("CHATBASE_API_KEY is not set and vault fetch failed: {e}"))? };
 
     let agent_id = match agent_role {
         "CEO" => "fViIyS2-64jXMyakjf70T",
