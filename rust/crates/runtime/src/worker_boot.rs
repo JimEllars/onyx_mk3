@@ -678,20 +678,68 @@ fn push_event(
 /// This is the file-based observability surface: external observers (onyxhip, orchestrators)
 /// poll this file instead of requiring an HTTP route on the opencode binary.
 #[derive(serde::Serialize)]
-struct StateSnapshot<'a> {
-    worker_id: &'a str,
-    status: WorkerStatus,
-    is_ready: bool,
-    trust_gate_cleared: bool,
-    prompt_in_flight: bool,
-    last_event: Option<&'a WorkerEvent>,
-    updated_at: u64,
+pub struct StateSnapshot<'a> {
+    pub worker_id: &'a str,
+    pub status: WorkerStatus,
+    pub is_ready: bool,
+    pub trust_gate_cleared: bool,
+    pub prompt_in_flight: bool,
+    pub last_event: Option<&'a WorkerEvent>,
+    pub updated_at: u64,
     /// Seconds since last state transition. Clawhip uses this to detect
     /// stalled workers without computing epoch deltas.
-    seconds_since_update: u64,
-    is_sub_agent: bool,
+    pub seconds_since_update: u64,
+    pub is_sub_agent: bool,
 }
 
+#[derive(serde::Serialize)]
+pub struct SwarmSnapshot<'a> {
+    pub active_workers: Vec<StateSnapshot<'a>>,
+    pub timestamp: u64,
+}
+
+pub fn persist_swarm_state(registry: &WorkerRegistry) -> std::io::Result<()> {
+    let now = now_secs();
+
+    let state_dir = std::path::Path::new(".claw");
+    if std::fs::create_dir_all(state_dir).is_err() {
+        return Ok(());
+    }
+
+    let inner = registry.inner.lock().unwrap();
+    let mut active_workers = Vec::new();
+
+    for worker in inner.workers.values() {
+        active_workers.push(StateSnapshot {
+            worker_id: &worker.worker_id,
+            status: worker.status,
+            is_ready: worker.status == WorkerStatus::ReadyForPrompt,
+            trust_gate_cleared: worker.trust_gate_cleared,
+            prompt_in_flight: worker.prompt_in_flight,
+            last_event: worker.events.last(),
+            updated_at: worker.updated_at,
+            seconds_since_update: now.saturating_sub(worker.updated_at),
+            is_sub_agent: std::env::var("ONYX_IS_SUB_AGENT")
+                .unwrap_or_else(|_| "false".to_string())
+                == "true",
+        });
+    }
+
+    let snapshot = SwarmSnapshot {
+        active_workers,
+        timestamp: now,
+    };
+
+    let state_path = state_dir.join("swarm-state.json");
+    let tmp_path = state_dir.join("swarm-state.json.tmp");
+
+    if let Ok(json) = serde_json::to_string_pretty(&snapshot) {
+        let _ = std::fs::write(&tmp_path, &json);
+        let _ = std::fs::rename(&tmp_path, &state_path);
+    }
+
+    Ok(())
+}
 fn emit_state_file(worker: &Worker) {
     let state_dir = std::path::Path::new(&worker.cwd).join(".claw");
     if std::fs::create_dir_all(&state_dir).is_err() {

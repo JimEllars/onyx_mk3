@@ -43,11 +43,11 @@ pub async fn fetch_vault_artifact(trace_id: &str) -> Result<String, ToolError> {
 }
 
 pub async fn fetch_vault_secret(secret_name: &str) -> Result<String, String> {
-    let api_key = env::var("AXIM_SERVICE_KEY")
-        .map_err(|_| "AXIM_SERVICE_KEY not set".to_string())?;
+    let api_key =
+        env::var("AXIM_SERVICE_KEY").map_err(|_| "AXIM_SERVICE_KEY not set".to_string())?;
 
-    let base_url = env::var("AXIM_CORE_URL")
-        .unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let base_url =
+        env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
 
     let url = format!("{base_url}/api/v1/vault/{secret_name}");
 

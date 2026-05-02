@@ -110,6 +110,12 @@ type RuntimePluginStateBuildOutput = (
 
 #[allow(clippy::too_many_lines)]
 fn main() {
+    let state_dir = std::path::Path::new(".claw");
+    let state_path = state_dir.join("swarm-state.json");
+    if state_path.exists() {
+        println!("[SYSTEM] Recovered previous swarm state.");
+    }
+
     runtime::internal_mcp::set_internal_tool_handler(Box::new(|tool_name, arguments, config| {
         let tool_name = tool_name.to_string();
         let arguments = arguments.clone();
@@ -216,6 +222,15 @@ fn main() {
                     let limit = u32::try_from(limit).unwrap_or(10);
                     let output =
                         tools::communication_ops::execute_read_recent_emails(limit).await?;
+                    Ok(serde_json::to_value(output)
+                        .map_err(|e| format!("Serialization error: {e}"))?)
+                }
+                "generate_memory_embedding" => {
+                    let text = arguments
+                        .get("text")
+                        .and_then(serde_json::Value::as_str)
+                        .ok_or_else(|| "Missing 'text' argument".to_string())?;
+                    let output = tools::vector_memory::generate_embedding(text).await?;
                     Ok(serde_json::to_value(output)
                         .map_err(|e| format!("Serialization error: {e}"))?)
                 }
@@ -9007,8 +9022,11 @@ fn main() { println!(\"hi\"); }\n";
         let merged = merge_prompt_with_stdin(prompt, Some(piped));
 
         // then
-        assert_eq!(merged, "Review this\n\n#[allow(clippy::too_many_lines)]
-fn main() { println!(\"hi\"); }");
+        assert_eq!(
+            merged,
+            "Review this\n\n#[allow(clippy::too_many_lines)]
+fn main() { println!(\"hi\"); }"
+        );
     }
 
     #[test]
