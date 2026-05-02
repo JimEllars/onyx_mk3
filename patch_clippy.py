@@ -1,9 +1,12 @@
-import re
+with open("rust/crates/runtime/src/worker_boot.rs", "r") as f:
+    lines = f.readlines()
 
-with open("rust/crates/runtime/src/internal_mcp.rs", "r") as f:
-    content = f.read()
+new_lines = []
+for i, line in enumerate(lines):
+    if i == 704 and "if std::fs::create_dir_all(&state_dir).is_err() {" in line:
+        new_lines.append(line.replace("&state_dir", "state_dir"))
+    else:
+        new_lines.append(line)
 
-content = content.replace("pub fn register_internal_mcp_server(registry: &McpToolRegistry) {", "#[allow(clippy::too_many_lines)]\npub fn register_internal_mcp_server(registry: &McpToolRegistry) {")
-
-with open("rust/crates/runtime/src/internal_mcp.rs", "w") as f:
-    f.write(content)
+with open("rust/crates/runtime/src/worker_boot.rs", "w") as f:
+    f.write("".join(new_lines))

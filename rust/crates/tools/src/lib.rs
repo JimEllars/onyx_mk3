@@ -1,4 +1,3 @@
-pub mod playbooks;
 pub mod axim_ops;
 pub mod axim_vault;
 pub mod chatbase_ops;
@@ -7,7 +6,9 @@ pub mod communication_ops;
 pub mod executive_sync;
 pub mod github_ops;
 pub mod network_ops;
+pub mod playbooks;
 pub mod supabase_ops;
+pub mod vector_memory;
 pub mod wordpress_admin;
 
 use std::collections::{BTreeMap, BTreeSet};

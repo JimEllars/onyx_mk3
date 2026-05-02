@@ -128,6 +128,17 @@ pub fn register_internal_mcp_server(registry: &McpToolRegistry) {
                 "required": ["limit"]
             })),
         },
+        McpToolInfo {
+            name: "generate_memory_embedding".to_string(),
+            description: Some("Use this tool to convert important contextual summaries into vector embeddings for long-term storage.".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"}
+                },
+                "required": ["text"]
+            })),
+        },
     ];
 
     registry.register_server(
