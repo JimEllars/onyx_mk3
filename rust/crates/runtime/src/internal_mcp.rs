@@ -129,6 +129,18 @@ pub fn register_internal_mcp_server(registry: &McpToolRegistry) {
             })),
         },
         McpToolInfo {
+            name: "delegate_to_sub_agent".to_string(),
+            description: Some("Use this tool to spawn a specialized sub-agent for discrete, complex tasks. Do not wait for the result immediately; the system will notify you when the sub-agent completes.".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "role": {"type": "string"},
+                    "task_description": {"type": "string"}
+                },
+                "required": ["role", "task_description"]
+            })),
+        },
+        McpToolInfo {
             name: "generate_memory_embedding".to_string(),
             description: Some("Use this tool to convert important contextual summaries into vector embeddings for long-term storage.".to_string()),
             input_schema: Some(serde_json::json!({
