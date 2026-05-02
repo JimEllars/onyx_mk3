@@ -139,6 +139,20 @@ pub fn register_internal_mcp_server(registry: &McpToolRegistry) {
                 "required": ["text"]
             })),
         },
+        McpToolInfo {
+            name: "store_core_memory".to_string(),
+            description: Some("Use this tool to permanently save important strategic decisions, user preferences, or ecosystem changes into the Onyx Vector Database for long-term recall.".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "metadata": {
+                        "type": "object"
+                    }
+                },
+                "required": ["text", "metadata"]
+            })),
+        },
     ];
 
     registry.register_server(
@@ -179,5 +193,27 @@ pub async fn call_internal_tool(
         handler(tool_name, arguments, config).await
     } else {
         Err("Internal tool handler is not configured".to_string())
+    }
+}
+
+type TelemetryEventHandler = Box<
+    dyn Fn(
+            &crate::TelemetryEvent,
+        ) -> Pin<Box<dyn Future<Output = Option<String>> + Send>>
+        + Send
+        + Sync,
+>;
+
+pub static TELEMETRY_EVENT_HANDLER: OnceLock<TelemetryEventHandler> = OnceLock::new();
+
+pub fn set_telemetry_event_handler(handler: TelemetryEventHandler) {
+    let _ = TELEMETRY_EVENT_HANDLER.set(handler);
+}
+
+pub async fn call_telemetry_event_handler(event: &crate::TelemetryEvent) -> Option<String> {
+    if let Some(handler) = TELEMETRY_EVENT_HANDLER.get() {
+        handler(event).await
+    } else {
+        None
     }
 }

@@ -418,7 +418,11 @@ pub struct TelemetryEvent {
 }
 
 #[must_use]
-pub fn handle_telemetry_event(event: &TelemetryEvent) -> Option<String> {
+pub async fn handle_telemetry_event(event: &TelemetryEvent) -> Option<String> {
+    if let Some(result) = crate::internal_mcp::call_telemetry_event_handler(event).await {
+        return Some(result);
+    }
+
     if event.r#type == "document_vaulted" {
         if let Some(id) = event.payload.get("id").and_then(|v| v.as_str()) {
             return Some(format!(
