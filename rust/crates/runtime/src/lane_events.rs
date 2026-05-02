@@ -435,6 +435,17 @@ pub async fn handle_telemetry_event(event: &TelemetryEvent) -> Option<String> {
                 "CRITICAL: Micro-app {url} is down. Execute the PurgeCloudflareCache tool immediately for this zone."
             ));
         }
+
+    } else if event.r#type == "sub_agent_completed" {
+        if let Some(role) = event.payload.get("role").and_then(|v| v.as_str()) {
+            if let Some(result) = event.payload.get("result").and_then(|v| v.as_str()) {
+                // Route back into parent active session queue as System message
+                return Some(format!(
+                    "[SUB-AGENT RESULT - Role: {}]: {}. Please synthesize this into your overall objective.",
+                    role, result
+                ));
+            }
+        }
     } else if event.r#type == "admin_inbound_message" {
         let text = event
             .payload
