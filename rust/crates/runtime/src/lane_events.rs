@@ -1,4 +1,18 @@
 #![allow(clippy::similar_names)]
+#![allow(clippy::too_many_lines)]
+pub type SpawnSubAgentDelegationFn = Box<
+    dyn Fn(
+            &str,
+            &str,
+            &str,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>
+        + Send
+        + Sync,
+>;
+pub static SPAWN_SUB_AGENT_DELEGATION: std::sync::OnceLock<SpawnSubAgentDelegationFn> =
+    std::sync::OnceLock::new();
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -435,14 +449,63 @@ pub async fn handle_telemetry_event(event: &TelemetryEvent) -> Option<String> {
                 "CRITICAL: Micro-app {url} is down. Execute the PurgeCloudflareCache tool immediately for this zone."
             ));
         }
+    } else if event.r#type == "sub_agent_failed" {
+        let role = event
+            .payload
+            .get("role")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let task = event
+            .payload
+            .get("task")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let parent_worker_id = event
+            .payload
+            .get("parent_worker_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let failures = event
+            .payload
+            .get("failures")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
 
+        if failures < 3 {
+            let detail = format!(
+                "[SYSTEM] Sub-agent failed. Auto-healing triggered. Retrying task (attempt {})...",
+                failures + 1
+            );
+            crate::ui_stream::stream_log_to_ui(parent_worker_id, &detail, "system").await;
+
+            let role_str = role.to_string();
+            let task_str = task.to_string();
+            let parent_id_str = parent_worker_id.to_string();
+
+            if let Some(func) = SPAWN_SUB_AGENT_DELEGATION.get() {
+                let future = func(&role_str, &task_str, &parent_id_str);
+                tokio::spawn(async move {
+                    let _ = future.await;
+                });
+            }
+            return None;
+        }
+
+        crate::ui_stream::stream_log_to_ui(
+            parent_worker_id,
+            "[SYSTEM] Sub-agent failed 3 times. Aborting task.",
+            "system",
+        )
+        .await;
+        return Some(format!(
+            "[SUB-AGENT FAILED - Role: {role}]: Task failed after 3 attempts."
+        ));
     } else if event.r#type == "sub_agent_completed" {
         if let Some(role) = event.payload.get("role").and_then(|v| v.as_str()) {
             if let Some(result) = event.payload.get("result").and_then(|v| v.as_str()) {
                 // Route back into parent active session queue as System message
                 return Some(format!(
-                    "[SUB-AGENT RESULT - Role: {}]: {}. Please synthesize this into your overall objective.",
-                    role, result
+                    "[SUB-AGENT RESULT - Role: {role}]: {result}. Please synthesize this into your overall objective."
                 ));
             }
         }

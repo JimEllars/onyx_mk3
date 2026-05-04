@@ -78,7 +78,10 @@ pub async fn upsert_memory(text: &str, metadata: serde_json::Value) -> Result<()
         .map_err(|e| format!("Pinecone upsert request failed: {e}"))?;
 
     if !response.status().is_success() {
-        return Err(format!("Pinecone API returned error status: {}", response.status()));
+        return Err(format!(
+            "Pinecone API returned error status: {}",
+            response.status()
+        ));
     }
 
     Ok(())
@@ -112,7 +115,10 @@ pub async fn query_memory(query_text: &str, top_k: u32) -> Result<Vec<serde_json
         .map_err(|e| format!("Pinecone query request failed: {e}"))?;
 
     if !response.status().is_success() {
-        return Err(format!("Pinecone API returned error status: {}", response.status()));
+        return Err(format!(
+            "Pinecone API returned error status: {}",
+            response.status()
+        ));
     }
 
     let body: serde_json::Value = response

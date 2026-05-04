@@ -127,9 +127,12 @@ fn main() {
                                 if memories.is_empty() {
                                     return Some(prompt.to_string());
                                 }
-                                let memory_strings: Vec<String> = memories.into_iter().map(|v| v.to_string()).collect();
+                                let memory_strings: Vec<String> =
+                                    memories.into_iter().map(|v| v.to_string()).collect();
                                 let joined_memories = memory_strings.join(" | ");
-                                return Some(format!("[RECOVERED SYSTEM MEMORY: {}]\n\nUser Command: {}", joined_memories, prompt));
+                                return Some(format!(
+                                    "[RECOVERED SYSTEM MEMORY: {joined_memories}]\n\nUser Command: {prompt}"
+                                ));
                             }
                             Err(e) => {
                                 eprintln!("Failed to query memory: {e}");
@@ -142,6 +145,18 @@ fn main() {
             None
         })
     }));
+
+    runtime::lane_events::SPAWN_SUB_AGENT_DELEGATION.get_or_init(|| {
+        Box::new(|role, task, parent_worker_id| {
+            let role = role.to_string();
+            let task = task.to_string();
+            let parent_worker_id = parent_worker_id.to_string();
+            Box::pin(async move {
+                runtime::worker_boot::spawn_sub_agent_delegation(&role, &task, &parent_worker_id)
+                    .await
+            })
+        })
+    });
 
     runtime::internal_mcp::set_internal_tool_handler(Box::new(|tool_name, arguments, config| {
         let tool_name = tool_name.to_string();
@@ -262,13 +277,60 @@ fn main() {
                         .map_err(|e| format!("Serialization error: {e}"))?)
                 }
                 "store_core_memory" => {
-                    let text = arguments.get("text").and_then(|v| v.as_str()).unwrap_or_default();
-                    let metadata = arguments.get("metadata").cloned().unwrap_or_else(|| serde_json::json!({}));
+                    let text = arguments
+                        .get("text")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let metadata = arguments
+                        .get("metadata")
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!({}));
                     tools::vector_memory::upsert_memory(text, metadata).await?;
                     Ok(serde_json::json!({
                         "status": "success",
                         "message": "Memory successfully stored in Pinecone vector database."
                     }))
+                }
+                "write_blackboard" => {
+                    let key = arguments
+                        .get("key")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    let data = arguments
+                        .get("data")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+
+                    let blackboard = runtime::internal_mcp::SWARM_BLACKBOARD
+                        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+                    if let Ok(mut map) = blackboard.lock() {
+                        map.insert(key, data);
+                        Ok(serde_json::json!({ "status": "success" }))
+                    } else {
+                        Err("Failed to lock blackboard".to_string())
+                    }
+                }
+                "read_blackboard" => {
+                    let key = arguments
+                        .get("key")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+
+                    let blackboard = runtime::internal_mcp::SWARM_BLACKBOARD
+                        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+                    if let Ok(map) = blackboard.lock() {
+                        if let Some(data) = map.get(key) {
+                            Ok(serde_json::json!({ "data": data }))
+                        } else {
+                            Ok(serde_json::json!({ "error": "Key not found" }))
+                        }
+                    } else {
+                        Err("Failed to lock blackboard".to_string())
+                    }
                 }
                 _ => Err(format!("Unknown internal tool: {tool_name}")),
             }
