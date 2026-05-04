@@ -8,6 +8,7 @@ pub mod github_ops;
 pub mod network_ops;
 pub mod playbooks;
 pub mod supabase_ops;
+pub mod support_ops;
 pub mod vector_memory;
 pub mod wordpress_admin;
 

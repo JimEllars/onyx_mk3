@@ -443,6 +443,41 @@ pub async fn handle_telemetry_event(event: &TelemetryEvent) -> Option<String> {
                 "A new PDF has been vaulted with Trace ID: {id}. Execute the FetchVaultArtifact tool, read the document, and verify formatting."
             ));
         }
+    } else if event.r#type == "support_ticket_created" {
+        let ticket_id = event
+            .payload
+            .get("ticket_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let app_id = event
+            .payload
+            .get("app_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let user_issue = event
+            .payload
+            .get("user_issue")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+
+        let parent_worker_id = "main_brain"; // or however parent ID is tracked
+        let role_str = "Technical Support Analyst".to_string();
+        let task_str = format!("Investigate ticket {} regarding app {}. Issue: {}. Use fetch_app_diagnostics to check health, write your findings to the blackboard, and then formulate a response.", ticket_id, app_id, user_issue);
+        let parent_id_str = parent_worker_id.to_string();
+
+        if let Some(func) = SPAWN_SUB_AGENT_DELEGATION.get() {
+            let future = func(&role_str, &task_str, &parent_id_str);
+            tokio::spawn(async move {
+                let _ = future.await;
+            });
+        }
+        return Some(format!(
+            "[SYSTEM] Support ticket {} intercepted. Sub-agent spawned to investigate.",
+            ticket_id
+        ));
     } else if event.r#type == "uptime_failure" {
         if let Some(url) = event.payload.get("url").and_then(|v| v.as_str()) {
             return Some(format!(

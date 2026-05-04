@@ -8,6 +8,42 @@ use crate::mcp_tool_bridge::{McpConnectionStatus, McpToolInfo, McpToolRegistry};
 pub fn register_internal_mcp_server(registry: &McpToolRegistry) {
     let tools = vec![
         McpToolInfo {
+            name: "execute_circuit_breaker".to_string(),
+            description: Some("Propose circuit breaker quarantine for a degraded app.".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "app_id": {"type": "string"},
+                    "reason": {"type": "string"}
+                },
+                "required": ["app_id", "reason"]
+            })),
+        },
+        McpToolInfo {
+            name: "update_ticket_status".to_string(),
+            description: Some("Update support ticket status and reply.".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "ticket_id": {"type": "string"},
+                    "status": {"type": "string"},
+                    "reply_text": {"type": "string"}
+                },
+                "required": ["ticket_id", "status", "reply_text"]
+            })),
+        },
+        McpToolInfo {
+            name: "fetch_app_diagnostics".to_string(),
+            description: Some("Fetch app diagnostics from telemetry.".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "app_id": {"type": "string"}
+                },
+                "required": ["app_id"]
+            })),
+        },
+        McpToolInfo {
             name: "execute_query_telemetry_logs".to_string(),
             description: Some("Query telemetry logs from Supabase".to_string()),
             input_schema: Some(serde_json::json!({
