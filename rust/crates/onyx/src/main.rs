@@ -164,6 +164,59 @@ fn main() {
         let config = config.clone();
         Box::pin(async move {
             match tool_name.as_str() {
+                "update_ticket_status" => {
+                    let ticket_id = arguments
+                        .get("ticket_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let status = arguments
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let reply_text = arguments
+                        .get("reply_text")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    tools::support_ops::update_ticket_status(ticket_id, status, reply_text).await?;
+                    Ok(serde_json::json!({ "status": "success" }))
+                }
+                "execute_circuit_breaker" => {
+                    let app_id = arguments
+                        .get("app_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let reason = arguments
+                        .get("reason")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+
+                    let hitl_endpoint = std::env::var("HITL_AUDIT_LOGS_ENDPOINT")
+                        .unwrap_or_else(|_| "http://localhost:8000/api/v1/hitl".to_string());
+
+                    let client = reqwest::Client::new();
+                    let payload = serde_json::json!({
+                        "type": "quarantine_app",
+                        "target": app_id,
+                        "reason": reason
+                    });
+
+                    let _ = client
+                        .post(&hitl_endpoint)
+                        .json(&payload)
+                        .send()
+                        .await
+                        .map_err(|e| format!("Failed to send hitl request: {}", e));
+
+                    Ok(serde_json::json!("Circuit breaker proposed to C-Suite. Awaiting human approval in HITL logs."))
+                }
+                "fetch_app_diagnostics" => {
+                    let app_id = arguments
+                        .get("app_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let output = tools::support_ops::fetch_app_diagnostics(app_id).await?;
+                    Ok(output)
+                }
                 "execute_query_telemetry_logs" => {
                     let input = serde_json::from_value(arguments)
                         .map_err(|e| format!("Invalid args: {e}"))?;
