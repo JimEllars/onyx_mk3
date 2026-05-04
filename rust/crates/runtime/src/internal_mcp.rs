@@ -1,3 +1,7 @@
+pub static SWARM_BLACKBOARD: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, String>>,
+> = std::sync::OnceLock::new();
+
 use crate::mcp_tool_bridge::{McpConnectionStatus, McpToolInfo, McpToolRegistry};
 
 #[allow(clippy::too_many_lines)]
@@ -165,6 +169,30 @@ pub fn register_internal_mcp_server(registry: &McpToolRegistry) {
                 "required": ["text", "metadata"]
             })),
         },
+
+        McpToolInfo {
+            name: "write_blackboard".to_string(),
+            description: Some("Use the blackboard to share large datasets with other sub-agents. Write your findings to a key, and pass that key to the next agent.".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"},
+                    "data": {"type": "string"}
+                },
+                "required": ["key", "data"]
+            })),
+        },
+        McpToolInfo {
+            name: "read_blackboard".to_string(),
+            description: Some("Read data from the global swarm blackboard using a shared key.".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"}
+                },
+                "required": ["key"]
+            })),
+        },
     ];
 
     registry.register_server(
@@ -209,9 +237,7 @@ pub async fn call_internal_tool(
 }
 
 type TelemetryEventHandler = Box<
-    dyn Fn(
-            &crate::TelemetryEvent,
-        ) -> Pin<Box<dyn Future<Output = Option<String>> + Send>>
+    dyn Fn(&crate::TelemetryEvent) -> Pin<Box<dyn Future<Output = Option<String>> + Send>>
         + Send
         + Sync,
 >;
