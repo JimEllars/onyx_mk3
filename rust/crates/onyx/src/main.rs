@@ -205,7 +205,7 @@ fn main() {
                         .json(&payload)
                         .send()
                         .await
-                        .map_err(|e| format!("Failed to send hitl request: {}", e));
+                        .map_err(|e| format!("Failed to send hitl request: {e}"));
 
                     Ok(serde_json::json!("Circuit breaker proposed to C-Suite. Awaiting human approval in HITL logs."))
                 }
