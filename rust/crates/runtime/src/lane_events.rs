@@ -465,7 +465,7 @@ pub async fn handle_telemetry_event(event: &TelemetryEvent) -> Option<String> {
 
         let parent_worker_id = "main_brain"; // or however parent ID is tracked
         let role_str = "Technical Support Analyst".to_string();
-        let task_str = format!("Investigate ticket {} regarding app {}. Issue: {}. Use fetch_app_diagnostics to check health, write your findings to the blackboard, and then formulate a response.", ticket_id, app_id, user_issue);
+        let task_str = format!("Investigate ticket {ticket_id} regarding app {app_id}. Issue: {user_issue}. Use fetch_app_diagnostics to check health, write your findings to the blackboard, and then formulate a response.");
         let parent_id_str = parent_worker_id.to_string();
 
         if let Some(func) = SPAWN_SUB_AGENT_DELEGATION.get() {
@@ -475,8 +475,7 @@ pub async fn handle_telemetry_event(event: &TelemetryEvent) -> Option<String> {
             });
         }
         return Some(format!(
-            "[SYSTEM] Support ticket {} intercepted. Sub-agent spawned to investigate.",
-            ticket_id
+            "[SYSTEM] Support ticket {ticket_id} intercepted. Sub-agent spawned to investigate."
         ));
     } else if event.r#type == "uptime_failure" {
         if let Some(url) = event.payload.get("url").and_then(|v| v.as_str()) {
