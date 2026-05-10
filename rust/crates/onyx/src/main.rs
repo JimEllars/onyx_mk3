@@ -366,6 +366,32 @@ fn main() {
                         Err("Failed to lock blackboard".to_string())
                     }
                 }
+                "discover_ecosystem" => {
+                    let res = tools::axim_ops::execute_fetch_ecosystem_manifest().await;
+                    match res {
+                        Ok(val) => Ok(val),
+                        Err(e) => Err(e)
+                    }
+                }
+                "dispatch_sms" => {
+                    let to_number = arguments.get("to_number").and_then(|v| v.as_str()).unwrap_or_default();
+                    let message = arguments.get("message").and_then(|v| v.as_str()).unwrap_or_default();
+                    let res = tools::communication_ops::execute_send_sms(to_number, message).await;
+                    match res {
+                        Ok(_) => Ok(serde_json::json!({ "success": true })),
+                        Err(e) => Err(e)
+                    }
+                }
+                "initiate_voice_call" => {
+                    let to_number = arguments.get("to_number").and_then(|v| v.as_str()).unwrap_or_default();
+                    let initial_greeting = arguments.get("initial_greeting").and_then(|v| v.as_str()).unwrap_or_default();
+                    let context = arguments.get("context").and_then(|v| v.as_str()).unwrap_or_default();
+                    let res = tools::communication_ops::execute_initiate_voice_call(to_number, initial_greeting, context).await;
+                    match res {
+                        Ok(_) => Ok(serde_json::json!({ "success": true })),
+                        Err(e) => Err(e)
+                    }
+                }
                 "read_blackboard" => {
                     let key = arguments
                         .get("key")
