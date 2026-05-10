@@ -477,6 +477,12 @@ pub async fn handle_telemetry_event(event: &TelemetryEvent) -> Option<String> {
         return Some(format!(
             "[SYSTEM] Support ticket {ticket_id} intercepted. Sub-agent spawned to investigate."
         ));
+    } else if event.r#type == "voice_command" {
+        if let Some(prompt) = event.payload.get("prompt").and_then(|v| v.as_str()) {
+            return Some(format!(
+                "[SYSTEM OVERRIDE: The CEO is speaking to you via a live phone call. You MUST respond concisely, conversationally, and entirely without markdown, bullet points, or code blocks. Speak naturally.]\n\nUser Voice Input: {prompt}"
+            ));
+        }
     } else if event.r#type == "uptime_failure" {
         if let Some(url) = event.payload.get("url").and_then(|v| v.as_str()) {
             return Some(format!(

@@ -165,3 +165,70 @@ pub async fn execute_read_recent_emails(limit: u32) -> Result<serde_json::Value,
         Err(format!("Axim API error: {}", res.status()))
     }
 }
+
+pub async fn execute_send_sms(to_number: &str, message: &str) -> Result<(), String> {
+    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
+        .await
+        .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to build reqwest client: {e}"))?;
+
+    let url = format!("{}/api/v1/sms/send", axim_core_url);
+    let payload = serde_json::json!({
+        "to_number": to_number,
+        "message": message,
+    });
+
+    let res = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", service_key))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    if res.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("Axim API error: {}", res.status()))
+    }
+}
+
+pub async fn execute_initiate_voice_call(to_number: &str, initial_greeting: &str, context: &str) -> Result<(), String> {
+    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
+        .await
+        .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to build reqwest client: {e}"))?;
+
+    let url = format!("{}/api/v1/voice/call", axim_core_url);
+    let payload = serde_json::json!({
+        "to_number": to_number,
+        "initial_greeting": initial_greeting,
+        "context": context,
+    });
+
+    let res = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", service_key))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    if res.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("Axim API error: {}", res.status()))
+    }
+}

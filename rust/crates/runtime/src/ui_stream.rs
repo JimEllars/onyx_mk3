@@ -40,3 +40,24 @@ pub async fn broadcast_swarm_state(active_agents: Vec<serde_json::Value>) {
         let _ = client.post(&endpoint).json(&payload).send().await;
     }
 }
+
+pub async fn stream_voice_response(worker_id: &str, message: &str) {
+    let endpoint = std::env::var("AXIM_CORE_VOICE_STREAM_ENDPOINT")
+        .unwrap_or_else(|_| "https://api.axim.us.com/api/v1/voice/stream".to_string());
+
+    // In actual implementation, should correctly import tools depending on dependency tree
+    let service_key = std::env::var("AXIM_SERVICE_KEY").unwrap_or_default();
+
+    let client = reqwest::Client::new();
+    let payload = serde_json::json!({
+        "worker_id": worker_id,
+        "message": message,
+    });
+
+    let _ = client.post(&endpoint)
+        .header("Authorization", format!("Bearer {}", service_key))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await;
+}

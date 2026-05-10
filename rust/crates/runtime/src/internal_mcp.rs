@@ -229,6 +229,39 @@ pub fn register_internal_mcp_server(registry: &McpToolRegistry) {
                 "required": ["key"]
             })),
         },
+        McpToolInfo {
+            name: "discover_ecosystem".to_string(),
+            description: Some("Use this tool to fetch a real-time manifest of all active AXiM Core micro-apps, database schemas, and current system statuses.".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {},
+            })),
+        },
+        McpToolInfo {
+            name: "dispatch_sms".to_string(),
+            description: Some("Send an SMS via AXiM Core omnichannel routing.".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "to_number": { "type": "string" },
+                    "message": { "type": "string" }
+                },
+                "required": ["to_number", "message"]
+            })),
+        },
+        McpToolInfo {
+            name: "initiate_voice_call".to_string(),
+            description: Some("Initiate an outbound voice call via AXiM Core omnichannel routing.".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "to_number": { "type": "string" },
+                    "initial_greeting": { "type": "string" },
+                    "context": { "type": "string" }
+                },
+                "required": ["to_number", "initial_greeting", "context"]
+            })),
+        },
     ];
 
     registry.register_server(
