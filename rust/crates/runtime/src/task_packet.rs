@@ -3,6 +3,10 @@ use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskPacket {
+    #[serde(default)]
+    pub job_id: Option<String>,
+    #[serde(default)]
+    pub worker_id: Option<String>,
     pub objective: String,
     pub scope: String,
     pub repo: String,
@@ -114,6 +118,8 @@ mod tests {
             context: "context".to_string(),
             goal: "goal".to_string(),
             expected_schema: serde_json::Value::Null,
+            job_id: Some("job-123".to_string()),
+            worker_id: Some("worker-456".to_string()),
             reasoning_effort: None,
         }
     }
@@ -140,6 +146,8 @@ mod tests {
             context: String::new(),
             goal: String::new(),
             expected_schema: serde_json::Value::Null,
+            job_id: None,
+            worker_id: None,
             reasoning_effort: None,
         };
 

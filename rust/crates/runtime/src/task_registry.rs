@@ -263,6 +263,8 @@ mod tests {
             goal: "goal".to_string(),
             expected_schema: serde_json::Value::Null,
             reasoning_effort: None,
+            job_id: None,
+            worker_id: None,
         };
 
         let task = registry
