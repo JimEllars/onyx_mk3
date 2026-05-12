@@ -430,6 +430,21 @@ where
                 let result_message = match permission_outcome {
                     PermissionOutcome::Allow => {
                         self.record_tool_started(iterations, &tool_name);
+
+                        if let Some(expected_root) = self.session.workspace_root() {
+                            let actual_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+                            let expected_canonical = std::fs::canonicalize(expected_root)
+                                .unwrap_or_else(|_| expected_root.to_path_buf());
+                            let actual_canonical = std::fs::canonicalize(&actual_root)
+                                .unwrap_or_else(|_| actual_root.clone());
+
+                            if !actual_canonical.starts_with(&expected_canonical) {
+                                let error_msg = format!("workspace mismatch: session is bound to {} but current directory is {}", expected_root.display(), actual_root.display());
+                                let _ = crate::lane_events::LaneEvent::workspace_mismatch(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis().to_string(), &expected_root.display().to_string(), &actual_root.display().to_string());
+                                return Err(RuntimeError::new(error_msg));
+                            }
+                        }
+
                         let (mut output, mut is_error) =
                             match self.tool_executor.execute(&tool_name, &effective_input) {
                                 Ok(output) => (output, false),

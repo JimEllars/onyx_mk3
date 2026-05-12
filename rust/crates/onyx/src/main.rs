@@ -200,14 +200,39 @@ fn main() {
                         "reason": reason
                     });
 
-                    let _ = client
+                    let res = client
                         .post(&hitl_endpoint)
                         .json(&payload)
                         .send()
                         .await
-                        .map_err(|e| format!("Failed to send hitl request: {e}"));
+                        .map_err(|e| format!("Failed to send hitl request: {e}"))?;
 
-                    Ok(serde_json::json!("Circuit breaker proposed to C-Suite. Awaiting human approval in HITL logs."))
+                    let job_id = res
+                        .json::<serde_json::Value>()
+                        .await
+                        .ok()
+                        .and_then(|v| v.get("job_id").and_then(|j| j.as_str()).map(String::from))
+                        .unwrap_or_default();
+
+                    let resolve_endpoint = std::env::var("HITL_RESOLVE_ENDPOINT")
+                        .unwrap_or_else(|_| "http://localhost:8000/api/v1/hitl/resolve".to_string());
+
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                        if let Ok(check_res) = client.get(format!("{resolve_endpoint}/{job_id}")).send().await {
+                            if check_res.status().is_success() {
+                                if let Ok(val) = check_res.json::<serde_json::Value>().await {
+                                    if val.get("status").and_then(|s| s.as_str()) == Some("approved") {
+                                        break;
+                                    } else if val.get("status").and_then(|s| s.as_str()) == Some("rejected") {
+                                        return Err("Circuit breaker proposal rejected by C-Suite.".to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Ok(serde_json::json!("Circuit breaker approved and executed."))
                 }
                 "fetch_app_diagnostics" => {
                     let app_id = arguments
@@ -1729,9 +1754,9 @@ use axum::{
 
 use tokio::sync::mpsc as tokio_mpsc;
 
-#[derive(Clone)]
 struct AppState {
     task_queue: tokio_mpsc::Sender<TaskPacket>,
+    workers: std::sync::RwLock<std::collections::HashMap<String, runtime::WorkerStatus>>,
 }
 
 async fn health_check() -> impl IntoResponse {
@@ -1744,8 +1769,13 @@ async fn get_state(State(_state): State<Arc<AppState>>) -> impl IntoResponse {
 
 async fn get_worker_state(
     AxumPath(worker_id): AxumPath<String>,
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
+    let workers = state.workers.read().unwrap();
+    if let Some(status) = workers.get(&worker_id) {
+        return (StatusCode::OK, Json(serde_json::json!({"worker_id": worker_id, "status": status.to_string()}))).into_response();
+    }
+
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let state_path = cwd.join(".claw/worker-state.json");
     if let Ok(contents) = std::fs::read_to_string(&state_path) {
@@ -1757,7 +1787,7 @@ async fn get_worker_state(
     }
     (
         StatusCode::NOT_FOUND,
-        Json(json!({"error": "worker not found"})),
+        Json(serde_json::json!({"error": "worker not found"})),
     )
         .into_response()
 }
@@ -1987,7 +2017,11 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         });
 
         let (task_queue, mut task_rx) = tokio_mpsc::channel::<TaskPacket>(100);
-        let app_state = Arc::new(AppState { task_queue });
+        let app_state = Arc::new(AppState {
+        task_queue,
+        workers: std::sync::RwLock::new(std::collections::HashMap::new()),
+    });
+    let app_state_for_thread = app_state.clone();
 
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
@@ -1997,14 +2031,22 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
 
             while let Some(packet) = rt.block_on(task_rx.recv()) {
                 println!("Starting execution for task: {:?}", packet.objective);
+                let worker_id = packet.worker_id.clone().unwrap_or_else(|| "headless_worker".to_string());
+                let job_id = packet.job_id.clone().unwrap_or_default();
+
+                {
+                    let mut workers = app_state_for_thread.workers.write().unwrap();
+                    workers.insert(worker_id.clone(), runtime::WorkerStatus::Running);
+                }
 
                 // Transition state to Running manually, or rely on worker loop internals
                 if let Ok(axim_endpoint) = std::env::var("AXIM_CORE_STATE_ENDPOINT") {
                     let _ = reqwest::blocking::Client::new()
                         .post(&axim_endpoint)
                         .header("Content-Type", "application/json")
-                        .json(&json!({
-                            "worker_id": "headless_worker",
+                        .json(&serde_json::json!({
+                            "worker_id": worker_id,
+                            "job_id": job_id,
                             "status": "Running",
                             "is_ready": true,
                             "trust_gate_cleared": true,
@@ -2029,9 +2071,20 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
 
                 let result = cli.run_turn_with_output(&prompt, CliOutputFormat::Json, false);
 
-                match result {
-                    Ok(()) => println!("Worker task finished successfully"),
-                    Err(e) => println!("Worker task failed: {e}"),
+                let final_status = match result {
+                    Ok(()) => {
+                        println!("Worker task finished successfully");
+                        runtime::WorkerStatus::Finished
+                    }
+                    Err(e) => {
+                        println!("Worker task failed: {e}");
+                        runtime::WorkerStatus::Failed
+                    }
+                };
+
+                {
+                    let mut workers = app_state_for_thread.workers.write().unwrap();
+                    workers.insert(worker_id.clone(), final_status);
                 }
 
                 // Transition state to Completed
@@ -2039,9 +2092,10 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = reqwest::blocking::Client::new()
                         .post(&axim_endpoint)
                         .header("Content-Type", "application/json")
-                        .json(&json!({
-                            "worker_id": "headless_worker",
-                            "status": "Finished",
+                        .json(&serde_json::json!({
+                            "worker_id": worker_id,
+                            "job_id": job_id,
+                            "status": final_status.to_string(),
                             "is_ready": false,
                             "trust_gate_cleared": true,
                             "prompt_in_flight": false,

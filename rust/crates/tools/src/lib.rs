@@ -8901,6 +8901,8 @@ printf 'pwsh:%s' "$1"
             goal: String::new(),
             expected_schema: serde_json::Value::Null,
             reasoning_effort: None,
+            job_id: None,
+            worker_id: None,
         })
         .expect("task packet should create a task");
 
