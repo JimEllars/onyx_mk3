@@ -54,8 +54,9 @@ pub async fn stream_voice_response(worker_id: &str, message: &str) {
         "message": message,
     });
 
-    let _ = client.post(&endpoint)
-        .header("Authorization", format!("Bearer {}", service_key))
+    let _ = client
+        .post(&endpoint)
+        .header("Authorization", format!("Bearer {service_key}"))
         .header("Content-Type", "application/json")
         .json(&payload)
         .send()

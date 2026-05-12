@@ -262,6 +262,7 @@ mod tests {
             context: "context".to_string(),
             goal: "goal".to_string(),
             expected_schema: serde_json::Value::Null,
+            reasoning_effort: None,
         };
 
         let task = registry

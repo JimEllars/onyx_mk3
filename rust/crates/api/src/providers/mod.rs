@@ -8,6 +8,7 @@ use crate::error::ApiError;
 use crate::types::{MessageRequest, MessageResponse};
 
 pub mod anthropic;
+pub mod gemini;
 pub mod openai_compat;
 
 #[allow(dead_code)]
@@ -33,6 +34,7 @@ pub enum ProviderKind {
     Anthropic,
     Xai,
     OpenAi,
+    Gemini,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,7 +147,7 @@ pub fn resolve_model_alias(model: &str) -> String {
                     "grok-2" => "grok-2",
                     _ => trimmed,
                 },
-                ProviderKind::OpenAi => trimmed,
+                ProviderKind::OpenAi | ProviderKind::Gemini => trimmed,
             })
         })
         .map_or_else(|| trimmed.to_string(), ToOwned::to_owned)
@@ -153,6 +155,9 @@ pub fn resolve_model_alias(model: &str) -> String {
 
 #[must_use]
 pub fn heuristic_router(task: &str) -> String {
+    if task.contains("low reasoning_effort") || task.contains("trivial") {
+        return "gemini/gemini-flash-latest".to_string();
+    }
     if task.contains("fetch_vault_artifact") || task.contains("document auditing") {
         return "claude-3-5-sonnet-20241022".to_string();
     }
@@ -186,6 +191,15 @@ pub fn metadata_for_model(model: &str) -> Option<ProviderMetadata> {
     // route to the correct provider regardless of which auth env vars are set.
     // Without this, detect_provider_kind falls through to the auth-sniffer
     // order and misroutes to Anthropic if ANTHROPIC_API_KEY is present.
+    if canonical.starts_with("gemini/") || canonical.starts_with("gemini-") {
+        return Some(ProviderMetadata {
+            provider: ProviderKind::Gemini,
+            auth_env: "GEMINI_API_KEY",
+            base_url_env: "GEMINI_BASE_URL",
+            default_base_url: gemini::DEFAULT_BASE_URL,
+        });
+    }
+
     if canonical.starts_with("openai/") || canonical.starts_with("gpt-") {
         return Some(ProviderMetadata {
             provider: ProviderKind::OpenAi,
@@ -223,6 +237,9 @@ pub fn detect_provider_kind(model: &str) -> ProviderKind {
     }
     if openai_compat::has_api_key("XAI_API_KEY") {
         return ProviderKind::Xai;
+    }
+    if gemini::has_api_key() {
+        return ProviderKind::Gemini;
     }
     ProviderKind::Anthropic
 }

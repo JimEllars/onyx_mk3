@@ -66,6 +66,7 @@ pub struct RuntimeFeatureConfig {
     sandbox: SandboxConfig,
     provider_fallbacks: ProviderFallbackConfig,
     trusted_roots: Vec<String>,
+    gemini_token_budget: Option<u32>,
 }
 
 /// Ordered chain of fallback model identifiers used when the primary
@@ -318,6 +319,7 @@ impl ConfigLoader {
             sandbox: parse_optional_sandbox_config(&merged_value)?,
             provider_fallbacks: parse_optional_provider_fallbacks(&merged_value)?,
             trusted_roots: trusted_roots.clone(),
+            gemini_token_budget: parse_optional_u32(&merged_value, "gemini_token_budget"),
         };
 
         Ok(RuntimeConfig {
@@ -426,6 +428,11 @@ impl RuntimeConfig {
     #[must_use]
     pub fn trusted_roots(&self) -> &[String] {
         &self.feature_config.trusted_roots
+    }
+
+    #[must_use]
+    pub fn gemini_token_budget(&self) -> Option<u32> {
+        self.feature_config.gemini_token_budget
     }
 }
 
@@ -744,6 +751,15 @@ fn merge_mcp_servers(
         );
     }
     Ok(())
+}
+
+fn parse_optional_u32(value: &JsonValue, key: &str) -> Option<u32> {
+    if let JsonValue::Object(map) = value {
+        if let Some(JsonValue::Number(n)) = map.get(key) {
+            return u32::try_from(*n).ok();
+        }
+    }
+    None
 }
 
 fn parse_optional_model(root: &JsonValue) -> Option<String> {

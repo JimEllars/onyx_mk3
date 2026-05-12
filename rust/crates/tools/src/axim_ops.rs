@@ -155,7 +155,8 @@ pub async fn execute_reconcile_micro_app_revenue(
 }
 
 pub async fn execute_fetch_ecosystem_manifest() -> Result<serde_json::Value, String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
@@ -165,17 +166,20 @@ pub async fn execute_fetch_ecosystem_manifest() -> Result<serde_json::Value, Str
         .build()
         .map_err(|e| format!("Failed to build reqwest client: {e}"))?;
 
-    let url = format!("{}/api/v1/system/manifest", axim_core_url);
+    let url = format!("{axim_core_url}/api/v1/system/manifest");
 
     let res = client
         .get(&url)
-        .header("Authorization", format!("Bearer {}", service_key))
+        .header("Authorization", format!("Bearer {service_key}"))
         .send()
         .await
         .map_err(|e| format!("Request failed: {e}"))?;
 
     if res.status().is_success() {
-        let json: serde_json::Value = res.json().await.map_err(|e| format!("Failed to parse JSON: {e}"))?;
+        let json: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse JSON: {e}"))?;
         Ok(json)
     } else {
         Err(format!("Axim API error: {}", res.status()))

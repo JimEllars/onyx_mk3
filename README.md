@@ -56,6 +56,7 @@ Authenticate with either an API key or the built-in OAuth flow:
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
+export GEMINI_API_KEY="AIzaSy..."
 # or
 cd rust
 ./target/debug/claw login

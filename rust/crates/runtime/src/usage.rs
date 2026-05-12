@@ -170,12 +170,20 @@ pub struct UsageTracker {
     latest_turn: TokenUsage,
     cumulative: TokenUsage,
     turns: u32,
+    pub gemini_token_budget: Option<u32>,
+    pub cumulative_gemini_tokens: u32,
 }
 
 impl UsageTracker {
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            latest_turn: TokenUsage::default(),
+            cumulative: TokenUsage::default(),
+            turns: 0,
+            gemini_token_budget: None,
+            cumulative_gemini_tokens: 0,
+        }
     }
 
     #[must_use]
@@ -183,19 +191,22 @@ impl UsageTracker {
         let mut tracker = Self::new();
         for message in &session.messages {
             if let Some(usage) = message.usage {
-                tracker.record(usage);
+                tracker.record(usage, false); // assuming not gemini for past history unless we check
             }
         }
         tracker
     }
 
-    pub fn record(&mut self, usage: TokenUsage) {
+    pub fn record(&mut self, usage: TokenUsage, is_gemini: bool) {
         self.latest_turn = usage;
         self.cumulative.input_tokens += usage.input_tokens;
         self.cumulative.output_tokens += usage.output_tokens;
         self.cumulative.cache_creation_input_tokens += usage.cache_creation_input_tokens;
         self.cumulative.cache_read_input_tokens += usage.cache_read_input_tokens;
         self.turns += 1;
+        if is_gemini {
+            self.cumulative_gemini_tokens += usage.total_tokens();
+        }
     }
 
     #[must_use]
@@ -222,18 +233,24 @@ mod tests {
     #[test]
     fn tracks_true_cumulative_usage() {
         let mut tracker = UsageTracker::new();
-        tracker.record(TokenUsage {
-            input_tokens: 10,
-            output_tokens: 4,
-            cache_creation_input_tokens: 2,
-            cache_read_input_tokens: 1,
-        });
-        tracker.record(TokenUsage {
-            input_tokens: 20,
-            output_tokens: 6,
-            cache_creation_input_tokens: 3,
-            cache_read_input_tokens: 2,
-        });
+        tracker.record(
+            TokenUsage {
+                input_tokens: 10,
+                output_tokens: 4,
+                cache_creation_input_tokens: 2,
+                cache_read_input_tokens: 1,
+            },
+            false,
+        );
+        tracker.record(
+            TokenUsage {
+                input_tokens: 20,
+                output_tokens: 6,
+                cache_creation_input_tokens: 3,
+                cache_read_input_tokens: 2,
+            },
+            false,
+        );
 
         assert_eq!(tracker.turns(), 2);
         assert_eq!(tracker.current_turn_usage().input_tokens, 20);
