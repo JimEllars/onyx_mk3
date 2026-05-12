@@ -370,26 +370,46 @@ fn main() {
                     let res = tools::axim_ops::execute_fetch_ecosystem_manifest().await;
                     match res {
                         Ok(val) => Ok(val),
-                        Err(e) => Err(e)
+                        Err(e) => Err(e),
                     }
                 }
                 "dispatch_sms" => {
-                    let to_number = arguments.get("to_number").and_then(|v| v.as_str()).unwrap_or_default();
-                    let message = arguments.get("message").and_then(|v| v.as_str()).unwrap_or_default();
+                    let to_number = arguments
+                        .get("to_number")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let message = arguments
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
                     let res = tools::communication_ops::execute_send_sms(to_number, message).await;
                     match res {
-                        Ok(_) => Ok(serde_json::json!({ "success": true })),
-                        Err(e) => Err(e)
+                        Ok(()) => Ok(serde_json::json!({ "success": true })),
+                        Err(e) => Err(e),
                     }
                 }
                 "initiate_voice_call" => {
-                    let to_number = arguments.get("to_number").and_then(|v| v.as_str()).unwrap_or_default();
-                    let initial_greeting = arguments.get("initial_greeting").and_then(|v| v.as_str()).unwrap_or_default();
-                    let context = arguments.get("context").and_then(|v| v.as_str()).unwrap_or_default();
-                    let res = tools::communication_ops::execute_initiate_voice_call(to_number, initial_greeting, context).await;
+                    let to_number = arguments
+                        .get("to_number")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let initial_greeting = arguments
+                        .get("initial_greeting")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let context = arguments
+                        .get("context")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let res = tools::communication_ops::execute_initiate_voice_call(
+                        to_number,
+                        initial_greeting,
+                        context,
+                    )
+                    .await;
                     match res {
-                        Ok(_) => Ok(serde_json::json!({ "success": true })),
-                        Err(e) => Err(e)
+                        Ok(()) => Ok(serde_json::json!({ "success": true })),
+                        Err(e) => Err(e),
                     }
                 }
                 "read_blackboard" => {
@@ -1313,6 +1333,7 @@ fn provider_label(kind: ProviderKind) -> &'static str {
         ProviderKind::Anthropic => "anthropic",
         ProviderKind::Xai => "xai",
         ProviderKind::OpenAi => "openai",
+        ProviderKind::Gemini => "gemini",
     }
 }
 
@@ -7230,7 +7251,7 @@ impl AnthropicRuntimeClient {
                     .with_prompt_cache(PromptCache::new(session_id));
                 ApiProviderClient::Anthropic(inner)
             }
-            ProviderKind::Xai | ProviderKind::OpenAi => {
+            ProviderKind::Xai | ProviderKind::OpenAi | ProviderKind::Gemini => {
                 // The api crate's `ProviderClient::from_model_with_anthropic_auth`
                 // with `None` for the anthropic auth routes via
                 // `detect_provider_kind` and builds an

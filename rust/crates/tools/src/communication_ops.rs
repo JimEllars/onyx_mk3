@@ -167,7 +167,8 @@ pub async fn execute_read_recent_emails(limit: u32) -> Result<serde_json::Value,
 }
 
 pub async fn execute_send_sms(to_number: &str, message: &str) -> Result<(), String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
@@ -177,7 +178,7 @@ pub async fn execute_send_sms(to_number: &str, message: &str) -> Result<(), Stri
         .build()
         .map_err(|e| format!("Failed to build reqwest client: {e}"))?;
 
-    let url = format!("{}/api/v1/sms/send", axim_core_url);
+    let url = format!("{axim_core_url}/api/v1/sms/send");
     let payload = serde_json::json!({
         "to_number": to_number,
         "message": message,
@@ -185,7 +186,7 @@ pub async fn execute_send_sms(to_number: &str, message: &str) -> Result<(), Stri
 
     let res = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", service_key))
+        .header("Authorization", format!("Bearer {service_key}"))
         .header("Content-Type", "application/json")
         .json(&payload)
         .send()
@@ -199,8 +200,13 @@ pub async fn execute_send_sms(to_number: &str, message: &str) -> Result<(), Stri
     }
 }
 
-pub async fn execute_initiate_voice_call(to_number: &str, initial_greeting: &str, context: &str) -> Result<(), String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+pub async fn execute_initiate_voice_call(
+    to_number: &str,
+    initial_greeting: &str,
+    context: &str,
+) -> Result<(), String> {
+    let axim_core_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
@@ -210,7 +216,7 @@ pub async fn execute_initiate_voice_call(to_number: &str, initial_greeting: &str
         .build()
         .map_err(|e| format!("Failed to build reqwest client: {e}"))?;
 
-    let url = format!("{}/api/v1/voice/call", axim_core_url);
+    let url = format!("{axim_core_url}/api/v1/voice/call");
     let payload = serde_json::json!({
         "to_number": to_number,
         "initial_greeting": initial_greeting,
@@ -219,7 +225,7 @@ pub async fn execute_initiate_voice_call(to_number: &str, initial_greeting: &str
 
     let res = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", service_key))
+        .header("Authorization", format!("Bearer {service_key}"))
         .header("Content-Type", "application/json")
         .json(&payload)
         .send()

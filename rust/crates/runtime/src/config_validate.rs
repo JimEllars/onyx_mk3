@@ -194,6 +194,10 @@ const TOP_LEVEL_FIELDS: &[FieldSpec] = &[
         expected: FieldType::Object,
     },
     FieldSpec {
+        name: "gemini_token_budget",
+        expected: FieldType::Number,
+    },
+    FieldSpec {
         name: "trustedRoots",
         expected: FieldType::StringArray,
     },

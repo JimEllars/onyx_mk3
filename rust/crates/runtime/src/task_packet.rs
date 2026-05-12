@@ -14,6 +14,8 @@ pub struct TaskPacket {
     pub context: String,
     pub goal: String,
     pub expected_schema: serde_json::Value,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,6 +114,7 @@ mod tests {
             context: "context".to_string(),
             goal: "goal".to_string(),
             expected_schema: serde_json::Value::Null,
+            reasoning_effort: None,
         }
     }
 
@@ -137,6 +140,7 @@ mod tests {
             context: String::new(),
             goal: String::new(),
             expected_schema: serde_json::Value::Null,
+            reasoning_effort: None,
         };
 
         let error = validate_packet(packet).expect_err("packet should be rejected");

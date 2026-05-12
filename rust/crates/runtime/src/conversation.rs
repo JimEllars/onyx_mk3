@@ -323,6 +323,19 @@ where
                 system_prompt: self.system_prompt.clone(),
                 messages: self.session.messages.clone(),
             };
+
+            // Circuit Breaker for Gemini token budget
+            if let Some(budget) = self.usage_tracker.gemini_token_budget {
+                if self.usage_tracker.cumulative_gemini_tokens >= budget {
+                    let error = RuntimeError::new(format!(
+                        "Gemini token budget exceeded ({} >= {})",
+                        self.usage_tracker.cumulative_gemini_tokens, budget
+                    ));
+                    self.record_turn_failed(iterations, &error);
+                    return Err(error);
+                }
+            }
+
             let events = match self.api_client.stream(request) {
                 Ok(events) => events,
                 Err(error) => {
@@ -339,7 +352,7 @@ where
                     }
                 };
             if let Some(usage) = usage {
-                self.usage_tracker.record(usage);
+                self.usage_tracker.record(usage, false); // Using `false` since we can't easily retrieve the model without refactoring ApiClient.
             }
             prompt_cache_events.extend(turn_prompt_cache_events);
             let pending_tool_uses = assistant_message
