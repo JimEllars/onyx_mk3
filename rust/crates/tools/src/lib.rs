@@ -1,3 +1,4 @@
+pub mod axim_gateway;
 pub mod axim_ops;
 pub mod axim_vault;
 pub mod chatbase_ops;
@@ -411,6 +412,22 @@ fn permission_mode_from_plugin(value: &str) -> Result<PermissionMode, String> {
 #[allow(clippy::too_many_lines)]
 pub fn mvp_tool_specs() -> Vec<ToolSpec> {
     vec![
+        ToolSpec {
+            name: "invoke_axim_micro_app",
+            description: "Invoke an external AXiM micro-app, CRM (SuiteDash), or automation (Albato) via the universal gateway.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "app_target": { "type": "string", "description": "The target app (e.g., 'albato', 'suitedash')" },
+                    "action": { "type": "string", "description": "The action to perform (e.g., 'trigger_webhook', 'create_contact')" },
+                    "payload": { "type": "object", "description": "JSON payload required by the target action" }
+                },
+                "required": ["app_target", "action", "payload"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::Prompt,
+        },
+
         ToolSpec {
             name: "consult_chatbase_agent",
             description: "Consult one of the Chatbase Executive Agents for domain-specific knowledge (CEO, CTO, CFO, COO, Legal).",
@@ -1532,6 +1549,16 @@ fn execute_tool_with_enforcer(
             })
         }
 
+        "invoke_axim_micro_app" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            let target = input["app_target"].as_str().unwrap_or_default();
+            let action = input["action"].as_str().unwrap_or_default();
+            let payload = input["payload"].clone();
+            let result = tokio::runtime::Handle::current().block_on(
+                axim_gateway::invoke_axim_micro_app(target, action, payload)
+            );
+            result.map_err(|e| e.to_string())
+        }
         "consult_chatbase_agent" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<chatbase_ops::ConsultChatbaseAgentInput>(input).and_then(|i| {
@@ -4266,6 +4293,14 @@ impl ApiClient for ProviderRuntimeClient {
                         entry.model
                     );
                     last_error = Some(error);
+                }
+                Err(ApiError::RetriesExhausted { attempts, last_error: boxed_error }) if index + 1 < chain.len() => {
+                    let err_string = boxed_error.to_string();
+                    eprintln!(
+                        "provider {} retries exhausted ({err_string}), falling back to secondary",
+                        entry.model
+                    );
+                    last_error = Some(ApiError::RetriesExhausted { attempts, last_error: boxed_error });
                 }
                 Err(error) => return Err(RuntimeError::new(error.to_string())),
             }
