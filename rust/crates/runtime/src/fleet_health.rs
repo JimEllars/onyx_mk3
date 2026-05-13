@@ -122,74 +122,36 @@ pub async fn evaluate_health_with_ai(
         }
 
         if has_errors {
-            let mut ai_response_actions = Vec::new();
-
-            let mut manager =
-                crate::mcp_stdio::McpServerManager::from_runtime_config(&runtime_config);
-            let discovery = manager.discover_tools_best_effort().await;
-
-            // Try to find a relevant tool dynamically by evaluating actual health capabilities
-            let mut selected_tool = None;
-            for tool in &discovery.tools {
-                let matches = tool.qualified_name.contains("purge_zone_cache")
-                    || tool.raw_name.contains("purge_zone_cache")
-                    || tool.qualified_name.contains("restart_service")
-                    || tool.raw_name.contains("restart_service")
-                    || tool.qualified_name.contains("revert_deployment")
-                    || tool.raw_name.contains("revert_deployment");
-
-                if matches {
-                    selected_tool = Some(tool);
-                    break;
-                }
-            }
-
-            if let Some(tool) = selected_tool {
-                ai_response_actions.push(serde_json::json!({
-                    "tool_name": tool.qualified_name.clone(),
-                    "arguments": { "zone_id": degraded_app }
-                }));
-            } else {
-                // If no specific remediation tool is found, we should not blindly run random tools.
-                // We leave ai_response_actions empty.
-            }
-
-            let ai_response = serde_json::Value::Array(ai_response_actions);
-
             let mut current_status = status.write().unwrap();
             current_status.apps.insert(
                 degraded_app.clone(),
                 AppStatus::Degraded("AI detected anomalies".to_string()),
             );
 
-            if let Some(actions) = ai_response.as_array() {
-                for action_val in actions {
-                    if let (Some(tool_name), Some(args)) = (
-                        action_val.get("tool_name").and_then(|v| v.as_str()),
-                        action_val.get("arguments"),
-                    ) {
-                        let action_id = format!(
-                            "action-{}",
-                            std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap()
-                                .as_nanos()
-                        );
-                        let proposed_action = ProposedAction {
-                            tool_name: tool_name.to_string(),
-                            arguments: args.clone(),
-                            id: action_id.clone(),
-                            status: ActionStatus::Pending,
-                            created_at: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap()
-                                .as_secs(),
-                        };
-                        println!("[AI Self-Healing: Anomaly detected in {degraded_app}. Status set to DEGRADED. Pushing ProposedAction: {action_id}]");
-                        current_status.pending_actions.push(proposed_action);
-                    }
-                }
-            }
+            let action_id = format!(
+                "action-{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            );
+
+            let proposed_action = ProposedAction {
+                tool_name: "execute_circuit_breaker".to_string(),
+                arguments: serde_json::json!({
+                    "app_id": degraded_app,
+                    "reason": "AI detected spike in 500 errors"
+                }),
+                id: action_id.clone(),
+                status: ActionStatus::Pending,
+                created_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            };
+
+            println!("[AI Self-Healing: Anomaly detected in {degraded_app}. Status set to DEGRADED. Pushing ProposedAction: {action_id} to ApprovalQueue]");
+            current_status.pending_actions.push(proposed_action);
         }
     }
 }
