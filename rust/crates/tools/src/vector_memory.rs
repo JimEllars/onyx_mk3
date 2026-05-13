@@ -1,24 +1,21 @@
 use reqwest::Client;
 use serde_json::json;
-use uuid::Uuid;
+use std::env;
 
 #[allow(clippy::cast_possible_truncation)]
 pub async fn generate_embedding(text: &str) -> Result<Vec<f32>, String> {
-    let api_key = crate::axim_vault::fetch_vault_secret("OPENAI_API_KEY")
-        .await
-        .map_err(|e| format!("Failed to fetch OPENAI_API_KEY from vault: {e}"))?;
+    // Generate embedding through AXiM Core instead of local API call to OpenAI
+    let core_url = env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let api_key = env::var("AXIM_ONYX_SECRET").map_err(|_| "AXIM_ONYX_SECRET not set".to_string())?;
 
     let client = Client::new();
-    let url = "https://api.openai.com/v1/embeddings";
+    let url = format!("{core_url}/api/v1/embeddings");
 
     let response = client
-        .post(url)
+        .post(&url)
         .header("Authorization", format!("Bearer {api_key}"))
         .header("Content-Type", "application/json")
-        .json(&json!({
-            "input": text,
-            "model": "text-embedding-3-small"
-        }))
+        .json(&json!({ "input": text }))
         .send()
         .await
         .map_err(|e| format!("Request failed: {e}"))?;
@@ -32,7 +29,7 @@ pub async fn generate_embedding(text: &str) -> Result<Vec<f32>, String> {
         .await
         .map_err(|e| format!("Failed to parse response body: {e}"))?;
 
-    let embedding = body["data"][0]["embedding"]
+    let embedding = body["embedding"]
         .as_array()
         .ok_or_else(|| "Failed to extract embedding array from response".to_string())?
         .iter()
@@ -47,39 +44,28 @@ pub async fn generate_embedding(text: &str) -> Result<Vec<f32>, String> {
 }
 
 pub async fn upsert_memory(text: &str, metadata: serde_json::Value) -> Result<(), String> {
-    let vector = generate_embedding(text).await?;
-
-    let api_key = crate::axim_vault::fetch_vault_secret("PINECONE_API_KEY")
-        .await
-        .map_err(|e| format!("Failed to fetch PINECONE_API_KEY from vault: {e}"))?;
-
-    let host = crate::axim_vault::fetch_vault_secret("PINECONE_HOST")
-        .await
-        .map_err(|e| format!("Failed to fetch PINECONE_HOST from vault: {e}"))?;
-
-    let id = Uuid::new_v4().to_string();
+    let core_url = env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let api_key = env::var("AXIM_ONYX_SECRET").map_err(|_| "AXIM_ONYX_SECRET not set".to_string())?;
 
     let client = Client::new();
-    let url = format!("{host}/vectors/upsert");
+    // AXiM Core Edge Function for upserting memory
+    let url = format!("{core_url}/api/v1/memory-banks/upsert");
 
     let response = client
         .post(&url)
-        .header("Api-Key", api_key)
+        .header("Authorization", format!("Bearer {api_key}"))
         .header("Content-Type", "application/json")
         .json(&json!({
-            "vectors": [{
-                "id": id,
-                "values": vector,
-                "metadata": metadata
-            }]
+            "content": text,
+            "metadata": metadata
         }))
         .send()
         .await
-        .map_err(|e| format!("Pinecone upsert request failed: {e}"))?;
+        .map_err(|e| format!("AXiM Core memory upsert request failed: {e}"))?;
 
     if !response.status().is_success() {
         return Err(format!(
-            "Pinecone API returned error status: {}",
+            "AXiM Core memory API returned error status: {}",
             response.status()
         ));
     }
@@ -88,35 +74,27 @@ pub async fn upsert_memory(text: &str, metadata: serde_json::Value) -> Result<()
 }
 
 pub async fn query_memory(query_text: &str, top_k: u32) -> Result<Vec<serde_json::Value>, String> {
-    let vector = generate_embedding(query_text).await?;
-
-    let api_key = crate::axim_vault::fetch_vault_secret("PINECONE_API_KEY")
-        .await
-        .map_err(|e| format!("Failed to fetch PINECONE_API_KEY from vault: {e}"))?;
-
-    let host = crate::axim_vault::fetch_vault_secret("PINECONE_HOST")
-        .await
-        .map_err(|e| format!("Failed to fetch PINECONE_HOST from vault: {e}"))?;
+    let core_url = env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let api_key = env::var("AXIM_ONYX_SECRET").map_err(|_| "AXIM_ONYX_SECRET not set".to_string())?;
 
     let client = Client::new();
-    let url = format!("{host}/query");
+    let url = format!("{core_url}/api/v1/memory-retrieval");
 
     let response = client
         .post(&url)
-        .header("Api-Key", api_key)
+        .header("Authorization", format!("Bearer {api_key}"))
         .header("Content-Type", "application/json")
         .json(&json!({
-            "vector": vector,
-            "topK": top_k,
-            "includeMetadata": true
+            "query": query_text,
+            "top_k": top_k
         }))
         .send()
         .await
-        .map_err(|e| format!("Pinecone query request failed: {e}"))?;
+        .map_err(|e| format!("AXiM Core memory query request failed: {e}"))?;
 
     if !response.status().is_success() {
         return Err(format!(
-            "Pinecone API returned error status: {}",
+            "AXiM Core memory API returned error status: {}",
             response.status()
         ));
     }

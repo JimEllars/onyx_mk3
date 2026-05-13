@@ -74,3 +74,35 @@ pub async fn fetch_vault_secret(secret_name: &str) -> Result<String, String> {
 
     Ok(secret_value.to_string())
 }
+
+pub async fn fetch_temporal_credential(service_name: &str) -> Result<String, ToolError> {
+    let api_key = std::env::var("AXIM_ONYX_SECRET")
+        .map_err(|_| ToolError::new("AXIM_ONYX_SECRET not set".to_string()))?;
+
+    let base_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+
+    let url = format!("{base_url}/api/v1/vault/temporal/{service_name}");
+
+    let client = reqwest::Client::new();
+    let res = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .send()
+        .await
+        .map_err(|e| ToolError::new(format!("Request failed: {e}")))?;
+
+    if !res.status().is_success() {
+        return Err(ToolError::new(format!("API returned error: {}", res.status())));
+    }
+
+    let json: serde_json::Value = res
+        .json()
+        .await
+        .map_err(|e| ToolError::new(format!("Failed to parse JSON: {e}")))?;
+
+    let credential = json["credential"]
+        .as_str()
+        .ok_or_else(|| ToolError::new("credential not found or not a string".to_string()))?;
+
+    Ok(credential.to_string())
+}
