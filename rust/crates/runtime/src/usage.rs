@@ -223,6 +223,23 @@ impl UsageTracker {
     pub fn turns(&self) -> u32 {
         self.turns
     }
+    pub fn emit_telemetry(&self, sink: &std::sync::Arc<dyn telemetry::TelemetrySink>, session_id: &str, job_id: Option<String>, worker_id: &str, tenant_id: &str, model: &str) {
+        let usage = self.cumulative_usage();
+        let pricing = pricing_for_model(model).unwrap_or_else(ModelPricing::default_sonnet_tier);
+        let cost = usage.estimate_cost_usd_with_pricing(pricing).total_cost_usd();
+
+        sink.record(telemetry::TelemetryEvent::ApiUsageLog {
+            session_id: session_id.to_string(),
+            job_id,
+            worker_id: worker_id.to_string(),
+            tenant_id: tenant_id.to_string(),
+            event_type: "task_completed".to_string(),
+            tokens_input: usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens,
+            tokens_output: usage.output_tokens,
+            cost_usd: cost,
+            model: model.to_string(),
+        });
+    }
 }
 
 #[cfg(test)]

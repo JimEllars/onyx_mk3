@@ -22,8 +22,47 @@ impl SupabaseTelemetrySink {
 }
 
 impl TelemetrySink for SupabaseTelemetrySink {
-    fn record(&self, event: TelemetryEvent) {
-        if let Ok(json) = serde_json::to_string(&event) {
+        fn record(&self, event: TelemetryEvent) {
+        let payload = match &event {
+            TelemetryEvent::ApiUsageLog { session_id, job_id, worker_id, tenant_id, event_type, tokens_input, tokens_output, cost_usd, model } => {
+                serde_json::json!({
+                    "table": "api_usage_logs",
+                    "data": {
+                        "session_id": session_id,
+                        "job_id": job_id,
+                        "worker_id": worker_id,
+                        "tenant_id": tenant_id,
+                        "event_type": event_type,
+                        "tokens_input": tokens_input,
+                        "tokens_output": tokens_output,
+                        "cost_usd": cost_usd,
+                        "model": model,
+                        "timestamp": crate::current_timestamp_ms(),
+                    }
+                })
+            },
+            TelemetryEvent::SubAgentEvent { session_id, event_type, agent_id, attributes } => {
+                serde_json::json!({
+                    "table": "events_ax2024",
+                    "data": {
+                        "session_id": session_id,
+                        "worker_id": agent_id,
+                        "event_type": event_type,
+                        "attributes": attributes,
+                        "timestamp": crate::current_timestamp_ms(),
+                    }
+                })
+            },
+            _ => {
+                serde_json::json!({
+                    "table": "events_ax2024",
+                    "data": event,
+                    "timestamp": crate::current_timestamp_ms()
+                })
+            }
+        };
+
+        if let Ok(json) = serde_json::to_string(&payload) {
             let _ = self
                 .client
                 .post(&self.endpoint)
