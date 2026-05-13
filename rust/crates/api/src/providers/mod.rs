@@ -187,6 +187,22 @@ pub fn metadata_for_model(model: &str) -> Option<ProviderMetadata> {
             default_base_url: openai_compat::DEFAULT_XAI_BASE_URL,
         });
     }
+    if canonical.starts_with("deepseek") {
+        return Some(ProviderMetadata {
+            provider: ProviderKind::OpenAi,
+            auth_env: "DEEPSEEK_API_KEY",
+            base_url_env: "DEEPSEEK_BASE_URL",
+            default_base_url: openai_compat::DEFAULT_DEEPSEEK_BASE_URL,
+        });
+    }
+    if canonical.starts_with("openrouter") {
+        return Some(ProviderMetadata {
+            provider: ProviderKind::OpenAi,
+            auth_env: "OPENROUTER_API_KEY",
+            base_url_env: "OPENROUTER_BASE_URL",
+            default_base_url: openai_compat::DEFAULT_OPENROUTER_BASE_URL,
+        });
+    }
     // Explicit provider-namespaced models (e.g. "openai/gpt-4.1-mini") must
     // route to the correct provider regardless of which auth env vars are set.
     // Without this, detect_provider_kind falls through to the auth-sniffer
