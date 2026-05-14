@@ -14,7 +14,9 @@ pub fn register_internal_mcp_server(registry: &McpToolRegistry) {
                 "type": "object",
                 "properties": {
                     "app_id": {"type": "string"},
-                    "reason": {"type": "string"}
+                    "reason": {"type": "string"},
+                    "ttl_seconds": {"type": "integer"},
+                    "risk_level": {"type": "string"}
                 },
                 "required": ["app_id", "reason"]
             })),

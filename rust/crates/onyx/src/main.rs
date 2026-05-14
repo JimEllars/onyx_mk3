@@ -189,6 +189,14 @@ fn main() {
                         .get("reason")
                         .and_then(|v| v.as_str())
                         .unwrap_or_default();
+                    let ttl_seconds = arguments
+                        .get("ttl_seconds")
+                        .and_then(serde_json::Value::as_i64)
+                        .unwrap_or(3600);
+                    let risk_level = arguments
+                        .get("risk_level")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Medium");
 
                     let hitl_endpoint = std::env::var("HITL_AUDIT_LOGS_ENDPOINT")
                         .unwrap_or_else(|_| "http://localhost:8000/api/v1/hitl".to_string());
@@ -217,8 +225,50 @@ fn main() {
                     let resolve_endpoint = std::env::var("HITL_RESOLVE_ENDPOINT")
                         .unwrap_or_else(|_| "http://localhost:8000/api/v1/hitl/resolve".to_string());
 
+                    // Concurrently dispatch to creator
+                    let urgency = if risk_level.eq_ignore_ascii_case("Critical") {
+                        "CRITICAL"
+                    } else if risk_level.eq_ignore_ascii_case("High") {
+                        "HIGH"
+                    } else {
+                        "MEDIUM"
+                    };
+
+                    let message_body = format!("Onyx Circuit Breaker Proposal:\nApp: {app_id}\nReason: {reason}\nRisk: {risk_level}\nJob ID: {job_id}");
+
+                    tokio::spawn({
+                        let urgency = urgency.to_string();
+                        let message_body = message_body.clone();
+                        async move {
+                            let _ = tools::communication_ops::escalate_to_creator(&message_body, &urgency).await;
+                        }
+                    });
+
+                    let start_time = std::time::Instant::now();
+
                     loop {
                         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+                        // Check TTL Fallback
+                        let elapsed_time = start_time.elapsed().as_secs().cast_signed();
+                        if elapsed_time > ttl_seconds && !risk_level.eq_ignore_ascii_case("Critical") {
+                            // Emulate emitting a telemetry event with SYSTEM_AUTO_RESOLVE flag
+                            // AXiM Core can pick this up and display in dashboard.
+                            if let Some(telemetry_handler) = runtime::internal_mcp::TELEMETRY_EVENT_HANDLER.get() {
+                                let event = runtime::TelemetryEvent {
+                                    r#type: "SYSTEM_AUTO_RESOLVE".to_string(),
+                                    payload: serde_json::json!({
+                                        "message": format!("Circuit breaker auto-resolved after {} seconds TTL for job {}", ttl_seconds, job_id),
+                                        "job_id": job_id,
+                                        "action": "execute_circuit_breaker",
+                                        "status": "auto_resolved"
+                                    }),
+                                };
+                                let _ = telemetry_handler(&event).await;
+                            }
+                            break;
+                        }
+
                         if let Ok(check_res) = client.get(format!("{resolve_endpoint}/{job_id}")).send().await {
                             if check_res.status().is_success() {
                                 if let Ok(val) = check_res.json::<serde_json::Value>().await {
@@ -1859,6 +1909,56 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
             cron_registry,
             fleet_status_clone,
         );
+
+        // Direct messages polling thread
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(15));
+            let worker_id = std::env::var("ONYX_WORKER_ID").unwrap_or_else(|_| "onyx_core".to_string());
+            loop {
+                interval.tick().await;
+
+                if let Ok(Some(msg)) = tools::supabase_ops::fetch_creator_direct_messages(&worker_id).await {
+                    println!("[Direct Message Received]: {}", msg.content);
+
+                    let resolve_endpoint = std::env::var("HITL_RESOLVE_ENDPOINT")
+                        .unwrap_or_else(|_| "http://localhost:8000/api/v1/hitl/resolve".to_string());
+
+                    // Simple intent parsing just for circuit breaker / HITL resolve emulation.
+                    // If message contains job_id (e.g. "approve job_123"), we auto-hit the endpoint
+                    // to unblock it.
+                    let content_lower = msg.content.to_lowercase();
+                    let mut job_id = None;
+                    for word in content_lower.split_whitespace() {
+                        if word.starts_with("job_") {
+                            job_id = Some(word.to_string());
+                            break;
+                        }
+                    }
+
+                    if let Some(j_id) = job_id {
+                        let status = if content_lower.contains("approve") || content_lower.contains("yes") {
+                            "approved"
+                        } else if content_lower.contains("reject") || content_lower.contains("no") {
+                            "rejected"
+                        } else {
+                            "pivot"
+                        };
+
+                        let client = reqwest::Client::new();
+                        let _ = client.post(format!("{resolve_endpoint}/{j_id}"))
+                            .json(&serde_json::json!({
+                                "status": status,
+                                "context": msg.content
+                            }))
+                            .send()
+                            .await;
+
+                        println!("[Direct Message action]: Processed {status} for {j_id}");
+                    }
+                }
+            }
+        });
+
 
         let fleet_status_polling = fleet_status.clone();
         let _bg_polling = {

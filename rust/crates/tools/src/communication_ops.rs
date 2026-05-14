@@ -238,3 +238,22 @@ pub async fn execute_initiate_voice_call(
         Err(format!("Axim API error: {}", res.status()))
     }
 }
+
+pub async fn escalate_to_creator(message: &str, urgency: &str) -> Result<String, String> {
+    if urgency.eq_ignore_ascii_case("CRITICAL") {
+        let phone = std::env::var("CREATOR_PHONE").unwrap_or_else(|_| "+15550000000".to_string());
+        execute_initiate_voice_call(&phone, "Critical system alert from Onyx.", message)
+            .await
+            .map(|()| "Successfully initiated critical voice call to creator.".to_string())
+    } else if urgency.eq_ignore_ascii_case("HIGH") {
+        let phone = std::env::var("CREATOR_PHONE").unwrap_or_else(|_| "+15550000000".to_string());
+        execute_send_sms(&phone, message)
+            .await
+            .map(|()| "Successfully dispatched high priority SMS to creator.".to_string())
+    } else {
+        // Medium/Low
+        execute_send_email("james.ellars@axim.us.com", "Onyx Escaltion", message)
+            .await
+            .map(|()| "Successfully dispatched escalation email to creator.".to_string())
+    }
+}
