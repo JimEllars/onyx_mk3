@@ -303,6 +303,20 @@ impl AnthropicClient {
         let mut response = serde_json::from_str::<MessageResponse>(&body).map_err(|error| {
             ApiError::json_deserialize("Anthropic", &request.model, &body, error)
         })?;
+
+        for block in &mut response.content {
+            if let crate::types::OutputContentBlock::Text { text } = block {
+                if text.starts_with("```json") {
+                    if let Some(start_idx) = text.find("```json") {
+                        if let Some(end_idx) = text[start_idx + 7..].rfind("```") {
+                            let extracted_json = &text[start_idx + 7..start_idx + 7 + end_idx];
+                            *text = extracted_json.trim().to_string();
+                        }
+                    }
+                }
+            }
+        }
+
         if response.request_id.is_none() {
             response.request_id = request_id;
         }

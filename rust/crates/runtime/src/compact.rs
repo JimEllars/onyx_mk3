@@ -103,21 +103,37 @@ pub fn compact_session(session: &Session, config: CompactionConfig) -> Compactio
         };
     }
 
-    let existing_summary = session
+    let mut compacted_session = session.clone();
+
+    // Aggressive eviction: Specifically target huge ToolResult blocks first if we're well over threshold
+    if estimate_session_tokens(session) > config.max_estimated_tokens * 2 {
+        for message in &mut compacted_session.messages {
+            for block in &mut message.blocks {
+                if let ContentBlock::ToolResult { output, .. } = block {
+                    if output.len() > 100_000 {
+                        *output = format!("[Massive ToolResult evicted during aggressive compaction. Original length: {} bytes]", output.len());
+                    }
+                }
+            }
+        }
+    }
+
+    let existing_summary = compacted_session
         .messages
         .first()
         .and_then(extract_existing_compacted_summary);
     let compacted_prefix_len = usize::from(existing_summary.is_some());
-    let keep_from = session
+    let keep_from = compacted_session
         .messages
         .len()
         .saturating_sub(config.preserve_recent_messages);
-    let removed = &session.messages[compacted_prefix_len..keep_from];
-    let preserved = session.messages[keep_from..].to_vec();
+    let removed = &compacted_session.messages[compacted_prefix_len..keep_from];
+    let preserved = compacted_session.messages[keep_from..].to_vec();
+    let removed_len = removed.len();
     let summary =
         merge_compact_summaries(existing_summary.as_deref(), &summarize_messages(removed));
     let formatted_summary = format_compact_summary(&summary);
-    crate::memory::sync_summary_to_cloud(session.session_id.clone(), summary.clone());
+    crate::memory::sync_summary_to_cloud(compacted_session.session_id.clone(), summary.clone());
     let continuation = get_compact_continuation_message(&summary, true, !preserved.is_empty());
 
     let mut compacted_messages = vec![ConversationMessage {
@@ -127,15 +143,14 @@ pub fn compact_session(session: &Session, config: CompactionConfig) -> Compactio
     }];
     compacted_messages.extend(preserved);
 
-    let mut compacted_session = session.clone();
     compacted_session.messages = compacted_messages;
-    compacted_session.record_compaction(summary.clone(), removed.len());
+    compacted_session.record_compaction(summary.clone(), removed_len);
 
     CompactionResult {
         summary,
         formatted_summary,
         compacted_session,
-        removed_message_count: removed.len(),
+        removed_message_count: removed_len,
     }
 }
 

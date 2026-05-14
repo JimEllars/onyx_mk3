@@ -975,7 +975,17 @@ fn normalize_response(
             "chat completion response missing choices",
         ))?;
     let mut content = Vec::new();
-    if let Some(text) = choice.message.content.filter(|value| !value.is_empty()) {
+    if let Some(mut text) = choice.message.content.filter(|value| !value.is_empty()) {
+        // Strip out any ```json <data> ``` markdown blocks that OpenAI might occasionally wrap the response in,
+        // even when structured output is requested, to ensure we get a strict parseable JSON payload.
+        if text.starts_with("```json") {
+            if let Some(start_idx) = text.find("```json") {
+                if let Some(end_idx) = text[start_idx + 7..].rfind("```") {
+                    let extracted_json = &text[start_idx + 7..start_idx + 7 + end_idx];
+                    text = extracted_json.trim().to_string();
+                }
+            }
+        }
         content.push(OutputContentBlock::Text { text });
     }
     for tool_call in choice.message.tool_calls {
