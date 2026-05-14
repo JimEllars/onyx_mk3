@@ -373,3 +373,55 @@ pub async fn execute_dispatch_critical_alert(
         Err(format!("Alert API error: {}", res.status()))
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DirectMessage {
+    pub id: String,
+    pub content: String,
+    pub created_at: String,
+    pub worker_id: Option<String>,
+}
+
+pub async fn fetch_creator_direct_messages(worker_id: &str) -> Result<Option<DirectMessage>, String> {
+    let supabase_url = std::env::var("SUPABASE_URL").unwrap_or_default();
+    // fetch_temporal_credential
+    let supabase_key = crate::axim_vault::fetch_vault_secret("SUPABASE_SERVICE_ROLE_KEY")
+        .await
+        .unwrap_or_else(|_| std::env::var("SUPABASE_SERVICE_ROLE_KEY").unwrap_or_default());
+
+    if supabase_url.is_empty() || supabase_key.is_empty() {
+        return Err("Missing Supabase credentials".to_string());
+    }
+
+    let client = reqwest::Client::new();
+    let url = format!("{supabase_url}/rest/v1/creator_direct_messages?worker_id=eq.{worker_id}&status=eq.unread&order=created_at.asc&limit=1");
+
+    let res = client
+        .get(&url)
+        .header("apikey", &supabase_key)
+        .header("Authorization", format!("Bearer {supabase_key}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if res.status().is_success() {
+        let mut messages: Vec<DirectMessage> = res.json().await.map_err(|e| e.to_string())?;
+        if let Some(msg) = messages.pop() {
+            // Mark as read
+            let update_url = format!("{}/rest/v1/creator_direct_messages?id=eq.{}", supabase_url, msg.id);
+            let _ = client
+                .patch(&update_url)
+                .header("apikey", &supabase_key)
+                .header("Authorization", format!("Bearer {supabase_key}"))
+                .header("Content-Type", "application/json")
+                .json(&serde_json::json!({"status": "read"}))
+                .send()
+                .await;
+            Ok(Some(msg))
+        } else {
+            Ok(None)
+        }
+    } else {
+        Err(format!("Supabase API error: {}", res.status()))
+    }
+}
