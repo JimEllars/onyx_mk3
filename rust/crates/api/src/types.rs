@@ -32,6 +32,8 @@ pub struct MessageRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget_priority: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<String>,
 }
 
@@ -82,6 +84,14 @@ impl InputMessage {
 pub enum InputContentBlock {
     Text {
         text: String,
+    },
+    Image {
+        media_type: String,
+        base64_data: String,
+    },
+    Audio {
+        media_type: String,
+        base64_data: String,
     },
     ToolUse {
         id: String,

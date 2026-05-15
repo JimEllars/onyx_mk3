@@ -35,7 +35,7 @@ pub mod plugin_lifecycle;
 mod policy_engine;
 mod prompt;
 pub mod recovery_recipes;
-mod remote;
+pub mod remote;
 pub mod sandbox;
 mod session;
 pub mod session_control;
