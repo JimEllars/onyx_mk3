@@ -1,3 +1,7 @@
+pub mod ingest_ops;
+pub mod financial_ops;
+pub mod swarm_ops;
+pub mod predictive_ops;
 pub mod axim_gateway;
 pub mod axim_ops;
 pub mod axim_vault;
@@ -412,6 +416,76 @@ fn permission_mode_from_plugin(value: &str) -> Result<PermissionMode, String> {
 #[allow(clippy::too_many_lines)]
 pub fn mvp_tool_specs() -> Vec<ToolSpec> {
     vec![
+        ToolSpec {
+            name: "ExecuteRemoteCommand",
+            description: "Execute a command securely on a remote AXiM satellite server using a temporal SSH certificate.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "target_server": { "type": "string" },
+                    "command": { "type": "string" }
+                },
+                "required": ["target_server", "command"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::DangerFullAccess,
+        },
+        ToolSpec {
+            name: "IngestToKnowledgeBase",
+            description: "Crawl a URL, read a local directory of SOPs, or transcribe audio, and push that knowledge directly into AXiM Core's Foundational Knowledge Base.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "source_type": { "type": "string", "description": "e.g., 'url', 'pdf', 'audio'" },
+                    "uri": { "type": "string", "description": "The URI or path to the resource" },
+                    "metadata": { "type": "object", "description": "Additional context metadata" }
+                },
+                "required": ["source_type", "uri"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "SpawnSubAgent",
+            description: "Spawn a child sub-agent to perform a task in parallel.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "role": { "type": "string" },
+                    "task": { "type": "string" },
+                    "parent_worker_id": { "type": "string" }
+                },
+                "required": ["role", "task", "parent_worker_id"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::DangerFullAccess,
+        },
+        ToolSpec {
+            name: "CheckSwarmStatus",
+            description: "Check the status of child agents in a swarm.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "parent_job_id": { "type": "string" }
+                },
+                "required": ["parent_job_id"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "AuditFinancialMetrics",
+            description: "Audit finances, detect billing anomalies, and summarize revenue heatmaps. Restricted to @CFO persona.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "timeframe": { "type": "string", "description": "e.g., 'daily', 'weekly', 'monthly'" }
+                },
+                "required": ["timeframe"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
         ToolSpec {
             name: "invoke_axim_micro_app",
             description: "Invoke an external AXiM micro-app, CRM (SuiteDash), or automation (Albato) via the universal gateway.",
@@ -1521,6 +1595,11 @@ fn execute_tool_with_enforcer(
         "TestingPermission" => {
             from_value::<TestingPermissionInput>(input).and_then(run_testing_permission)
         }
+        "IngestToKnowledgeBase" => from_value::<IngestToKnowledgeBaseInput>(input).and_then(|i| run_ingest_to_knowledge_base(&i)),
+        "SpawnSubAgent" => from_value::<SpawnSubAgentInput>(input).and_then(|i| run_spawn_sub_agent(&i)),
+        "CheckSwarmStatus" => from_value::<CheckSwarmStatusInput>(input).and_then(|i| run_check_swarm_status(&i)),
+        "AuditFinancialMetrics" => from_value::<AuditFinancialMetricsInput>(input).and_then(|i| run_audit_financial_metrics(&i)),
+        "ExecuteRemoteCommand" => from_value::<ExecuteRemoteCommandInput>(input).and_then(|i| run_execute_remote_command(&i)),
         "fetch_post" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<wordpress_admin::FetchPostInput>(input).and_then(|i| {
@@ -9051,4 +9130,85 @@ printf 'pwsh:%s' "$1"
             .into_bytes()
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct AuditFinancialMetricsInput {
+    timeframe: String,
+}
+
+fn run_audit_financial_metrics(input: &AuditFinancialMetricsInput) -> Result<String, String> {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current()
+            .block_on(crate::financial_ops::audit_financial_metrics(&input.timeframe))
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Deserialize)]
+struct SpawnSubAgentInput {
+    role: String,
+    task: String,
+    parent_worker_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CheckSwarmStatusInput {
+    parent_job_id: String,
+}
+
+fn run_spawn_sub_agent(input: &SpawnSubAgentInput) -> Result<String, String> {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current()
+            .block_on(crate::swarm_ops::spawn_sub_agent(&input.role, &input.task, &input.parent_worker_id))
+    })
+    .map_err(|e| e.to_string())
+}
+
+fn run_check_swarm_status(input: &CheckSwarmStatusInput) -> Result<String, String> {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current()
+            .block_on(crate::swarm_ops::check_swarm_status(&input.parent_job_id))
+    })
+    .map(|res| serde_json::to_string(&res).unwrap_or_default())
+    .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Deserialize)]
+struct IngestToKnowledgeBaseInput {
+    source_type: String,
+    uri: String,
+    #[serde(default)]
+    metadata: Value,
+}
+
+fn run_ingest_to_knowledge_base(input: &IngestToKnowledgeBaseInput) -> Result<String, String> {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current()
+            .block_on(crate::ingest_ops::ingest_to_knowledge_base(&input.source_type, &input.uri, input.metadata.clone()))
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Deserialize)]
+struct ExecuteRemoteCommandInput {
+    target_server: String,
+    command: String,
+}
+
+fn run_execute_remote_command(input: &ExecuteRemoteCommandInput) -> Result<String, String> {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async {
+            // First fetch the token from vault
+            let ssh_token = match crate::axim_vault::fetch_temporal_credential("teleport_ssh").await {
+                Ok(token) => token,
+                Err(e) => return Err(e.to_string()),
+            };
+
+            // Then pass it down to remote execution wrapper
+            runtime::remote::execute_remote_command(&input.target_server, &input.command, &ssh_token)
+                .await
+                .map_err(|e| e.to_string())
+        })
+    })
 }

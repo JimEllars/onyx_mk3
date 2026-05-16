@@ -399,3 +399,66 @@ mod tests {
         assert!(no_proxy_list().contains("github.com"));
     }
 }
+
+
+use crate::RuntimeError;
+
+
+struct CleanupGuard {
+    path: std::path::PathBuf,
+}
+
+impl Drop for CleanupGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+pub async fn execute_remote_command(target_server: &str, command: &str, ssh_token: &str) -> Result<String, RuntimeError> {
+    let lower_cmd = command.to_lowercase();
+
+    // Command blocklist
+    if lower_cmd.contains("rm -rf /") || lower_cmd.contains("mkfs") || lower_cmd.contains("dd if=/dev/zero") {
+        return Err(RuntimeError::new("Command contains blacklisted operations and was blocked.".to_string()));
+    }
+
+    // Usually we would use ssh2 crate or shell out to `ssh`
+
+    // For safety, let's write the temporal credential to a secure temporary file
+    let temp_dir = std::env::temp_dir();
+    let unique_id = uuid::Uuid::new_v4();
+    let cert_path = temp_dir.join(format!("teleport_cert_{unique_id}"));
+
+    std::fs::write(&cert_path, ssh_token).map_err(|e| RuntimeError::new(format!("Failed to write ssh token: {e}")))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&cert_path).map_err(|e| RuntimeError::new(e.to_string()))?.permissions();
+        perms.set_mode(0o600);
+        let _ = std::fs::set_permissions(&cert_path, perms);
+    }
+
+
+
+    let _guard = CleanupGuard { path: cert_path.clone() };
+
+    let mut cmd = tokio::process::Command::new("ssh");
+    cmd.arg("-i");
+    cmd.arg(&cert_path);
+    cmd.arg("-o");
+    cmd.arg("StrictHostKeyChecking=no");
+    cmd.arg(target_server);
+    cmd.arg(command);
+
+    let output = cmd.output().await.map_err(|e| RuntimeError::new(format!("SSH failed to execute: {e}")))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        Ok(stdout)
+    } else {
+        Err(RuntimeError::new(format!("SSH Command failed with status: {}. Stderr: {}", output.status, stderr)))
+    }
+}

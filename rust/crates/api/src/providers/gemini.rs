@@ -236,7 +236,7 @@ fn map_request_to_gemini(req: &MessageRequest) -> Value {
                         }
                     }));
                 }
-                InputContentBlock::ToolResult {
+                                InputContentBlock::ToolResult {
                     tool_use_id,
                     content,
                     ..
@@ -257,6 +257,22 @@ fn map_request_to_gemini(req: &MessageRequest) -> Value {
                                 "name": tool_use_id,
                                 "content": text
                             }
+                        }
+                    }));
+                }
+                InputContentBlock::Image { media_type, base64_data } => {
+                    parts.push(json!({
+                        "inlineData": {
+                            "mimeType": media_type,
+                            "data": base64_data
+                        }
+                    }));
+                }
+                InputContentBlock::Audio { media_type, base64_data } => {
+                    parts.push(json!({
+                        "inlineData": {
+                            "mimeType": media_type,
+                            "data": base64_data
                         }
                     }));
                 }
