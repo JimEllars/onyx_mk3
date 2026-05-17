@@ -846,7 +846,7 @@ fn translate_message(message: &InputMessage) -> Vec<Value> {
         "assistant" => {
             let mut text = String::new();
             let mut tool_calls = Vec::new();
-            for block in &message.content {
+                        for block in &message.content {
                 match block {
                     InputContentBlock::Text { text: value } => text.push_str(value),
                     InputContentBlock::ToolUse { id, name, input } => tool_calls.push(json!({
@@ -858,6 +858,7 @@ fn translate_message(message: &InputMessage) -> Vec<Value> {
                         }
                     })),
                     InputContentBlock::ToolResult { .. } => {}
+                    InputContentBlock::Image { .. } | InputContentBlock::Audio { .. } => {}
                 }
             }
             if text.is_empty() && tool_calls.is_empty() {
@@ -878,6 +879,17 @@ fn translate_message(message: &InputMessage) -> Vec<Value> {
                     "role": "user",
                     "content": text,
                 })),
+                InputContentBlock::Image { media_type, base64_data } => Some(json!({
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": format!("data:{media_type};base64,{base64_data}")
+                            }
+                        }
+                    ]
+                })),
                 InputContentBlock::ToolResult {
                     tool_use_id,
                     content,
@@ -888,7 +900,8 @@ fn translate_message(message: &InputMessage) -> Vec<Value> {
                     "content": flatten_tool_result_content(content),
                     "is_error": is_error,
                 })),
-                InputContentBlock::ToolUse { .. } => None,
+                                InputContentBlock::ToolUse { .. } => None,
+                InputContentBlock::Audio { .. } => None,
             })
             .collect(),
     }
@@ -1409,6 +1422,7 @@ mod tests {
             presence_penalty: Some(0.3),
             stop: Some(vec!["\n".to_string()]),
             reasoning_effort: None,
+            budget_priority: None,
             response_format: None,
         };
         let payload = build_chat_completion_request(&request, OpenAiCompatConfig::openai());
