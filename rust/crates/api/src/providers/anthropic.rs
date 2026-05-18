@@ -491,6 +491,7 @@ impl AnthropicClient {
         }
         let mut request_body = self.request_profile.render_json_body(&modified_request)?;
 
+        rewrite_content_blocks_for_anthropic(&mut request_body);
         strip_unsupported_beta_body_fields(&mut request_body);
         let request_builder = self.build_request(&request_url).json(&request_body);
         request_builder.send().await.map_err(ApiError::from)
@@ -560,6 +561,7 @@ impl AnthropicClient {
         }
         let mut request_body = self.request_profile.render_json_body(&modified_request)?;
 
+        rewrite_content_blocks_for_anthropic(&mut request_body);
         strip_unsupported_beta_body_fields(&mut request_body);
         let response = self
             .build_request(&request_url)
@@ -1037,6 +1039,58 @@ fn enrich_bearer_auth_error(error: ApiError, auth: &AuthSource) -> ApiError {
 /// `/v1/messages/count_tokens` endpoints reject as `Extra inputs are not
 /// permitted`. The `betas` opt-in is communicated via the `anthropic-beta`
 /// HTTP header on these endpoints, never as a JSON body field.
+/// Rewrite `InputContentBlock` image entries from our internal shape into
+/// Anthropic's nested `source` object format. Audio blocks are unsupported
+/// by Anthropic and should be stripped (or you can error early in the caller).
+fn rewrite_content_blocks_for_anthropic(body: &mut Value) {
+    let Some(messages) = body.get_mut("messages").and_then(|m| m.as_array_mut()) else {
+        return;
+    };
+    for message in messages.iter_mut() {
+        let Some(content) = message.get_mut("content").and_then(|c| c.as_array_mut()) else {
+            continue;
+        };
+        for block in content.iter_mut() {
+            let block_type = block
+                .get("type")
+                .and_then(|t| t.as_str())
+                .map(str::to_owned);
+            match block_type.as_deref() {
+                Some("image") => {
+                    if let (Some(media_type), Some(data)) = (
+                        block
+                            .get("media_type")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned),
+                        block
+                            .get("base64_data")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned),
+                    ) {
+                        *block = serde_json::json!({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": data
+                            }
+                        });
+                    }
+                }
+                Some("audio") => {
+                    // Anthropic does not natively support audio input blocks.
+                    // Strip or replace with a placeholder text block.
+                    *block = serde_json::json!({
+                        "type": "text",
+                        "text": "[audio input not supported by Anthropic provider]"
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 fn strip_unsupported_beta_body_fields(body: &mut Value) {
     if let Some(object) = body.as_object_mut() {
         object.remove("betas");

@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_lines)]
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::env;
@@ -95,7 +96,10 @@ impl GeminiClient {
                             let jitter = backoff * 0.1;
                             Duration::from_secs_f64(backoff + jitter).min(self.max_backoff)
                         };
-                        warn!("Gemini API rate limited ({status}), backing off for {}s", delay.as_secs_f64());
+                        warn!(
+                            "Gemini API rate limited ({status}), backing off for {}s",
+                            delay.as_secs_f64()
+                        );
                         tokio::time::sleep(delay).await;
                         continue;
                     }
@@ -114,7 +118,10 @@ impl GeminiClient {
                             * 2.0_f64.powi(attempts.cast_signed() - 1);
                         let jitter = backoff * 0.1;
                         let delay = Duration::from_secs_f64(backoff + jitter).min(self.max_backoff);
-                        warn!("Gemini API connection error, backing off for {}s", delay.as_secs_f64());
+                        warn!(
+                            "Gemini API connection error, backing off for {}s",
+                            delay.as_secs_f64()
+                        );
                         tokio::time::sleep(delay).await;
                         continue;
                     }
@@ -236,7 +243,7 @@ fn map_request_to_gemini(req: &MessageRequest) -> Value {
                         }
                     }));
                 }
-                                InputContentBlock::ToolResult {
+                InputContentBlock::ToolResult {
                     tool_use_id,
                     content,
                     ..
@@ -244,7 +251,9 @@ fn map_request_to_gemini(req: &MessageRequest) -> Value {
                     let mut text = String::new();
                     for result in content {
                         match result {
-                            ToolResultContentBlock::Text { text: t } => { text.push_str(t); }
+                            ToolResultContentBlock::Text { text: t } => {
+                                text.push_str(t);
+                            }
                             ToolResultContentBlock::Json { value } => {
                                 text.push_str(&value.to_string());
                             }
@@ -260,15 +269,14 @@ fn map_request_to_gemini(req: &MessageRequest) -> Value {
                         }
                     }));
                 }
-                InputContentBlock::Image { media_type, base64_data } => {
-                    parts.push(json!({
-                        "inlineData": {
-                            "mimeType": media_type,
-                            "data": base64_data
-                        }
-                    }));
+                InputContentBlock::Image {
+                    media_type,
+                    base64_data,
                 }
-                InputContentBlock::Audio { media_type, base64_data } => {
+                | InputContentBlock::Audio {
+                    media_type,
+                    base64_data,
+                } => {
                     parts.push(json!({
                         "inlineData": {
                             "mimeType": media_type,
