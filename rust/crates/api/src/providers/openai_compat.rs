@@ -846,7 +846,7 @@ fn translate_message(message: &InputMessage) -> Vec<Value> {
         "assistant" => {
             let mut text = String::new();
             let mut tool_calls = Vec::new();
-                        for block in &message.content {
+            for block in &message.content {
                 match block {
                     InputContentBlock::Text { text: value } => text.push_str(value),
                     InputContentBlock::ToolUse { id, name, input } => tool_calls.push(json!({
@@ -857,8 +857,9 @@ fn translate_message(message: &InputMessage) -> Vec<Value> {
                             "arguments": input.to_string(),
                         }
                     })),
-                    InputContentBlock::ToolResult { .. } => {}
-                    InputContentBlock::Image { .. } | InputContentBlock::Audio { .. } => {}
+                    InputContentBlock::ToolResult { .. }
+                    | InputContentBlock::Image { .. }
+                    | InputContentBlock::Audio { .. } => {}
                 }
             }
             if text.is_empty() && tool_calls.is_empty() {
@@ -879,7 +880,10 @@ fn translate_message(message: &InputMessage) -> Vec<Value> {
                     "role": "user",
                     "content": text,
                 })),
-                InputContentBlock::Image { media_type, base64_data } => Some(json!({
+                InputContentBlock::Image {
+                    media_type,
+                    base64_data,
+                } => Some(json!({
                     "role": "user",
                     "content": [
                         {
@@ -900,8 +904,7 @@ fn translate_message(message: &InputMessage) -> Vec<Value> {
                     "content": flatten_tool_result_content(content),
                     "is_error": is_error,
                 })),
-                                InputContentBlock::ToolUse { .. } => None,
-                InputContentBlock::Audio { .. } => None,
+                InputContentBlock::ToolUse { .. } | InputContentBlock::Audio { .. } => None,
             })
             .collect(),
     }

@@ -459,6 +459,30 @@ pub(crate) fn dotenv_value(key: &str) -> Option<String> {
     values.get(key).filter(|value| !value.is_empty()).cloned()
 }
 
+
+
+#[allow(dead_code)]
+pub fn apply_least_cost_routing(
+    mut original_model: String,
+    reasoning_effort: Option<&str>,
+    budget_priority: Option<&str>,
+) -> String {
+    if budget_priority == Some("strict") && reasoning_effort == Some("low") {
+        if let Ok(worker_id) = std::env::var("ONYX_WORKER_ID") {
+            eprintln!("[LCR Telemetry] Routed to cheapest model for worker {worker_id}. Estimated Cost Savings: 90%.");
+        } else {
+            eprintln!("[LCR Telemetry] Routed to cheapest model. Estimated Cost Savings: 90%.");
+        }
+
+        if gemini::has_api_key() {
+            original_model = "gemini-2.5-flash".to_string();
+        } else if openai_compat::has_api_key("OPENAI_API_KEY") {
+            original_model = "gpt-4o-mini".to_string();
+        }
+    }
+    original_model
+}
+
 #[cfg(test)]
 mod tests {
     use std::ffi::OsString;
@@ -1027,26 +1051,4 @@ NO_EQUALS_LINE
             "empty env var should not trigger the hint sniffer, got {hint:?}"
         );
     }
-}
-
-
-pub fn apply_least_cost_routing(
-    mut original_model: String,
-    reasoning_effort: Option<&str>,
-    budget_priority: Option<&str>
-) -> String {
-    if budget_priority == Some("strict") && reasoning_effort == Some("low") {
-        if let Ok(worker_id) = std::env::var("ONYX_WORKER_ID") {
-            eprintln!("[LCR Telemetry] Routed to cheapest model for worker {worker_id}. Estimated Cost Savings: 90%.");
-        } else {
-            eprintln!("[LCR Telemetry] Routed to cheapest model. Estimated Cost Savings: 90%.");
-        }
-
-        if gemini::has_api_key() {
-            original_model = "gemini-2.5-flash".to_string();
-        } else if openai_compat::has_api_key("OPENAI_API_KEY") {
-            original_model = "gpt-4o-mini".to_string();
-        }
-    }
-    original_model
 }

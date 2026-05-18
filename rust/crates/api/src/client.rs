@@ -41,7 +41,7 @@ impl ProviderClient {
                     Some(meta) if meta.auth_env == "DASHSCOPE_API_KEY" => {
                         OpenAiCompatConfig::dashscope()
                     }
-                                        Some(meta) if meta.auth_env == "DEEPSEEK_API_KEY" => {
+                    Some(meta) if meta.auth_env == "DEEPSEEK_API_KEY" => {
                         OpenAiCompatConfig::deepseek()
                     }
                     Some(meta) if meta.auth_env == "OPENROUTER_API_KEY" => {
@@ -108,11 +108,11 @@ impl ProviderClient {
             Self::Anthropic(client) => client
                 .stream_message(request)
                 .await
-                .map(MessageStream::Anthropic),
+                .map(|s| MessageStream::Anthropic(Box::new(s))),
             Self::Xai(client) | Self::OpenAi(client) => client
                 .stream_message(request)
                 .await
-                .map(MessageStream::OpenAiCompat),
+                .map(|s| MessageStream::OpenAiCompat(Box::new(s))),
             Self::Gemini(client) => client
                 .stream_message(request)
                 .await
@@ -123,8 +123,8 @@ impl ProviderClient {
 
 #[derive(Debug)]
 pub enum MessageStream {
-    Anthropic(anthropic::MessageStream),
-    OpenAiCompat(openai_compat::MessageStream),
+    Anthropic(Box<anthropic::MessageStream>),
+    OpenAiCompat(Box<openai_compat::MessageStream>),
     Gemini(gemini::MessageStream),
 }
 

@@ -222,8 +222,10 @@ fn main() {
                         .and_then(|v| v.get("job_id").and_then(|j| j.as_str()).map(String::from))
                         .unwrap_or_default();
 
-                    let resolve_endpoint = std::env::var("HITL_RESOLVE_ENDPOINT")
-                        .unwrap_or_else(|_| "http://localhost:8000/api/v1/hitl/resolve".to_string());
+                    let resolve_endpoint =
+                        std::env::var("HITL_RESOLVE_ENDPOINT").unwrap_or_else(|_| {
+                            "http://localhost:8000/api/v1/hitl/resolve".to_string()
+                        });
 
                     // Concurrently dispatch to creator
                     let urgency = if risk_level.eq_ignore_ascii_case("Critical") {
@@ -240,7 +242,11 @@ fn main() {
                         let urgency = urgency.to_string();
                         let message_body = message_body.clone();
                         async move {
-                            let _ = tools::communication_ops::escalate_to_creator(&message_body, &urgency).await;
+                            let _ = tools::communication_ops::escalate_to_creator(
+                                &message_body,
+                                &urgency,
+                            )
+                            .await;
                         }
                     });
 
@@ -251,10 +257,14 @@ fn main() {
 
                         // Check TTL Fallback
                         let elapsed_time = start_time.elapsed().as_secs().cast_signed();
-                        if elapsed_time > ttl_seconds && !risk_level.eq_ignore_ascii_case("Critical") {
+                        if elapsed_time > ttl_seconds
+                            && !risk_level.eq_ignore_ascii_case("Critical")
+                        {
                             // Emulate emitting a telemetry event with SYSTEM_AUTO_RESOLVE flag
                             // AXiM Core can pick this up and display in dashboard.
-                            if let Some(telemetry_handler) = runtime::internal_mcp::TELEMETRY_EVENT_HANDLER.get() {
+                            if let Some(telemetry_handler) =
+                                runtime::internal_mcp::TELEMETRY_EVENT_HANDLER.get()
+                            {
                                 let event = runtime::TelemetryEvent {
                                     r#type: "SYSTEM_AUTO_RESOLVE".to_string(),
                                     payload: serde_json::json!({
@@ -269,13 +279,24 @@ fn main() {
                             break;
                         }
 
-                        if let Ok(check_res) = client.get(format!("{resolve_endpoint}/{job_id}")).send().await {
+                        if let Ok(check_res) = client
+                            .get(format!("{resolve_endpoint}/{job_id}"))
+                            .send()
+                            .await
+                        {
                             if check_res.status().is_success() {
                                 if let Ok(val) = check_res.json::<serde_json::Value>().await {
-                                    if val.get("status").and_then(|s| s.as_str()) == Some("approved") {
+                                    if val.get("status").and_then(|s| s.as_str())
+                                        == Some("approved")
+                                    {
                                         break;
-                                    } else if val.get("status").and_then(|s| s.as_str()) == Some("rejected") {
-                                        return Err("Circuit breaker proposal rejected by C-Suite.".to_string());
+                                    } else if val.get("status").and_then(|s| s.as_str())
+                                        == Some("rejected")
+                                    {
+                                        return Err(
+                                            "Circuit breaker proposal rejected by C-Suite."
+                                                .to_string(),
+                                        );
                                     }
                                 }
                             }
@@ -1823,7 +1844,11 @@ async fn get_worker_state(
 ) -> impl IntoResponse {
     let workers = state.workers.read().unwrap();
     if let Some(status) = workers.get(&worker_id) {
-        return (StatusCode::OK, Json(serde_json::json!({"worker_id": worker_id, "status": status.to_string()}))).into_response();
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({"worker_id": worker_id, "status": status.to_string()})),
+        )
+            .into_response();
     }
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -12145,20 +12170,27 @@ use std::sync::OnceLock;
 
 pub static TELEMETRY_TX: OnceLock<tokio::sync::mpsc::Sender<String>> = OnceLock::new();
 
-
-async fn worker_interrupt(axum::extract::Path(job_id): axum::extract::Path<String>) -> impl axum::response::IntoResponse {
+#[allow(clippy::unused_async)]
+async fn worker_interrupt(
+    axum::extract::Path(job_id): axum::extract::Path<String>,
+) -> impl axum::response::IntoResponse {
     // Attempt to locate and trigger the HookAbortSignal for the specified job.
     // In a full implementation, you'd lookup the specific Session or ConversationRuntime for this job_id.
     // For now, we simulate sending the global abort signal if the framework uses a global one,
     // or just logging it. The prompt says: "The route must locate the active job_id and immediately trigger the runtime::HookAbortSignal (which you implemented previously in conversation.rs) to halt the LLM stream and terminate the tool execution safely."
 
     // We assume there's a global registry or we just emit the error.
-    println!("[Omnichannel Interrupt] Received abort signal for job_id: {}", job_id);
+    println!(
+        "[Omnichannel Interrupt] Received abort signal for job_id: {job_id}"
+    );
 
     // Fire HookAbortSignal. The actual mechanism depends on how ConversationRuntime tracks active jobs.
     // Since we don't have the active session map exposed globally in this snippet, we will return a success to AXiM Core.
     // In a fully integrated version, we'd lookup `active_sessions.get(job_id).abort()`.
 
     // For the sake of the exercise, we can just return Ok.
-    (axum::http::StatusCode::OK, format!("Aborted job {}", job_id))
+    (
+        axum::http::StatusCode::OK,
+        format!("Aborted job {job_id}"),
+    )
 }
