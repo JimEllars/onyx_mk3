@@ -1,3 +1,4 @@
+cat << 'INNER_EOF' > rust/crates/runtime/src/axim_stream.rs
 use reqwest;
 use serde_json::json;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -107,3 +108,4 @@ pub async fn stream_assistant_event(worker_id: &str, event_type: &str, data: ser
         });
     }
 }
+INNER_EOF

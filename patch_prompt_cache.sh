@@ -1,0 +1,59 @@
+cat << 'INNER_EOF' > rust/crates/runtime/src/prompt.rs.patch
+<<<<<<< SEARCH
+/// Loads config and project context, then renders the system prompt text.
+pub fn load_system_prompt(
+    cwd: impl Into<PathBuf>,
+    current_date: impl Into<String>,
+    os_name: impl Into<String>,
+    os_version: impl Into<String>,
+) -> Result<Vec<String>, PromptBuildError> {
+    let cwd = cwd.into();
+    let project_context = ProjectContext::discover_with_git(&cwd, current_date.into())?;
+    let config = ConfigLoader::default_for(&cwd).load()?;
+    Ok(SystemPromptBuilder::new()
+        .with_os(os_name, os_version)
+        .with_project_context(project_context)
+        .with_runtime_config(config)
+        .build())
+}
+=======
+use std::sync::OnceLock;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::{Sender, Receiver};
+
+// Distributed Cache Invalidation Hook
+static PROMPT_CACHE_INVALIDATOR: OnceLock<tokio::sync::broadcast::Sender<()>> = OnceLock::new();
+
+pub fn init_prompt_cache_invalidator() -> tokio::sync::broadcast::Receiver<()> {
+    let (tx, rx) = tokio::sync::broadcast::channel(16);
+    PROMPT_CACHE_INVALIDATOR.set(tx).unwrap_or_default();
+    rx
+}
+
+pub fn trigger_prompt_cache_invalidation() {
+    if let Some(tx) = PROMPT_CACHE_INVALIDATOR.get() {
+        let _ = tx.send(());
+    }
+}
+
+/// Loads config and project context, then renders the system prompt text.
+pub fn load_system_prompt(
+    cwd: impl Into<PathBuf>,
+    current_date: impl Into<String>,
+    os_name: impl Into<String>,
+    os_version: impl Into<String>,
+) -> Result<Vec<String>, PromptBuildError> {
+    let cwd = cwd.into();
+
+    // Simulate cache miss on hook trigger. Since we're doing `discover_with_git` every time, we aren't caching the text strictly in memory right now. However, if there were memory state pools, they would be wiped here or we re-fetch everything fresh.
+    let project_context = ProjectContext::discover_with_git(&cwd, current_date.into())?;
+    let config = ConfigLoader::default_for(&cwd).load()?;
+
+    Ok(SystemPromptBuilder::new()
+        .with_os(os_name, os_version)
+        .with_project_context(project_context)
+        .with_runtime_config(config)
+        .build())
+}
+>>>>>>> REPLACE
+INNER_EOF

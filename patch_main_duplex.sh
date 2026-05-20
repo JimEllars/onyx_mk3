@@ -1,0 +1,31 @@
+cat << 'INNER_EOF' > patch.diff
+<<<<<<< SEARCH
+        let (task_queue, mut task_rx) = tokio_mpsc::channel::<TaskPacket>(100);
+        let app_state = Arc::new(AppState {
+        task_queue,
+        workers: std::sync::RwLock::new(std::collections::HashMap::new()),
+    });
+    let app_state_for_thread = app_state.clone();
+=======
+        let (task_queue, mut task_rx) = tokio_mpsc::channel::<TaskPacket>(100);
+
+        let tx_queue = task_queue.clone();
+        tokio::spawn(async move {
+            let duplex_url = std::env::var("AXIM_DUPLEX_SYNC_ENDPOINT")
+                .unwrap_or_else(|_| "wss://api.axim.us.com/v1/onyx/duplex".to_string());
+
+            // Loop for persistent connection
+            loop {
+                // Here we would use tokio-tungstenite or similar to establish the WebSocket
+                // This simulates the duplex loop processing inbound action packets.
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            }
+        });
+
+        let app_state = Arc::new(AppState {
+        task_queue,
+        workers: std::sync::RwLock::new(std::collections::HashMap::new()),
+    });
+    let app_state_for_thread = app_state.clone();
+>>>>>>> REPLACE
+INNER_EOF
