@@ -1,0 +1,13 @@
+cat << 'INNER_EOF' > patch_main_hmac_remove_sha2.diff
+<<<<<<< SEARCH
+                                if let Ok(secret) = tools::axim_vault::fetch_vault_secret("CREATOR_OOB_SIGNING_KEY").await {
+                                    use sha2::{Digest, Sha256};
+                                    use std::sync::Mutex;
+
+                                    // Use simple hash for validation, in real usage it's HMAC-SHA256
+                                    let mut mac = ring::hmac::Context::with_key(&ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_bytes()));
+=======
+                                if let Ok(secret) = tools::axim_vault::fetch_vault_secret("CREATOR_OOB_SIGNING_KEY").await {
+                                    let mut mac = ring::hmac::Context::with_key(&ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_bytes()));
+>>>>>>> REPLACE
+INNER_EOF

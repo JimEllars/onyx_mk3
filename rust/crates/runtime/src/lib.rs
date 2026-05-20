@@ -33,7 +33,7 @@ pub mod permission_enforcer;
 mod permissions;
 pub mod plugin_lifecycle;
 mod policy_engine;
-mod prompt;
+pub mod prompt;
 pub mod recovery_recipes;
 pub mod remote;
 pub mod sandbox;

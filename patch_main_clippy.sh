@@ -1,0 +1,25 @@
+cat << 'INNER_EOF' > patch_main_clippy.diff
+<<<<<<< SEARCH
+                tokio::select! {
+                    _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
+                        // Simulate polling for messages or incoming duplex stream data
+                        // For example, if we received a cache clear payload from the fleet control gateway:
+                        // runtime::prompt::trigger_prompt_cache_invalidation();
+                    }
+                    Ok(_) = invalidator_rx.recv() => {
+                        println!("[Duplex Sync] Received internal trigger. Flushed local cache state. Reloading system prompt variables.");
+                    }
+                }
+=======
+                tokio::select! {
+                    () = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
+                        // Simulate polling for messages or incoming duplex stream data
+                        // For example, if we received a cache clear payload from the fleet control gateway:
+                        // runtime::prompt::trigger_prompt_cache_invalidation();
+                    }
+                    Ok(()) = invalidator_rx.recv() => {
+                        println!("[Duplex Sync] Received internal trigger. Flushed local cache state. Reloading system prompt variables.");
+                    }
+                }
+>>>>>>> REPLACE
+INNER_EOF

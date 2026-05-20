@@ -1,0 +1,5 @@
+<<<<<<< SEARCH
+mod prompt;
+=======
+pub mod prompt;
+>>>>>>> REPLACE
