@@ -382,7 +382,9 @@ pub struct DirectMessage {
     pub worker_id: Option<String>,
 }
 
-pub async fn fetch_creator_direct_messages(worker_id: &str) -> Result<Option<DirectMessage>, String> {
+pub async fn fetch_creator_direct_messages(
+    worker_id: &str,
+) -> Result<Option<DirectMessage>, String> {
     let supabase_url = std::env::var("SUPABASE_URL").unwrap_or_default();
     // fetch_temporal_credential
     let supabase_key = crate::axim_vault::fetch_vault_secret("SUPABASE_SERVICE_ROLE_KEY")
@@ -408,7 +410,10 @@ pub async fn fetch_creator_direct_messages(worker_id: &str) -> Result<Option<Dir
         let mut messages: Vec<DirectMessage> = res.json().await.map_err(|e| e.to_string())?;
         if let Some(msg) = messages.pop() {
             // Mark as read
-            let update_url = format!("{}/rest/v1/creator_direct_messages?id=eq.{}", supabase_url, msg.id);
+            let update_url = format!(
+                "{}/rest/v1/creator_direct_messages?id=eq.{}",
+                supabase_url, msg.id
+            );
             let _ = client
                 .patch(&update_url)
                 .header("apikey", &supabase_key)

@@ -1,3 +1,4 @@
+use crate::http_client::send_with_retry;
 use reqwest::Client;
 use serde_json::Value;
 use std::env;
@@ -16,15 +17,15 @@ pub async fn update_ticket_status(
     let url = format!("{base_url}/api/v1/support/tickets/{ticket_id}");
 
     let client = Client::new();
-    let response = client
+    let request = client
         .post(&url)
         .header("Authorization", format!("Bearer {api_key}"))
         .header("Idempotency-Key", idempotency_key)
         .json(&serde_json::json!({
             "status": status,
             "reply_text": reply_text
-        }))
-        .send()
+        }));
+    let response: reqwest::Response = send_with_retry(request)
         .await
         .map_err(|e| format!("Failed to send request: {e}"))?;
 
@@ -43,10 +44,10 @@ pub async fn fetch_app_diagnostics(app_id: &str) -> Result<Value, String> {
     let url = format!("{base_url}/api/v1/telemetry/apps/{app_id}/diagnostics");
 
     let client = Client::new();
-    let response = client
+    let request = client
         .get(&url)
-        .header("Authorization", format!("Bearer {api_key}"))
-        .send()
+        .header("Authorization", format!("Bearer {api_key}"));
+    let response: reqwest::Response = send_with_retry(request)
         .await
         .map_err(|e| format!("Failed to send request: {e}"))?;
 

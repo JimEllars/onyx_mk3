@@ -5,8 +5,10 @@ use std::env;
 #[allow(clippy::cast_possible_truncation)]
 pub async fn generate_embedding(text: &str) -> Result<Vec<f32>, String> {
     // Generate embedding through AXiM Core instead of local API call to OpenAI
-    let core_url = env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
-    let api_key = env::var("AXIM_ONYX_SECRET").map_err(|_| "AXIM_ONYX_SECRET not set".to_string())?;
+    let core_url =
+        env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let api_key =
+        env::var("AXIM_ONYX_SECRET").map_err(|_| "AXIM_ONYX_SECRET not set".to_string())?;
 
     let client = Client::new();
     let url = format!("{core_url}/api/v1/embeddings");
@@ -44,8 +46,10 @@ pub async fn generate_embedding(text: &str) -> Result<Vec<f32>, String> {
 }
 
 pub async fn upsert_memory(text: &str, metadata: serde_json::Value) -> Result<(), String> {
-    let core_url = env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
-    let api_key = env::var("AXIM_ONYX_SECRET").map_err(|_| "AXIM_ONYX_SECRET not set".to_string())?;
+    let core_url =
+        env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let api_key =
+        env::var("AXIM_ONYX_SECRET").map_err(|_| "AXIM_ONYX_SECRET not set".to_string())?;
 
     let client = Client::new();
     // AXiM Core Edge Function for upserting memory
@@ -74,8 +78,10 @@ pub async fn upsert_memory(text: &str, metadata: serde_json::Value) -> Result<()
 }
 
 pub async fn query_memory(query_text: &str, top_k: u32) -> Result<Vec<serde_json::Value>, String> {
-    let core_url = env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
-    let api_key = env::var("AXIM_ONYX_SECRET").map_err(|_| "AXIM_ONYX_SECRET not set".to_string())?;
+    let core_url =
+        env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let api_key =
+        env::var("AXIM_ONYX_SECRET").map_err(|_| "AXIM_ONYX_SECRET not set".to_string())?;
 
     let client = Client::new();
     let url = format!("{core_url}/api/v1/memory-retrieval");

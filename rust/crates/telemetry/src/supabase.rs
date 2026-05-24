@@ -22,9 +22,19 @@ impl SupabaseTelemetrySink {
 }
 
 impl TelemetrySink for SupabaseTelemetrySink {
-        fn record(&self, event: TelemetryEvent) {
+    fn record(&self, event: TelemetryEvent) {
         let payload = match &event {
-            TelemetryEvent::ApiUsageLog { session_id, job_id, worker_id, tenant_id, event_type, tokens_input, tokens_output, cost_usd, model } => {
+            TelemetryEvent::ApiUsageLog {
+                session_id,
+                job_id,
+                worker_id,
+                tenant_id,
+                event_type,
+                tokens_input,
+                tokens_output,
+                cost_usd,
+                model,
+            } => {
                 serde_json::json!({
                     "table": "api_usage_logs",
                     "data": {
@@ -40,8 +50,13 @@ impl TelemetrySink for SupabaseTelemetrySink {
                         "timestamp": crate::current_timestamp_ms(),
                     }
                 })
-            },
-            TelemetryEvent::SubAgentEvent { session_id, event_type, agent_id, attributes } => {
+            }
+            TelemetryEvent::SubAgentEvent {
+                session_id,
+                event_type,
+                agent_id,
+                attributes,
+            } => {
                 serde_json::json!({
                     "table": "events_ax2024",
                     "data": {
@@ -52,7 +67,7 @@ impl TelemetrySink for SupabaseTelemetrySink {
                         "timestamp": crate::current_timestamp_ms(),
                     }
                 })
-            },
+            }
             _ => {
                 serde_json::json!({
                     "table": "events_ax2024",

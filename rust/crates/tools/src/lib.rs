@@ -1,7 +1,3 @@
-pub mod ingest_ops;
-pub mod financial_ops;
-pub mod swarm_ops;
-pub mod predictive_ops;
 pub mod axim_gateway;
 pub mod axim_ops;
 pub mod axim_vault;
@@ -9,11 +5,16 @@ pub mod chatbase_ops;
 pub mod cloudflare_ops;
 pub mod communication_ops;
 pub mod executive_sync;
+pub mod financial_ops;
 pub mod github_ops;
+pub mod http_client;
+pub mod ingest_ops;
 pub mod network_ops;
 pub mod playbooks;
+pub mod predictive_ops;
 pub mod supabase_ops;
 pub mod support_ops;
+pub mod swarm_ops;
 pub mod vector_memory;
 pub mod wordpress_admin;
 
@@ -1595,11 +1596,18 @@ fn execute_tool_with_enforcer(
         "TestingPermission" => {
             from_value::<TestingPermissionInput>(input).and_then(run_testing_permission)
         }
-        "IngestToKnowledgeBase" => from_value::<IngestToKnowledgeBaseInput>(input).and_then(|i| run_ingest_to_knowledge_base(&i)),
-        "SpawnSubAgent" => from_value::<SpawnSubAgentInput>(input).and_then(|i| run_spawn_sub_agent(&i)),
-        "CheckSwarmStatus" => from_value::<CheckSwarmStatusInput>(input).and_then(|i| run_check_swarm_status(&i)),
-        "AuditFinancialMetrics" => from_value::<AuditFinancialMetricsInput>(input).and_then(|i| run_audit_financial_metrics(&i)),
-        "ExecuteRemoteCommand" => from_value::<ExecuteRemoteCommandInput>(input).and_then(|i| run_execute_remote_command(&i)),
+        "IngestToKnowledgeBase" => from_value::<IngestToKnowledgeBaseInput>(input)
+            .and_then(|i| run_ingest_to_knowledge_base(&i)),
+        "SpawnSubAgent" => {
+            from_value::<SpawnSubAgentInput>(input).and_then(|i| run_spawn_sub_agent(&i))
+        }
+        "CheckSwarmStatus" => {
+            from_value::<CheckSwarmStatusInput>(input).and_then(|i| run_check_swarm_status(&i))
+        }
+        "AuditFinancialMetrics" => from_value::<AuditFinancialMetricsInput>(input)
+            .and_then(|i| run_audit_financial_metrics(&i)),
+        "ExecuteRemoteCommand" => from_value::<ExecuteRemoteCommandInput>(input)
+            .and_then(|i| run_execute_remote_command(&i)),
         "fetch_post" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<wordpress_admin::FetchPostInput>(input).and_then(|i| {
@@ -1633,9 +1641,8 @@ fn execute_tool_with_enforcer(
             let target = input["app_target"].as_str().unwrap_or_default();
             let action = input["action"].as_str().unwrap_or_default();
             let payload = input["payload"].clone();
-            let result = tokio::runtime::Handle::current().block_on(
-                axim_gateway::invoke_axim_micro_app(target, action, payload)
-            );
+            let result = tokio::runtime::Handle::current()
+                .block_on(axim_gateway::invoke_axim_micro_app(target, action, payload));
             result.map_err(|e| e.to_string())
         }
         "consult_chatbase_agent" => {
@@ -4373,13 +4380,19 @@ impl ApiClient for ProviderRuntimeClient {
                     );
                     last_error = Some(error);
                 }
-                Err(ApiError::RetriesExhausted { attempts, last_error: boxed_error }) if index + 1 < chain.len() => {
+                Err(ApiError::RetriesExhausted {
+                    attempts,
+                    last_error: boxed_error,
+                }) if index + 1 < chain.len() => {
                     let err_string = boxed_error.to_string();
                     eprintln!(
                         "provider {} retries exhausted ({err_string}), falling back to secondary",
                         entry.model
                     );
-                    last_error = Some(ApiError::RetriesExhausted { attempts, last_error: boxed_error });
+                    last_error = Some(ApiError::RetriesExhausted {
+                        attempts,
+                        last_error: boxed_error,
+                    });
                 }
                 Err(error) => return Err(RuntimeError::new(error.to_string())),
             }
@@ -9139,8 +9152,9 @@ struct AuditFinancialMetricsInput {
 
 fn run_audit_financial_metrics(input: &AuditFinancialMetricsInput) -> Result<String, String> {
     tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current()
-            .block_on(crate::financial_ops::audit_financial_metrics(&input.timeframe))
+        tokio::runtime::Handle::current().block_on(crate::financial_ops::audit_financial_metrics(
+            &input.timeframe,
+        ))
     })
     .map_err(|e| e.to_string())
 }
@@ -9159,8 +9173,11 @@ struct CheckSwarmStatusInput {
 
 fn run_spawn_sub_agent(input: &SpawnSubAgentInput) -> Result<String, String> {
     tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current()
-            .block_on(crate::swarm_ops::spawn_sub_agent(&input.role, &input.task, &input.parent_worker_id))
+        tokio::runtime::Handle::current().block_on(crate::swarm_ops::spawn_sub_agent(
+            &input.role,
+            &input.task,
+            &input.parent_worker_id,
+        ))
     })
     .map_err(|e| e.to_string())
 }
@@ -9184,8 +9201,11 @@ struct IngestToKnowledgeBaseInput {
 
 fn run_ingest_to_knowledge_base(input: &IngestToKnowledgeBaseInput) -> Result<String, String> {
     tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current()
-            .block_on(crate::ingest_ops::ingest_to_knowledge_base(&input.source_type, &input.uri, input.metadata.clone()))
+        tokio::runtime::Handle::current().block_on(crate::ingest_ops::ingest_to_knowledge_base(
+            &input.source_type,
+            &input.uri,
+            input.metadata.clone(),
+        ))
     })
     .map_err(|e| e.to_string())
 }
@@ -9200,15 +9220,20 @@ fn run_execute_remote_command(input: &ExecuteRemoteCommandInput) -> Result<Strin
     tokio::task::block_in_place(|| {
         tokio::runtime::Handle::current().block_on(async {
             // First fetch the token from vault
-            let ssh_token = match crate::axim_vault::fetch_temporal_credential("teleport_ssh").await {
+            let ssh_token = match crate::axim_vault::fetch_temporal_credential("teleport_ssh").await
+            {
                 Ok(token) => token,
                 Err(e) => return Err(e.to_string()),
             };
 
             // Then pass it down to remote execution wrapper
-            runtime::remote::execute_remote_command(&input.target_server, &input.command, &ssh_token)
-                .await
-                .map_err(|e| e.to_string())
+            runtime::remote::execute_remote_command(
+                &input.target_server,
+                &input.command,
+                &ssh_token,
+            )
+            .await
+            .map_err(|e| e.to_string())
         })
     })
 }

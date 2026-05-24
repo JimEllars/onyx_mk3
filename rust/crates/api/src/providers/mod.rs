@@ -459,8 +459,6 @@ pub(crate) fn dotenv_value(key: &str) -> Option<String> {
     values.get(key).filter(|value| !value.is_empty()).cloned()
 }
 
-
-
 #[allow(dead_code)]
 pub fn apply_least_cost_routing(
     mut original_model: String,

@@ -1,6 +1,6 @@
+use crate::axim_vault::fetch_temporal_credential;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use crate::axim_vault::fetch_temporal_credential;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FetchPostInput {
@@ -17,8 +17,9 @@ pub async fn execute_fetch_post(input: FetchPostInput) -> Result<FetchPostOutput
 
     let app_password = match fetch_temporal_credential("wordpress").await {
         Ok(cred) => cred,
-        Err(_) => std::env::var("WP_APPLICATION_PASSWORD")
-            .map_err(|_| "WP_APPLICATION_PASSWORD is not set and vault fallback failed".to_string())?,
+        Err(_) => std::env::var("WP_APPLICATION_PASSWORD").map_err(|_| {
+            "WP_APPLICATION_PASSWORD is not set and vault fallback failed".to_string()
+        })?,
     };
 
     let client = reqwest::Client::new();
@@ -63,8 +64,9 @@ pub async fn execute_update_post_content(
 
     let app_password = match fetch_temporal_credential("wordpress").await {
         Ok(cred) => cred,
-        Err(_) => std::env::var("WP_APPLICATION_PASSWORD")
-            .map_err(|_| "WP_APPLICATION_PASSWORD is not set and vault fallback failed".to_string())?,
+        Err(_) => std::env::var("WP_APPLICATION_PASSWORD").map_err(|_| {
+            "WP_APPLICATION_PASSWORD is not set and vault fallback failed".to_string()
+        })?,
     };
 
     let client = reqwest::Client::new();
@@ -108,8 +110,9 @@ pub async fn execute_update_seo_metadata(
 
     let app_password = match fetch_temporal_credential("wordpress").await {
         Ok(cred) => cred,
-        Err(_) => std::env::var("WP_APPLICATION_PASSWORD")
-            .map_err(|_| "WP_APPLICATION_PASSWORD is not set and vault fallback failed".to_string())?,
+        Err(_) => std::env::var("WP_APPLICATION_PASSWORD").map_err(|_| {
+            "WP_APPLICATION_PASSWORD is not set and vault fallback failed".to_string()
+        })?,
     };
 
     let client = reqwest::Client::new();
@@ -152,7 +155,7 @@ pub async fn execute_create_wordpress_post(
             Err(_) => crate::axim_vault::fetch_vault_secret("WP_API_KEY")
                 .await
                 .map_err(|e| format!("WP_API_KEY is not set and vault fetch failed: {e}"))?,
-        }
+        },
     };
 
     let wp_user = std::env::var("WP_USER").unwrap_or_else(|_| "admin".to_string());
@@ -196,7 +199,7 @@ pub async fn execute_update_wordpress_post(
             Err(_) => crate::axim_vault::fetch_vault_secret("WP_API_KEY")
                 .await
                 .map_err(|e| format!("WP_API_KEY is not set and vault fetch failed: {e}"))?,
-        }
+        },
     };
 
     let wp_user = std::env::var("WP_USER").unwrap_or_else(|_| "admin".to_string());

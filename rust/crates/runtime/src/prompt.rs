@@ -147,17 +147,19 @@ impl SystemPromptBuilder {
 
         let intro = get_simple_intro_section(self.output_style_name.is_some());
         if let Some(p) = &self.persona {
-            let mut persona_prompt = format!("{}\n\n[PERSONA ACTIVE: {}]\n", intro, p.to_uppercase());
+            let mut persona_prompt =
+                format!("{}\n\n[PERSONA ACTIVE: {}]\n", intro, p.to_uppercase());
             match p.to_lowercase().as_str() {
                 "cfo" => {
                     persona_prompt.push_str("You are the AXiM Chief Financial Officer. Your primary directive is revenue overwatch and cost analysis.\n");
                     persona_prompt.push_str("ROUTING: You MUST prioritize using the `AuditFinancialMetrics` tool to gather current MRR and churn data before making financial assessments.\n");
-                },
+                }
                 "legal" => {
                     persona_prompt.push_str("You are the AXiM Legal Counsel. Prioritize the `fulfill_legal_document` tool...\n");
-                },
+                }
                 _ => {
-                    persona_prompt.push_str("Act as a specialized executive advisor for this domain.\n");
+                    persona_prompt
+                        .push_str("Act as a specialized executive advisor for this domain.\n");
                 }
             }
             sections.push(persona_prompt);
