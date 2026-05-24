@@ -1,9 +1,10 @@
-use std::fmt::Write;
 use runtime::ToolError;
 use std::env;
+use std::fmt::Write;
 
 pub async fn audit_financial_metrics(timeframe: &str) -> Result<String, ToolError> {
-    let axim_core_url = env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url =
+        env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
 
     // Security: Use axim_vault::fetch_temporal_credential("financial_readonly") to authorize the request
     let service_key = crate::axim_vault::fetch_temporal_credential("financial_readonly")
@@ -23,12 +24,14 @@ pub async fn audit_financial_metrics(timeframe: &str) -> Result<String, ToolErro
     });
 
     let (audit_res, billing_res) = tokio::join!(
-        client.post(&audit_url)
+        client
+            .post(&audit_url)
             .header("Authorization", format!("Bearer {service_key}"))
             .header("Content-Type", "application/json")
             .json(&payload)
             .send(),
-        client.post(&billing_url)
+        client
+            .post(&billing_url)
             .header("Authorization", format!("Bearer {service_key}"))
             .header("Content-Type", "application/json")
             .json(&payload)
@@ -36,7 +39,8 @@ pub async fn audit_financial_metrics(timeframe: &str) -> Result<String, ToolErro
     );
 
     let audit_res = audit_res.map_err(|e| ToolError::new(format!("Audit request failed: {e}")))?;
-    let billing_res = billing_res.map_err(|e| ToolError::new(format!("Billing request failed: {e}")))?;
+    let billing_res =
+        billing_res.map_err(|e| ToolError::new(format!("Billing request failed: {e}")))?;
 
     let mut report = String::from("# Financial & Billing Overwatch Report\n\n");
 
@@ -44,14 +48,25 @@ pub async fn audit_financial_metrics(timeframe: &str) -> Result<String, ToolErro
         let audit_data = audit_res.text().await.unwrap_or_default();
         let _ = write!(report, "## Financial Audit ({timeframe})\n{audit_data}\n\n");
     } else {
-        let _ = write!(report, "## Financial Audit ({timeframe})\nFailed to retrieve data: HTTP {}\n\n", audit_res.status());
+        let _ = write!(
+            report,
+            "## Financial Audit ({timeframe})\nFailed to retrieve data: HTTP {}\n\n",
+            audit_res.status()
+        );
     }
 
     if billing_res.status().is_success() {
         let billing_data = billing_res.text().await.unwrap_or_default();
-        let _ = write!(report, "## Autonomous Billing ({timeframe})\n{billing_data}\n\n");
+        let _ = write!(
+            report,
+            "## Autonomous Billing ({timeframe})\n{billing_data}\n\n"
+        );
     } else {
-        let _ = write!(report, "## Autonomous Billing ({timeframe})\nFailed to retrieve data: HTTP {}\n\n", billing_res.status());
+        let _ = write!(
+            report,
+            "## Autonomous Billing ({timeframe})\nFailed to retrieve data: HTTP {}\n\n",
+            billing_res.status()
+        );
     }
 
     Ok(report)

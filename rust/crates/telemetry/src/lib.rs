@@ -1,3 +1,4 @@
+pub mod metrics;
 use std::fmt::{Debug, Formatter};
 use std::fs::{File, OpenOptions};
 use std::io::Write;

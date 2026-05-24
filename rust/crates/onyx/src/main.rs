@@ -1920,6 +1920,13 @@ async fn stream_events(State(_state): State<Arc<AppState>>) -> impl IntoResponse
 }
 
 #[allow(clippy::too_many_lines)]
+#[tracing::instrument]
+
+async fn metrics_handler() -> String {
+    telemetry::metrics::encode_metrics().unwrap_or_else(|e| format!("Error encoding metrics: {e}"))
+}
+
+#[allow(clippy::too_many_lines)]
 fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -1943,7 +1950,7 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
                 interval.tick().await;
 
                 if let Ok(Some(msg)) = tools::supabase_ops::fetch_creator_direct_messages(&worker_id).await {
-                    println!("[Direct Message Received]: {}", msg.content);
+                    tracing::info!("[Direct Message Received]: {}", msg.content);
 
                     let resolve_endpoint = std::env::var("HITL_RESOLVE_ENDPOINT")
                         .unwrap_or_else(|_| "http://localhost:8000/api/v1/hitl/resolve".to_string());
@@ -1978,7 +1985,7 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
                             .send()
                             .await;
 
-                        println!("[Direct Message action]: Processed {status} for {j_id}");
+                        tracing::info!("[Direct Message action]: Processed {status} for {j_id}");
                     }
                 }
             }
@@ -2041,18 +2048,18 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
                     .await
                 {
                     Ok(resp) if resp.status().is_success() => {
-                        println!(
+                        tracing::info!(
                             "[Heartbeat] Successfully broadcast load: {pending_tasks} pending, {active_tasks} active"
                         );
                     }
                     Ok(resp) => {
-                        eprintln!(
+                        tracing::error!(
                             "[Heartbeat] Failed to broadcast load: status {}",
                             resp.status()
                         );
                     }
                     Err(e) => {
-                        eprintln!("[Heartbeat] Error broadcasting load: {e}");
+                        tracing::error!("[Heartbeat] Error broadcasting load: {e}");
                     }
                 }
             }
@@ -2092,7 +2099,7 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
                         .await;
                     }
                     Err(e) => {
-                        eprintln!("[Telemetry Polling] Error querying telemetry logs: {e}");
+                        tracing::error!("[Telemetry Polling] Error querying telemetry logs: {e}");
                     }
                 }
             }
@@ -2169,10 +2176,10 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
 
                                     let result_hex = hex::encode(result.as_ref());
                                     if result_hex == simulated_signature {
-                                        println!("[Duplex Sync] Out-of-band creator command signature verified. Ingesting.");
+                                        tracing::info!("[Duplex Sync] Out-of-band creator command signature verified. Ingesting.");
                                         // _tx_queue.send(...)
                                     } else {
-                                        eprintln!("[SECURITY ANOMALY] HMAC signature mismatch on out-of-band creator command. Execution isolated.");
+                                        tracing::error!("[SECURITY ANOMALY] HMAC signature mismatch on out-of-band creator command. Execution isolated.");
                                         // Stop processing this packet, don't ingest it to _tx_queue
                                     }
                                 }
@@ -2180,7 +2187,7 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     Ok(()) = invalidator_rx.recv() => {
-                        println!("[Duplex Sync] Received internal trigger. Flushed local cache state. Reloading system prompt variables.");
+                        tracing::info!("[Duplex Sync] Received internal trigger. Flushed local cache state. Reloading system prompt variables.");
                     }
                 }
             }
@@ -2199,7 +2206,7 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap();
 
             while let Some(packet) = rt.block_on(task_rx.recv()) {
-                println!("Starting execution for task: {:?}", packet.objective);
+                tracing::info!("Starting execution for task: {:?}", packet.objective);
                 let worker_id = packet.worker_id.clone().unwrap_or_else(|| "headless_worker".to_string());
                 let job_id = packet.job_id.clone().unwrap_or_default();
 
@@ -2242,11 +2249,11 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
 
                 let final_status = match result {
                     Ok(()) => {
-                        println!("Worker task finished successfully");
+                        tracing::info!("Worker task finished successfully");
                         runtime::WorkerStatus::Finished
                     }
                     Err(e) => {
-                        println!("Worker task failed: {e}");
+                        tracing::info!("Worker task failed: {e}");
                         runtime::WorkerStatus::Failed
                     }
                 };
@@ -2278,6 +2285,7 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         });
 
         let app = Router::new()
+            .route("/metrics", get(metrics_handler))
             .route("/state", get(get_state))
             .route("/state/:worker_id", get(get_worker_state))
             .route("/tasks", post(ingest_task_packet))
@@ -2286,7 +2294,7 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
             .with_state(app_state);
 
         let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
-        println!("Onyx headless server listening on port {port}");
+        tracing::info!("Onyx headless server listening on port {port}");
 
         axum::serve(listener, app).await?;
         Ok(())
@@ -12224,17 +12232,12 @@ async fn worker_interrupt(
     // or just logging it. The prompt says: "The route must locate the active job_id and immediately trigger the runtime::HookAbortSignal (which you implemented previously in conversation.rs) to halt the LLM stream and terminate the tool execution safely."
 
     // We assume there's a global registry or we just emit the error.
-    println!(
-        "[Omnichannel Interrupt] Received abort signal for job_id: {job_id}"
-    );
+    println!("[Omnichannel Interrupt] Received abort signal for job_id: {job_id}");
 
     // Fire HookAbortSignal. The actual mechanism depends on how ConversationRuntime tracks active jobs.
     // Since we don't have the active session map exposed globally in this snippet, we will return a success to AXiM Core.
     // In a fully integrated version, we'd lookup `active_sessions.get(job_id).abort()`.
 
     // For the sake of the exercise, we can just return Ok.
-    (
-        axum::http::StatusCode::OK,
-        format!("Aborted job {job_id}"),
-    )
+    (axum::http::StatusCode::OK, format!("Aborted job {job_id}"))
 }

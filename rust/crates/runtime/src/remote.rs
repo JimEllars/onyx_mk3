@@ -250,8 +250,6 @@ fn env_truthy(value: Option<&String>) -> bool {
     })
 }
 
-
-
 use crate::RuntimeError;
 
 struct CleanupGuard {

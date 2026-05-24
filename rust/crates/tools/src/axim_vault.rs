@@ -12,11 +12,12 @@ pub async fn fetch_vault_artifact(trace_id: &str) -> Result<String, ToolError> {
     let url = format!("{vault_url}/{trace_id}");
 
     let client = Client::new();
-    let res = client
+    let request = client
         .get(&url)
-        .header("Authorization", format!("Bearer {api_key}"))
-        .send()
+        .header("Authorization", format!("Bearer {api_key}"));
+    let res = tokio::time::timeout(std::time::Duration::from_secs(5), request.send())
         .await
+        .map_err(|_| ToolError::new("Request timeout".to_string()))?
         .map_err(|e| ToolError::new(format!("Request failed: {e}")))?;
 
     if !res.status().is_success() {
@@ -52,11 +53,12 @@ pub async fn fetch_vault_secret(secret_name: &str) -> Result<String, String> {
     let url = format!("{base_url}/api/v1/vault/{secret_name}");
 
     let client = Client::new();
-    let res = client
+    let request = client
         .get(&url)
-        .header("Authorization", format!("Bearer {api_key}"))
-        .send()
+        .header("Authorization", format!("Bearer {api_key}"));
+    let res = tokio::time::timeout(std::time::Duration::from_secs(5), request.send())
         .await
+        .map_err(|_| "Request timeout".to_string())?
         .map_err(|e| format!("Request failed: {e}"))?;
 
     if !res.status().is_success() {
@@ -79,20 +81,25 @@ pub async fn fetch_temporal_credential(service_name: &str) -> Result<String, Too
     let api_key = std::env::var("AXIM_ONYX_SECRET")
         .map_err(|_| ToolError::new("AXIM_ONYX_SECRET not set".to_string()))?;
 
-    let base_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let base_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
 
     let url = format!("{base_url}/api/v1/vault/temporal/{service_name}");
 
     let client = reqwest::Client::new();
-    let res = client
+    let request = client
         .get(&url)
-        .header("Authorization", format!("Bearer {api_key}"))
-        .send()
+        .header("Authorization", format!("Bearer {api_key}"));
+    let res = tokio::time::timeout(std::time::Duration::from_secs(5), request.send())
         .await
+        .map_err(|_| ToolError::new("Request timeout".to_string()))?
         .map_err(|e| ToolError::new(format!("Request failed: {e}")))?;
 
     if !res.status().is_success() {
-        return Err(ToolError::new(format!("API returned error: {}", res.status())));
+        return Err(ToolError::new(format!(
+            "API returned error: {}",
+            res.status()
+        )));
     }
 
     let json: serde_json::Value = res

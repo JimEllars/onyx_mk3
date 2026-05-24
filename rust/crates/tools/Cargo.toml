@@ -6,6 +6,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+telemetry = { path = "../telemetry" }
+tracing = "0.1"
 api = { path = "../api" }
 commands = { path = "../commands" }
 flate2 = "1"
