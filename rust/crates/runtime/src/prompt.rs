@@ -191,6 +191,22 @@ impl SystemPromptBuilder {
 
     #[must_use]
     pub fn render(&self) -> String {
+        // Ecosystem discovery integration
+        let mut ecosystem_text = String::new();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            if let Ok(schemas) = tokio::task::block_in_place(|| handle.block_on(crate::ecosystem_tools::fetch_active_micro_app_schemas())) {
+                if !schemas.is_empty() {
+                    ecosystem_text.push_str("\n\n# Active Micro-Apps\n");
+                    for schema in schemas {
+                        if let Some(name) = schema.get("name").and_then(|v| v.as_str()) {
+                            use std::fmt::Write;
+                            let _ = writeln!(ecosystem_text, "- {name}");
+                        }
+                    }
+                }
+            }
+        }
+
         self.build().join("\n\n")
     }
 

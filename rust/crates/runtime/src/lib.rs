@@ -1,3 +1,4 @@
+pub mod ecosystem_tools;
 pub mod swarm_lock;
 // Core runtime primitives for the `onyx` CLI and supporting crates.
 //
