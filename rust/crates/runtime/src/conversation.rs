@@ -562,6 +562,7 @@ where
             return None;
         }
 
+        let original_tokens = self.estimated_tokens();
         let result = compact_session(
             &self.session,
             CompactionConfig {
@@ -574,6 +575,20 @@ where
             return None;
         }
 
+        let new_tokens = estimate_session_tokens(&result.compacted_session);
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::spawn(async move {
+                #[allow(clippy::cast_precision_loss)]
+                let _ = crate::lane_events::handle_telemetry_event(&crate::lane_events::TelemetryEvent {
+                    r#type: "context_compressed".to_string(),
+                    payload: serde_json::json!({
+                        "original_tokens": original_tokens,
+                        "new_tokens": new_tokens,
+                        "compression_ratio": if original_tokens > 0 { new_tokens as f64 / original_tokens as f64 } else { 1.0 },
+                    }),
+                }).await;
+            });
+        }
         self.session = result.compacted_session;
         Some(AutoCompactionEvent {
             removed_message_count: result.removed_message_count,

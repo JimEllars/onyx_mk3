@@ -657,3 +657,71 @@ mod tests {
         );
     }
 }
+
+use crate::mcp_stdio::McpServerManager;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct HealthDiagnostic {
+    pub app_id: String,
+    pub status_code: Option<u64>,
+    pub error_rate: f64,
+    pub mcp_server_status: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RemediationAction {
+    pub tool_name: String,
+    pub arguments: serde_json::Value,
+    pub reason: String,
+}
+
+pub async fn evaluate_health_with_ai_dynamic(
+    diagnostic_data: HealthDiagnostic,
+    _mcp_manager: &McpServerManager,
+) -> Result<RemediationAction, String> {
+    let _ = crate::lane_events::handle_telemetry_event(&crate::lane_events::TelemetryEvent {
+        r#type: "health_evaluation_started".to_string(),
+        payload: serde_json::json!({
+            "app_id": diagnostic_data.app_id,
+            "status_code": diagnostic_data.status_code,
+            "error_rate": diagnostic_data.error_rate,
+        }),
+    }).await;
+
+    let action = if diagnostic_data.status_code == Some(502) || diagnostic_data.mcp_server_status == "unresponsive" {
+        RemediationAction {
+            tool_name: "restart_mcp_server".to_string(),
+            arguments: serde_json::json!({ "server": diagnostic_data.app_id }),
+            reason: "Unresponsive MCP server detected".to_string(),
+        }
+    } else if diagnostic_data.error_rate > 0.5 {
+        RemediationAction {
+            tool_name: "reduce_request_rate".to_string(),
+            arguments: serde_json::json!({ "app_id": diagnostic_data.app_id }),
+            reason: "High error rate detected".to_string(),
+        }
+    } else if diagnostic_data.status_code == Some(500) {
+        RemediationAction {
+            tool_name: "purge_zone_cache".to_string(),
+            arguments: serde_json::json!({ "zone": diagnostic_data.app_id }),
+            reason: "Stale cache suspected based on 500s".to_string(),
+        }
+    } else {
+        RemediationAction {
+            tool_name: "execute_circuit_breaker".to_string(),
+            arguments: serde_json::json!({ "app_id": diagnostic_data.app_id }),
+            reason: "Unknown failure, escalating to circuit breaker with HITL".to_string(),
+        }
+    };
+
+    let _ = crate::lane_events::handle_telemetry_event(&crate::lane_events::TelemetryEvent {
+        r#type: "health_evaluation_completed".to_string(),
+        payload: serde_json::json!({
+            "app_id": diagnostic_data.app_id,
+            "action": action.tool_name,
+            "automated": true,
+        }),
+    }).await;
+
+    Ok(action)
+}

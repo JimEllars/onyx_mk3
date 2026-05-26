@@ -17,7 +17,14 @@ pub struct EcosystemToolRegistry {
     schemas: Arc<RwLock<Vec<EcosystemToolSchema>>>,
 }
 
+impl Default for EcosystemToolRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EcosystemToolRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             tools: Arc::new(RwLock::new(Vec::new())),
@@ -35,19 +42,19 @@ impl EcosystemToolRegistry {
         }
 
         let client = reqwest::Client::new();
-        let url = format!("{}/rest/v1/ecosystem_tools?select=*", supabase_url);
+        let url = format!("{supabase_url}/rest/v1/ecosystem_tools?select=*");
 
         let mut request = client.get(&url).header("apikey", &supabase_key);
 
         // Use RLS if we have user_jwt
         let auth_header = std::env::var("USER_JWT").unwrap_or_else(|_| supabase_key.clone());
-        request = request.header("Authorization", format!("Bearer {}", auth_header));
+        request = request.header("Authorization", format!("Bearer {auth_header}"));
 
         let res = match request.send()
             .await
         {
             Ok(res) => res,
-            Err(e) => return Err(format!("Network error fetching ecosystem tools: {}", e)),
+            Err(e) => return Err(format!("Network error fetching ecosystem tools: {e}")),
         };
 
         if !res.status().is_success() {
@@ -56,7 +63,7 @@ impl EcosystemToolRegistry {
 
         let schemas: Vec<EcosystemToolSchema> = match res.json().await {
             Ok(s) => s,
-            Err(e) => return Err(format!("Failed to parse ecosystem tools schemas: {}", e)),
+            Err(e) => return Err(format!("Failed to parse ecosystem tools schemas: {e}")),
         };
 
         let mut mcp_tools = Vec::new();
@@ -84,10 +91,12 @@ impl EcosystemToolRegistry {
         Ok(())
     }
 
+    #[must_use]
     pub fn get_tools(&self) -> Vec<McpTool> {
         self.tools.read().unwrap().clone()
     }
 
+    #[must_use]
     pub fn get_schema(&self, name: &str) -> Option<EcosystemToolSchema> {
         self.schemas.read().unwrap().iter().find(|s| s.name == name).cloned()
     }
@@ -119,7 +128,7 @@ pub async fn trigger_external_workflow(
         .json(&payload)
         .send()
         .await
-        .map_err(|e| format!("Network error triggering external workflow: {}", e))?;
+        .map_err(|e| format!("Network error triggering external workflow: {e}"))?;
 
     if !res.status().is_success() {
         return Err(format!(
@@ -132,7 +141,28 @@ pub async fn trigger_external_workflow(
     let response_body: serde_json::Value = res
         .json()
         .await
-        .map_err(|e| format!("Failed to parse dispatcher response: {}", e))?;
+        .map_err(|e| format!("Failed to parse dispatcher response: {e}"))?;
 
     Ok(response_body)
+}
+
+pub async fn fetch_active_micro_app_schemas() -> Result<Vec<serde_json::Value>, String> {
+    let Ok(base_url) = std::env::var("AXIM_CORE_URL") else { return Ok(vec![]); };
+    let service_key = std::env::var("AXIM_SERVICE_KEY").unwrap_or_default();
+
+    let url = format!("{}/api/v1/system/discovery", base_url.trim_end_matches('/'));
+    let client = reqwest::Client::new();
+    let res = client.get(&url)
+        .header("Authorization", format!("Bearer {service_key}"))
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {e}"))?;
+
+    if !res.status().is_success() {
+        return Err(format!("API error: {}", res.status()));
+    }
+
+    let schemas: Vec<serde_json::Value> = res.json().await.map_err(|e| format!("JSON error: {e}"))?;
+    Ok(schemas)
 }

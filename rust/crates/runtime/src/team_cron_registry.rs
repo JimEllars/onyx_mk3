@@ -34,6 +34,24 @@ pub static DAILY_SYNC_HANDLER: std::sync::OnceLock<DailySyncCallback> = std::syn
 /// Usage: Start this loop in the main application lifecycle after setting up the registry.
 use crate::fleet_health::{evaluate_fleet_health, GlobalFleetStatus};
 
+fn parse_cron_interval(schedule: &str) -> Option<u64> {
+    if schedule.starts_with("*/") {
+        let parts: Vec<&str> = schedule.split_whitespace().collect();
+        if let Some(first) = parts.first() {
+            if let Ok(minutes) = first[2..].parse::<u64>() {
+                return Some(minutes * 60);
+            }
+        }
+    } else if schedule == "0 * * * *" {
+        return Some(3600);
+    } else if schedule == "0 0 * * *" {
+        return Some(86400);
+    } else if schedule == "* * * * *" {
+        return Some(60);
+    }
+    None
+}
+
 pub fn start_background_tick_loop(
     cron_registry: Arc<CronRegistry>,
     fleet_status: GlobalFleetStatus,
@@ -47,11 +65,37 @@ pub fn start_background_tick_loop(
             let crons = cron_registry.list(false);
             let current_time = now_secs();
 
-            for _cron in crons {
+            for cron in crons {
                 // 3. For each cron, check if it is time to execute
                 // (E.g., interval passed or specific schedule matched)
 
                 // TODO: Implement cron evaluation logic
+                if cron.enabled {
+                    let interval_secs = parse_cron_interval(&cron.schedule).unwrap_or(3600);
+                    let last_run = cron.last_run_at.unwrap_or(0);
+                    if current_time >= last_run + interval_secs {
+                        if let Err(e) = cron_registry.record_run(&cron.cron_id) {
+                            eprintln!("Failed to record cron run: {e}");
+                        }
+                        let prompt = cron.prompt.clone();
+                        let cron_id = cron.cron_id.clone();
+                        tokio::spawn(async move {
+                            println!("Executing cron {cron_id} ({prompt})");
+                            let event = crate::lane_events::TelemetryEvent {
+                                r#type: "cron_triggered".to_string(),
+                                payload: serde_json::json!({
+                                    "cron_id": cron_id.clone(),
+                                    "command": prompt.clone(),
+                                })
+                            };
+                            let _ = crate::lane_events::handle_telemetry_event(&event).await;
+                            // Actually execute it via DailySyncCallback logic if applicable, or generic dispatch
+                            if let Some(handler) = DAILY_SYNC_HANDLER.get() {
+                                let _ = handler(&prompt).await;
+                            }
+                        });
+                    }
+                }
                 // if cron.should_execute(current_time) {
                 //     // 4. If execution is due, dispatch the task/command to the main execution channel/queue
                 //     // E.g., send an event to `ConversationRuntime` to execute the specific tool
