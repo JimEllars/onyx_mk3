@@ -1,0 +1,10 @@
+python3 crates/tools/src/fix_runtime5.py
+python3 crates/onyx/src/fix_onyx.py
+python3 crates/onyx/src/add_state_subcommand.py
+python3 crates/onyx/src/print_state.py
+python3 crates/onyx/src/fix_state_bug.py
+python3 crates/commands/src/fix_commands.py
+python3 crates/onyx/tests/fix_test.py
+python3 crates/onyx/tests/fix_test2.py
+python3 crates/onyx/tests/fix_test3.py
+python3 crates/runtime/src/fix_runtime.py

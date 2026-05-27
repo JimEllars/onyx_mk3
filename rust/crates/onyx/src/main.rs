@@ -3498,7 +3498,7 @@ fn run_resume_command(
             }
             let backup_path = write_session_clear_backup(session, session_path)?;
             let previous_session_id = session.session_id.clone();
-            let cleared = Session::new();
+            let cleared = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
             let new_session_id = cleared.session_id.clone();
             cleared.save_to_path(session_path)?;
             Ok(ResumeCommandOutcome {
@@ -10058,7 +10058,7 @@ fn main() { println!(\"hi\"); }"
     #[test]
     fn render_session_markdown_includes_header_and_summarized_tool_calls() {
         // given
-        let mut session = Session::new();
+        let mut session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
         session.session_id = "session-export-test".to_string();
         session.messages = vec![
             ConversationMessage::user_text("How do I list files?"),
@@ -10110,7 +10110,7 @@ fn main() { println!(\"hi\"); }"
     #[test]
     fn render_session_markdown_marks_tool_errors_and_skips_empty_summaries() {
         // given
-        let mut session = Session::new();
+        let mut session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
         session.session_id = "errs".to_string();
         session.messages = vec![ConversationMessage {
             role: MessageRole::Tool,
@@ -11038,7 +11038,7 @@ UU conflicted.rs",
         git(&["commit", "-m", "init", "--quiet"], &root);
         fs::write(root.join("tracked.txt"), "hello\nworld\n").expect("modify tracked");
         let session_path = root.join("session.json");
-        Session::new()
+        Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")))
             .save_to_path(&session_path)
             .expect("session should save");
 
@@ -11153,7 +11153,7 @@ UU conflicted.rs",
                 .expect("legacy path should have parent directory"),
         )
         .expect("session dir should exist");
-        Session::new()
+        Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")))
             .with_persistence_path(legacy_path.clone())
             .save_to_path(&legacy_path)
             .expect("legacy session should save");
@@ -11182,13 +11182,13 @@ UU conflicted.rs",
         std::env::set_current_dir(&workspace).expect("switch cwd");
 
         let older = create_managed_session_handle("session-older").expect("older handle");
-        Session::new()
+        Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")))
             .with_persistence_path(older.path.clone())
             .save_to_path(&older.path)
             .expect("older session should save");
         std::thread::sleep(Duration::from_millis(20));
         let newer = create_managed_session_handle("session-newer").expect("newer handle");
-        Session::new()
+        Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")))
             .with_persistence_path(newer.path.clone())
             .save_to_path(&newer.path)
             .expect("newer session should save");
@@ -11437,7 +11437,7 @@ UU conflicted.rs",
     #[test]
     fn collect_session_prompt_history_extracts_user_text_blocks() {
         // given
-        let mut session = Session::new();
+        let mut session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
         session.push_user_text("hello").unwrap();
         session.push_user_text("world").unwrap();
 
@@ -12030,7 +12030,7 @@ UU conflicted.rs",
             build_runtime_plugin_state_with_loader(&workspace, &loader, &runtime_config)
                 .expect("plugin state should load");
         let mut runtime = build_runtime_with_plugin_state(
-            Session::new(),
+            Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
             "runtime-plugin-lifecycle",
             DEFAULT_MODEL.to_string(),
             vec!["test system prompt".to_string()],

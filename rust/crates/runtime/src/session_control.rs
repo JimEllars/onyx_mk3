@@ -652,7 +652,7 @@ mod tests {
     }
 
     fn persist_session(root: &Path, text: &str) -> Session {
-        let mut session = Session::new();
+        let mut session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
         session
             .push_user_text(text)
             .expect("session message should save");
@@ -765,7 +765,7 @@ mod tests {
     // ------------------------------------------------------------------
 
     fn persist_session_via_store(store: &SessionStore, text: &str) -> Session {
-        let mut session = Session::new();
+        let mut session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
         session
             .push_user_text(text)
             .expect("session message should save");
