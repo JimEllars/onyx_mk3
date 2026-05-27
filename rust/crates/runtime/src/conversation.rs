@@ -952,7 +952,7 @@ mod tests {
             .with_os("linux", "6.8")
             .build();
         let mut runtime = ConversationRuntime::new(
-            Session::new(),
+            Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
             api_client,
             tool_executor,
             permission_policy,
@@ -988,7 +988,7 @@ mod tests {
         let sink = Arc::new(MemoryTelemetrySink::default());
         let tracer = SessionTracer::new("session-runtime", sink.clone());
         let mut runtime = ConversationRuntime::new(
-            Session::new(),
+            Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
             ScriptedApiClient { call_count: 0 },
             StaticToolExecutor::new().register("add", |_input| Ok("4".to_string())),
             PermissionPolicy::new(PermissionMode::WorkspaceWrite),
@@ -1052,7 +1052,7 @@ mod tests {
         }
 
         let mut runtime = ConversationRuntime::new(
-            Session::new(),
+            Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
             SingleCallApiClient,
             StaticToolExecutor::new(),
             PermissionPolicy::new(PermissionMode::WorkspaceWrite),
@@ -1097,7 +1097,7 @@ mod tests {
         }
 
         let mut runtime = ConversationRuntime::new_with_features(
-            Session::new(),
+            Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
             SingleCallApiClient,
             StaticToolExecutor::new().register("blocked", |_input| {
                 panic!("tool should not execute when hook denies")
@@ -1160,7 +1160,7 @@ mod tests {
 
         // given
         let mut runtime = ConversationRuntime::new_with_features(
-            Session::new(),
+            Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
             SingleCallApiClient,
             StaticToolExecutor::new().register("blocked", |_input| {
                 panic!("tool should not execute when hook fails")
@@ -1231,7 +1231,7 @@ mod tests {
         }
 
         let mut runtime = ConversationRuntime::new_with_features(
-            Session::new(),
+            Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
             TwoCallApiClient { calls: 0 },
             StaticToolExecutor::new().register("add", |_input| Ok("4".to_string())),
             PermissionPolicy::new(PermissionMode::DangerFullAccess),
@@ -1307,7 +1307,7 @@ mod tests {
 
         // given
         let mut runtime = ConversationRuntime::new_with_features(
-            Session::new(),
+            Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
             TwoCallApiClient { calls: 0 },
             StaticToolExecutor::new()
                 .register("fail", |_input| Err(ToolError::new("tool exploded"))),
@@ -1366,7 +1366,7 @@ mod tests {
             }
         }
 
-        let mut session = Session::new();
+        let mut session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
         session
             .messages
             .push(crate::session::ConversationMessage::assistant_with_usage(
@@ -1409,7 +1409,7 @@ mod tests {
         }
 
         let mut runtime = ConversationRuntime::new(
-            Session::new(),
+            Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
             SimpleApi,
             StaticToolExecutor::new(),
             PermissionPolicy::new(PermissionMode::DangerFullAccess),
@@ -1451,7 +1451,7 @@ mod tests {
         }
 
         let path = temp_session_path("persisted-turn");
-        let session = Session::new().with_persistence_path(path.clone());
+        let session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))).with_persistence_path(path.clone());
         let mut runtime = ConversationRuntime::new(
             session,
             SimpleApi,
@@ -1475,7 +1475,7 @@ mod tests {
 
     #[test]
     fn forks_runtime_session_without_mutating_original() {
-        let mut session = Session::new();
+        let mut session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
         session
             .push_user_text("branch me")
             .expect("message should append");
@@ -1541,7 +1541,7 @@ mod tests {
             }
         }
 
-        let mut session = Session::new();
+        let mut session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
         session.messages = vec![
             crate::session::ConversationMessage::user_text("one"),
             crate::session::ConversationMessage::assistant(vec![ContentBlock::Text {
@@ -1597,7 +1597,7 @@ mod tests {
         }
 
         let mut runtime = ConversationRuntime::new(
-            Session::new(),
+            Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
             SimpleApi,
             StaticToolExecutor::new(),
             PermissionPolicy::new(PermissionMode::DangerFullAccess),
@@ -1695,7 +1695,7 @@ mod tests {
 
         // given
         let mut runtime = ConversationRuntime::new(
-            Session::new(),
+            Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
             LoopingApi,
             StaticToolExecutor::new().register("echo", |input| Ok(input.to_string())),
             PermissionPolicy::new(PermissionMode::DangerFullAccess),
@@ -1729,7 +1729,7 @@ mod tests {
 
         // given
         let mut runtime = ConversationRuntime::new(
-            Session::new(),
+            Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
             FailingApi,
             StaticToolExecutor::new(),
             PermissionPolicy::new(PermissionMode::DangerFullAccess),

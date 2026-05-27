@@ -20,7 +20,7 @@ fn resumed_binary_accepts_slash_commands_with_arguments() {
     let session_path = temp_dir.join("session.jsonl");
     let export_path = temp_dir.join("notes.txt");
 
-    let mut session = Session::new();
+    let mut session = Session::new().with_workspace_root(&temp_dir);
     session
         .push_user_text("ship the slash command harness")
         .expect("session write should succeed");
@@ -64,7 +64,13 @@ fn resumed_binary_accepts_slash_commands_with_arguments() {
     assert!(export.contains("# Conversation Export"));
     assert!(export.contains("ship the slash command harness"));
 
-    let restored = Session::load_from_path(&session_path).expect("cleared session should load");
+    let restored = {
+        let previous_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&temp_dir).unwrap();
+        let res = Session::load_from_path(&session_path).expect("cleared session should load");
+        std::env::set_current_dir(previous_cwd).unwrap();
+        res
+    };
     assert!(restored.messages.is_empty());
 
     let backup_path = stdout
@@ -72,7 +78,13 @@ fn resumed_binary_accepts_slash_commands_with_arguments() {
         .find_map(|line| line.strip_prefix("  Backup           "))
         .map(PathBuf::from)
         .expect("clear output should include backup path");
-    let backup = Session::load_from_path(&backup_path).expect("backup session should load");
+    let backup = {
+        let previous_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&temp_dir).unwrap();
+        let res = Session::load_from_path(&backup_path).expect("backup session should load");
+        std::env::set_current_dir(previous_cwd).unwrap();
+        res
+    };
     assert_eq!(backup.messages.len(), 1);
     assert!(matches!(
         backup.messages[0].blocks.first(),
@@ -122,7 +134,7 @@ fn resumed_config_command_loads_settings_files_end_to_end() {
     fs::create_dir_all(&config_home).expect("config home should exist");
 
     let session_path = project_dir.join("session.jsonl");
-    Session::new()
+    Session::new().with_workspace_root(&temp_dir)
         .with_persistence_path(&session_path)
         .save_to_path(&session_path)
         .expect("session should persist");
@@ -186,7 +198,7 @@ fn resume_latest_restores_the_most_recent_managed_session() {
     let older_path = sessions_dir.join("session-older.jsonl");
     let newer_path = sessions_dir.join("session-newer.jsonl");
 
-    let mut older = Session::new().with_persistence_path(&older_path);
+    let mut older = Session::new().with_workspace_root(&project_dir).with_persistence_path(&older_path);
     older
         .push_user_text("older session")
         .expect("older session write should succeed");
@@ -194,7 +206,7 @@ fn resume_latest_restores_the_most_recent_managed_session() {
         .save_to_path(&older_path)
         .expect("older session should persist");
 
-    let mut newer = Session::new().with_persistence_path(&newer_path);
+    let mut newer = Session::new().with_workspace_root(&project_dir).with_persistence_path(&newer_path);
     newer
         .push_user_text("newer session")
         .expect("newer session write should succeed");
@@ -229,7 +241,7 @@ fn resumed_status_command_emits_structured_json_when_requested() {
     fs::create_dir_all(&temp_dir).expect("temp dir should exist");
     let session_path = temp_dir.join("session.jsonl");
 
-    let mut session = Session::new();
+    let mut session = Session::new().with_workspace_root(&temp_dir);
     session
         .push_user_text("resume status json fixture")
         .expect("session write should succeed");
@@ -282,7 +294,7 @@ fn resumed_sandbox_command_emits_structured_json_when_requested() {
     fs::create_dir_all(&temp_dir).expect("temp dir should exist");
     let session_path = temp_dir.join("session.jsonl");
 
-    Session::new()
+    Session::new().with_workspace_root(&temp_dir)
         .save_to_path(&session_path)
         .expect("session should persist");
 

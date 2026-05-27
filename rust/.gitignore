@@ -4,3 +4,13 @@ target/
 
 .onyxd-agents/
 .onyx/
+
+.claw/lane-events.jsonl
+.claw/sessions/
+*.orig
+*.rej
+run_patch.py
+redo.sh
+*.log
+temp.diff
+empty.txt

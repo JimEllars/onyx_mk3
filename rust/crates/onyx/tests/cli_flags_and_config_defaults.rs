@@ -266,7 +266,7 @@ fn command_in(cwd: &Path) -> Command {
 
 fn write_session(root: &Path, label: &str) -> PathBuf {
     let session_path = root.join(format!("{label}.jsonl"));
-    let mut session = Session::new();
+    let mut session = Session::new().with_workspace_root(root);
     session
         .push_user_text(format!("session fixture for {label}"))
         .expect("session write should succeed");

@@ -338,7 +338,7 @@ mod tests {
 
     #[test]
     fn reconstructs_usage_from_session_messages() {
-        let mut session = Session::new();
+        let mut session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
         session.messages = vec![ConversationMessage {
             role: MessageRole::Assistant,
             blocks: vec![ContentBlock::Text {

@@ -1,0 +1,278 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling libc v0.2.183
+   Compiling cfg-if v1.0.4
+   Compiling find-msvc-tools v0.1.9
+   Compiling shlex v1.3.0
+   Compiling memchr v2.8.0
+   Compiling syn v2.0.117
+   Compiling jobserver v0.1.34
+   Compiling cc v1.2.58
+   Compiling log v0.4.29
+   Compiling once_cell v1.21.4
+   Compiling itoa v1.0.18
+   Compiling smallvec v1.15.1
+   Compiling pin-project-lite v0.2.17
+   Compiling errno v0.3.14
+   Compiling serde_core v1.0.228
+   Compiling bytes v1.11.1
+   Compiling signal-hook-registry v1.4.8
+   Compiling stable_deref_trait v1.2.1
+   Compiling futures-core v0.3.32
+   Compiling tracing-core v0.1.36
+   Compiling mio v1.2.0
+   Compiling cmake v0.1.58
+   Compiling futures-sink v0.3.32
+   Compiling fs_extra v1.3.0
+   Compiling dunce v1.0.5
+   Compiling socket2 v0.6.3
+   Compiling aws-lc-sys v0.39.1
+   Compiling synstructure v0.13.2
+   Compiling serde v1.0.228
+   Compiling bitflags v2.11.0
+   Compiling ring v0.17.14
+   Compiling http v1.4.0
+   Compiling zeroize v1.8.2
+   Compiling zerofrom-derive v0.1.6
+   Compiling yoke-derive v0.8.1
+   Compiling zerovec-derive v0.11.2
+   Compiling zerofrom v0.1.6
+   Compiling yoke v0.8.1
+   Compiling tracing-attributes v0.1.31
+   Compiling displaydoc v0.2.5
+   Compiling zerovec v0.11.5
+   Compiling tokio-macros v2.7.0
+   Compiling tracing v0.1.44
+   Compiling serde_derive v1.0.228
+   Compiling tokio v1.52.1
+   Compiling slab v0.4.12
+   Compiling equivalent v1.0.2
+   Compiling aws-lc-rs v1.16.2
+   Compiling hashbrown v0.16.1
+   Compiling indexmap v2.13.0
+   Compiling tinystr v0.8.2
+   Compiling http-body v1.0.1
+   Compiling rustls-pki-types v1.14.0
+   Compiling futures-task v0.3.32
+   Compiling fnv v1.0.7
+   Compiling litemap v0.8.1
+   Compiling writeable v0.6.2
+   Compiling zmij v1.0.21
+   Compiling futures-io v0.3.32
+   Compiling futures-util v0.3.32
+   Compiling icu_locale_core v2.1.1
+   Compiling potential_utf v0.1.4
+   Compiling zerotrie v0.2.3
+   Compiling getrandom v0.2.17
+   Compiling icu_normalizer_data v2.1.1
+   Compiling httparse v1.10.1
+   Compiling icu_properties_data v2.1.2
+   Compiling serde_json v1.0.149
+   Compiling percent-encoding v2.3.2
+   Compiling tower-service v0.3.3
+   Compiling untrusted v0.9.0
+   Compiling icu_provider v2.1.1
+   Compiling icu_collections v2.1.1
+   Compiling tokio-util v0.7.18
+   Compiling atomic-waker v1.1.2
+   Compiling try-lock v0.2.5
+   Compiling base64 v0.22.1
+   Compiling rustls v0.23.37
+   Compiling h2 v0.4.13
+   Compiling want v0.3.1
+   Compiling futures-channel v0.3.32
+   Compiling sync_wrapper v1.0.2
+   Compiling tower-layer v0.3.3
+   Compiling version_check v0.9.5
+   Compiling httpdate v1.0.3
+   Compiling subtle v2.6.1
+   Compiling typenum v1.19.0
+   Compiling generic-array v0.14.7
+   Compiling icu_properties v2.1.2
+   Compiling icu_normalizer v2.1.1
+   Compiling hyper v1.9.0
+   Compiling form_urlencoded v1.2.2
+   Compiling ipnet v2.12.0
+   Compiling parking_lot_core v0.9.12
+   Compiling hyper-util v0.1.20
+   Compiling idna_adapter v1.2.1
+   Compiling tower v0.5.3
+   Compiling http-body-util v0.1.3
+   Compiling utf8_iter v1.0.4
+   Compiling regex-syntax v0.8.10
+   Compiling scopeguard v1.2.0
+   Compiling lock_api v0.4.14
+   Compiling idna v1.1.0
+   Compiling webpki-roots v1.0.6
+   Compiling aho-corasick v1.1.4
+   Compiling iri-string v0.7.12
+   Compiling protobuf v2.28.0
+   Compiling getrandom v0.4.2
+   Compiling thiserror v1.0.69
+   Compiling mime v0.3.17
+   Compiling openssl-probe v0.2.1
+   Compiling lazy_static v1.5.0
+   Compiling rand_core v0.10.1
+   Compiling rustls-native-certs v0.8.3
+   Compiling tower-http v0.6.8
+   Compiling regex-automata v0.4.14
+   Compiling parking_lot v0.12.5
+   Compiling url v2.5.8
+   Compiling thiserror-impl v1.0.69
+   Compiling prometheus v0.13.4
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling encoding_rs v0.8.35
+   Compiling same-file v1.0.6
+   Compiling walkdir v2.5.0
+   Compiling digest v0.10.7
+   Compiling ryu v1.0.23
+   Compiling cpufeatures v0.2.17
+   Compiling sha2 v0.10.9
+   Compiling serde_urlencoded v0.7.1
+   Compiling regex v1.12.3
+   Compiling uuid v1.23.1
+   Compiling plugins v0.1.0 (/app/rust/crates/plugins)
+   Compiling glob v0.3.3
+   Compiling crc32fast v1.5.0
+   Compiling pkg-config v0.3.32
+   Compiling adler2 v2.0.1
+   Compiling simd-adler32 v0.3.9
+   Compiling miniz_oxide v0.8.9
+   Compiling onig_sys v69.9.1
+   Compiling rustversion v1.0.22
+   Compiling cfg_aliases v0.2.1
+   Compiling signal-hook v0.3.18
+   Compiling powerfmt v0.2.0
+   Compiling cpufeatures v0.3.0
+   Compiling rustix v1.1.4
+   Compiling chacha20 v0.10.0
+   Compiling deranged v0.5.8
+   Compiling nix v0.29.0
+   Compiling flate2 v1.1.9
+   Compiling time-core v0.1.8
+   Compiling thiserror v2.0.18
+   Compiling linux-raw-sys v0.12.1
+   Compiling unicode-width v0.2.2
+   Compiling num-conv v0.2.1
+   Compiling rustix v0.38.44
+   Compiling time v0.3.47
+   Compiling rand v0.10.1
+   Compiling async-trait v0.1.89
+   Compiling thiserror-impl v2.0.18
+   Compiling nibble_vec v0.1.0
+   Compiling quick-xml v0.38.4
+   Compiling endian-type v0.1.2
+   Compiling pulldown-cmark v0.13.3
+   Compiling linked-hash-map v0.5.6
+   Compiling linux-raw-sys v0.4.15
+   Compiling yaml-rust v0.4.5
+   Compiling radix_trie v0.2.1
+   Compiling plist v1.8.0
+   Compiling axum-core v0.4.5
+   Compiling signal-hook-mio v0.2.5
+   Compiling onig v6.5.1
+   Compiling fd-lock v4.0.4
+   Compiling getopts v0.2.24
+   Compiling matchers v0.2.0
+   Compiling sharded-slab v0.1.7
+   Compiling bincode v1.3.3
+   Compiling tracing-serde v0.2.0
+   Compiling serde_path_to_error v0.1.20
+   Compiling tracing-log v0.2.0
+   Compiling thread_local v1.1.9
+   Compiling home v0.5.12
+   Compiling unicode-segmentation v1.13.2
+   Compiling onyx v0.1.0 (/app/rust/crates/onyx)
+   Compiling unicase v2.9.0
+   Compiling matchit v0.7.3
+   Compiling nu-ansi-term v0.50.3
+   Compiling pulldown-cmark-escape v0.11.0
+   Compiling utf8parse v0.2.2
+   Compiling rustyline v15.0.0
+   Compiling tracing-subscriber v0.3.23
+   Compiling axum v0.7.9
+   Compiling syntect v5.3.0
+   Compiling crossterm v0.28.1
+   Compiling hex v0.4.3
+   Compiling rustls-webpki v0.103.10
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.6.2
+   Compiling hyper-rustls v0.27.7
+   Compiling reqwest v0.13.2
+   Compiling reqwest v0.12.28
+   Compiling telemetry v0.1.0 (/app/rust/crates/telemetry)
+   Compiling runtime v0.1.0 (/app/rust/crates/runtime)
+   Compiling api v0.1.0 (/app/rust/crates/api)
+   Compiling commands v0.1.0 (/app/rust/crates/commands)
+   Compiling mock-anthropic-service v0.1.0 (/app/rust/crates/mock-anthropic-service)
+   Compiling tools v0.1.0 (/app/rust/crates/tools)
+   Compiling compat-harness v0.1.0 (/app/rust/crates/compat-harness)
+error[E0428]: the name `State` is defined multiple times
+   --> crates/onyx/src/main.rs:748:5
+    |
+745 |     State {
+    |     ----- previous definition of the type `State` here
+...
+748 |     State {
+    |     ^^^^^ `State` redefined here
+    |
+    = note: `State` must be defined only once in the type namespace of this enum
+
+error[E0004]: non-exhaustive patterns: `CliAction::State { .. }` not covered
+   --> crates/onyx/src/main.rs:591:11
+    |
+591 |     match parse_args(&args)? {
+    |           ^^^^^^^^^^^^^^^^^^ pattern `CliAction::State { .. }` not covered
+    |
+note: `CliAction` defined here
+   --> crates/onyx/src/main.rs:679:6
+    |
+679 | enum CliAction {
+    |      ^^^^^^^^^
+...
+748 |     State {
+    |     ----- not covered
+    = note: the matched value is of type `CliAction`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown
+    |
+673 ~         CliAction::ServeHeadless { port } => run_serve_headless(port)?,
+674 ~         CliAction::State { .. } => todo!(),
+    |
+
+error[E0004]: non-exhaustive patterns: `&CliAction::State { .. }` not covered
+   --> crates/onyx/src/main.rs:678:10
+    |
+678 | #[derive(Debug, Clone, PartialEq, Eq)]
+    |          ^^^^^ pattern `&CliAction::State { .. }` not covered
+    |
+note: `CliAction` defined here
+   --> crates/onyx/src/main.rs:679:6
+    |
+679 | enum CliAction {
+    |      ^^^^^^^^^
+...
+748 |     State {
+    |     ----- not covered
+    = note: the matched value is of type `&CliAction`
+
+error[E0004]: non-exhaustive patterns: `&CliAction::State { .. }` not covered
+   --> crates/onyx/src/main.rs:678:17
+    |
+678 | #[derive(Debug, Clone, PartialEq, Eq)]
+    |                 ^^^^^ pattern `&CliAction::State { .. }` not covered
+    |
+note: `CliAction` defined here
+   --> crates/onyx/src/main.rs:679:6
+    |
+679 | enum CliAction {
+    |      ^^^^^^^^^
+...
+748 |     State {
+    |     ----- not covered
+    = note: the matched value is of type `&CliAction`
+
+Some errors have detailed explanations: E0004, E0428.
+For more information about an error, try `rustc --explain E0004`.
+error: could not compile `onyx` (bin "onyx") due to 4 previous errors

@@ -1503,27 +1503,21 @@ fn execute_tool_with_enforcer(
             let input =
                 serde_json::from_value::<crate::network_ops::VerifyUrlStatusInput>(input.clone())
                     .map_err(|e| e.to_string())?;
-            let res = tokio::runtime::Runtime::new()
-                .unwrap()
-                .block_on(crate::network_ops::execute_verify_url_status(input));
+            let res = tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(crate::network_ops::execute_verify_url_status(input)));
             serde_json::to_string(&res).map_err(|e| e.to_string())
         }
         "EscalateToAdmin" => {
             let input =
                 serde_json::from_value::<crate::axim_ops::EscalateToAdminInput>(input.clone())
                     .map_err(|e| e.to_string())?;
-            let res = tokio::runtime::Runtime::new()
-                .unwrap()
-                .block_on(crate::axim_ops::execute_escalate_to_admin(input));
+            let res = tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(crate::axim_ops::execute_escalate_to_admin(input)));
             serde_json::to_string(&res).map_err(|e| e.to_string())
         }
         "TriggerMarketingLoop" => {
             let input =
                 serde_json::from_value::<crate::axim_ops::TriggerMarketingLoopInput>(input.clone())
                     .map_err(|e| e.to_string())?;
-            let res = tokio::runtime::Runtime::new()
-                .unwrap()
-                .block_on(crate::axim_ops::execute_trigger_marketing_loop(input));
+            let res = tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(crate::axim_ops::execute_trigger_marketing_loop(input)));
             serde_json::to_string(&res).map_err(|e| e.to_string())
         }
         "ReconcileMicroAppRevenue" => {
@@ -1531,9 +1525,7 @@ fn execute_tool_with_enforcer(
                 input.clone(),
             )
             .map_err(|e| e.to_string())?;
-            let res = tokio::runtime::Runtime::new()
-                .unwrap()
-                .block_on(crate::axim_ops::execute_reconcile_micro_app_revenue(input));
+            let res = tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(crate::axim_ops::execute_reconcile_micro_app_revenue(input)));
             serde_json::to_string(&res).map_err(|e| e.to_string())
         }
         "DispatchSecureMessage" => {
@@ -1541,9 +1533,7 @@ fn execute_tool_with_enforcer(
                 crate::communication_ops::DispatchSecureMessageInput,
             >(input.clone())
             .map_err(|e| e.to_string())?;
-            let res = tokio::runtime::Runtime::new().unwrap().block_on(
-                crate::communication_ops::execute_dispatch_secure_message(input),
-            );
+            let res = tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(crate::communication_ops::execute_dispatch_secure_message(input),));
             serde_json::to_string(&res).map_err(|e| e.to_string())
         }
         "DispatchExecutiveBrief" => {
@@ -1551,9 +1541,7 @@ fn execute_tool_with_enforcer(
                 crate::communication_ops::DispatchExecutiveBriefInput,
             >(input.clone())
             .map_err(|e| e.to_string())?;
-            let res = tokio::runtime::Runtime::new().unwrap().block_on(
-                crate::communication_ops::execute_dispatch_executive_brief(input),
-            );
+            let res = tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(crate::communication_ops::execute_dispatch_executive_brief(input),));
             serde_json::to_string(&res).map_err(|e| e.to_string())
         }
         "AskUserQuestion" => {
