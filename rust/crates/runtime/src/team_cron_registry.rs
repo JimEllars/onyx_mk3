@@ -86,7 +86,7 @@ pub fn start_background_tick_loop(
                                 payload: serde_json::json!({
                                     "cron_id": cron_id.clone(),
                                     "command": prompt.clone(),
-                                })
+                                }),
                             };
                             let _ = crate::lane_events::handle_telemetry_event(&event).await;
                             // Actually execute it via DailySyncCallback logic if applicable, or generic dispatch

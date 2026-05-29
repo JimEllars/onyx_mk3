@@ -539,7 +539,9 @@ mod tests {
 
     #[test]
     fn leaves_small_sessions_unchanged() {
-        let mut session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        let mut session = Session::new().with_workspace_root(
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        );
         session.messages = vec![ConversationMessage::user_text("hello")];
 
         let result = compact_session(&session, CompactionConfig::default());
@@ -551,7 +553,9 @@ mod tests {
 
     #[test]
     fn compacts_older_messages_into_a_system_summary() {
-        let mut session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        let mut session = Session::new().with_workspace_root(
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        );
         session.messages = vec![
             ConversationMessage::user_text("one ".repeat(200)),
             ConversationMessage::assistant(vec![ContentBlock::Text {
@@ -600,7 +604,9 @@ mod tests {
 
     #[test]
     fn keeps_previous_compacted_context_when_compacting_again() {
-        let mut initial_session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        let mut initial_session = Session::new().with_workspace_root(
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        );
         initial_session.messages = vec![
             ConversationMessage::user_text("Investigate rust/crates/runtime/src/compact.rs"),
             ConversationMessage::assistant(vec![ContentBlock::Text {
@@ -625,7 +631,9 @@ mod tests {
             }]),
         ]);
 
-        let mut second_session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        let mut second_session = Session::new().with_workspace_root(
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        );
         second_session.messages = follow_up_messages;
         let second = compact_session(&second_session, config);
 
@@ -656,7 +664,9 @@ mod tests {
     #[test]
     fn ignores_existing_compacted_summary_when_deciding_to_recompact() {
         let summary = "<summary>Conversation summary:\n- Scope: earlier work preserved.\n- Key timeline:\n  - user: large preserved context\n</summary>";
-        let mut session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        let mut session = Session::new().with_workspace_root(
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        );
         session.messages = vec![
             ConversationMessage {
                 role: MessageRole::System,

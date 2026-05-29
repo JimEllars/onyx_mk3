@@ -194,7 +194,9 @@ impl SystemPromptBuilder {
         // Ecosystem discovery integration
         let mut ecosystem_text = String::new();
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            if let Ok(schemas) = tokio::task::block_in_place(|| handle.block_on(crate::ecosystem_tools::fetch_active_micro_app_schemas())) {
+            if let Ok(schemas) = tokio::task::block_in_place(|| {
+                handle.block_on(crate::ecosystem_tools::fetch_active_micro_app_schemas())
+            }) {
                 if !schemas.is_empty() {
                     ecosystem_text.push_str("\n\n# Active Micro-Apps\n");
                     for schema in schemas {

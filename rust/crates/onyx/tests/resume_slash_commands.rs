@@ -134,7 +134,8 @@ fn resumed_config_command_loads_settings_files_end_to_end() {
     fs::create_dir_all(&config_home).expect("config home should exist");
 
     let session_path = project_dir.join("session.jsonl");
-    Session::new().with_workspace_root(&temp_dir)
+    Session::new()
+        .with_workspace_root(&temp_dir)
         .with_persistence_path(&session_path)
         .save_to_path(&session_path)
         .expect("session should persist");
@@ -198,7 +199,9 @@ fn resume_latest_restores_the_most_recent_managed_session() {
     let older_path = sessions_dir.join("session-older.jsonl");
     let newer_path = sessions_dir.join("session-newer.jsonl");
 
-    let mut older = Session::new().with_workspace_root(&project_dir).with_persistence_path(&older_path);
+    let mut older = Session::new()
+        .with_workspace_root(&project_dir)
+        .with_persistence_path(&older_path);
     older
         .push_user_text("older session")
         .expect("older session write should succeed");
@@ -206,7 +209,9 @@ fn resume_latest_restores_the_most_recent_managed_session() {
         .save_to_path(&older_path)
         .expect("older session should persist");
 
-    let mut newer = Session::new().with_workspace_root(&project_dir).with_persistence_path(&newer_path);
+    let mut newer = Session::new()
+        .with_workspace_root(&project_dir)
+        .with_persistence_path(&newer_path);
     newer
         .push_user_text("newer session")
         .expect("newer session write should succeed");
@@ -294,7 +299,8 @@ fn resumed_sandbox_command_emits_structured_json_when_requested() {
     fs::create_dir_all(&temp_dir).expect("temp dir should exist");
     let session_path = temp_dir.join("session.jsonl");
 
-    Session::new().with_workspace_root(&temp_dir)
+    Session::new()
+        .with_workspace_root(&temp_dir)
         .save_to_path(&session_path)
         .expect("session should persist");
 
