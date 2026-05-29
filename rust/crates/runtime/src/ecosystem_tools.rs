@@ -50,15 +50,16 @@ impl EcosystemToolRegistry {
         let auth_header = std::env::var("USER_JWT").unwrap_or_else(|_| supabase_key.clone());
         request = request.header("Authorization", format!("Bearer {auth_header}"));
 
-        let res = match request.send()
-            .await
-        {
+        let res = match request.send().await {
             Ok(res) => res,
             Err(e) => return Err(format!("Network error fetching ecosystem tools: {e}")),
         };
 
         if !res.status().is_success() {
-            return Err(format!("Supabase API error fetching ecosystem tools: {}", res.status()));
+            return Err(format!(
+                "Supabase API error fetching ecosystem tools: {}",
+                res.status()
+            ));
         }
 
         let schemas: Vec<EcosystemToolSchema> = match res.json().await {
@@ -98,7 +99,12 @@ impl EcosystemToolRegistry {
 
     #[must_use]
     pub fn get_schema(&self, name: &str) -> Option<EcosystemToolSchema> {
-        self.schemas.read().unwrap().iter().find(|s| s.name == name).cloned()
+        self.schemas
+            .read()
+            .unwrap()
+            .iter()
+            .find(|s| s.name == name)
+            .cloned()
     }
 }
 
@@ -147,12 +153,15 @@ pub async fn trigger_external_workflow(
 }
 
 pub async fn fetch_active_micro_app_schemas() -> Result<Vec<serde_json::Value>, String> {
-    let Ok(base_url) = std::env::var("AXIM_CORE_URL") else { return Ok(vec![]); };
+    let Ok(base_url) = std::env::var("AXIM_CORE_URL") else {
+        return Ok(vec![]);
+    };
     let service_key = std::env::var("AXIM_SERVICE_KEY").unwrap_or_default();
 
     let url = format!("{}/api/v1/system/discovery", base_url.trim_end_matches('/'));
     let client = reqwest::Client::new();
-    let res = client.get(&url)
+    let res = client
+        .get(&url)
         .header("Authorization", format!("Bearer {service_key}"))
         .timeout(std::time::Duration::from_secs(10))
         .send()
@@ -163,6 +172,7 @@ pub async fn fetch_active_micro_app_schemas() -> Result<Vec<serde_json::Value>, 
         return Err(format!("API error: {}", res.status()));
     }
 
-    let schemas: Vec<serde_json::Value> = res.json().await.map_err(|e| format!("JSON error: {e}"))?;
+    let schemas: Vec<serde_json::Value> =
+        res.json().await.map_err(|e| format!("JSON error: {e}"))?;
     Ok(schemas)
 }

@@ -4713,7 +4713,9 @@ mod tests {
 
     #[test]
     fn compacts_sessions_via_slash_command() {
-        let mut session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        let mut session = Session::new().with_workspace_root(
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        );
         session.messages = vec![
             ConversationMessage::user_text("a ".repeat(200)),
             ConversationMessage::assistant(vec![ContentBlock::Text {
@@ -4741,7 +4743,9 @@ mod tests {
 
     #[test]
     fn help_command_is_non_mutating() {
-        let session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        let session = Session::new().with_workspace_root(
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        );
         let result = handle_slash_command("/help", &session, CompactionConfig::default())
             .expect("help command should be handled");
         assert_eq!(result.session, session);
@@ -4750,7 +4754,9 @@ mod tests {
 
     #[test]
     fn ignores_unknown_or_runtime_bound_slash_commands() {
-        let session = Session::new().with_workspace_root(std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+        let session = Session::new().with_workspace_root(
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        );
         assert!(handle_slash_command("/unknown", &session, CompactionConfig::default()).is_none());
         assert!(handle_slash_command("/status", &session, CompactionConfig::default()).is_none());
         assert!(handle_slash_command("/sandbox", &session, CompactionConfig::default()).is_none());

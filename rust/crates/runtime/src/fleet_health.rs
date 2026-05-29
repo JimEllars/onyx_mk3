@@ -686,9 +686,12 @@ pub async fn evaluate_health_with_ai_dynamic(
             "status_code": diagnostic_data.status_code,
             "error_rate": diagnostic_data.error_rate,
         }),
-    }).await;
+    })
+    .await;
 
-    let action = if diagnostic_data.status_code == Some(502) || diagnostic_data.mcp_server_status == "unresponsive" {
+    let action = if diagnostic_data.status_code == Some(502)
+        || diagnostic_data.mcp_server_status == "unresponsive"
+    {
         RemediationAction {
             tool_name: "restart_mcp_server".to_string(),
             arguments: serde_json::json!({ "server": diagnostic_data.app_id }),
@@ -721,7 +724,8 @@ pub async fn evaluate_health_with_ai_dynamic(
             "action": action.tool_name,
             "automated": true,
         }),
-    }).await;
+    })
+    .await;
 
     Ok(action)
 }
