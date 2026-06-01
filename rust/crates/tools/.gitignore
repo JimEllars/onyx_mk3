@@ -1,1 +1,3 @@
 .clawd-agents/
+.claw/
+*.jsonl

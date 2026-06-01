@@ -31,6 +31,7 @@ tools = { path = "../tools" }
 reqwest = { version = "0.13.2", features = ["blocking", "json"] }
 ring = "0.17.14"
 hex = "0.4.3"
+chrono = { version = "0.4.44", features = ["serde"] }
 
 [lints]
 workspace = true

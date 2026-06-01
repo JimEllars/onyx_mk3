@@ -320,3 +320,23 @@ mod tests {
         assert_eq!(response.total_tokens(), 1_800_000);
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[allow(dead_code)]
+pub enum TaskPriority {
+    Low,
+    Standard,
+    High,
+    Critical,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub struct AximWebhookPayload {
+    pub source_channel: String,
+    pub intent: String,
+    pub priority: TaskPriority,
+    pub meta_data: Value,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}

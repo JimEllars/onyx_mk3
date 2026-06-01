@@ -1132,7 +1132,9 @@ fn cleanup_rotated_logs(path: &Path) -> Result<(), SessionError> {
 
     let remove_count = rotated_paths.len().saturating_sub(MAX_ROTATED_FILES);
     for stale_path in rotated_paths.into_iter().take(remove_count) {
-        fs::remove_file(stale_path)?;
+        if let Err(e) = fs::remove_file(&stale_path) {
+            eprintln!("Failed to remove stale session file {}: {}", stale_path.display(), e);
+        }
     }
     Ok(())
 }

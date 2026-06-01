@@ -43,9 +43,30 @@ export default {
 		const url = new URL(request.url);
 
 		if (request.method === "GET" && url.pathname === "/health") {
-			return new Response(JSON.stringify({ status: "operational", service: "onyx-edge-bridge" }), {
-				headers: { ...corsHeaders, "Content-Type": "application/json" }
-			});
+			// Perform a rapid ping to the connected AXiM Core Supabase instance
+			try {
+				const supabaseUrl = env.CORE_INGEST_URL ? new URL(env.CORE_INGEST_URL).origin : "https://api.axim.us.com";
+				const pingRes = await fetch(`${supabaseUrl}/rest/v1/`, { method: "GET" }).catch(() => null);
+
+				const status = (pingRes && pingRes.ok) ? "operational" : "degraded";
+				return new Response(JSON.stringify({
+					status,
+					service: "onyx-edge-bridge",
+					timestamp: new Date().toISOString()
+				}), {
+					headers: { ...corsHeaders, "Content-Type": "application/json" },
+					status: status === "operational" ? 200 : 503
+				});
+			} catch (e) {
+				return new Response(JSON.stringify({
+					status: "degraded",
+					service: "onyx-edge-bridge",
+					timestamp: new Date().toISOString()
+				}), {
+					headers: { ...corsHeaders, "Content-Type": "application/json" },
+					status: 503
+				});
+			}
 		}
 
 		// Only allow POST and GET requests for the API

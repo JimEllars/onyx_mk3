@@ -4,7 +4,7 @@ mod http_client;
 mod prompt_cache;
 mod providers;
 mod sse;
-mod types;
+pub mod types;
 
 pub use client::{
     oauth_token_is_expired, read_base_url, read_xai_base_url, resolve_saved_oauth_token,
