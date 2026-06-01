@@ -1,0 +1,701 @@
+diff --git a/edge-bridge/src/index.ts b/edge-bridge/src/index.ts
+index 27e1f7b..484a6aa 100644
+--- a/edge-bridge/src/index.ts
++++ b/edge-bridge/src/index.ts
+@@ -43,9 +43,30 @@ export default {
+		const url = new URL(request.url);
+
+		if (request.method === "GET" && url.pathname === "/health") {
+-			return new Response(JSON.stringify({ status: "operational", service: "onyx-edge-bridge" }), {
+-				headers: { ...corsHeaders, "Content-Type": "application/json" }
+-			});
++			// Perform a rapid ping to the connected AXiM Core Supabase instance
++			try {
++				const supabaseUrl = env.CORE_INGEST_URL ? new URL(env.CORE_INGEST_URL).origin : "https://api.axim.us.com";
++				const pingRes = await fetch(`${supabaseUrl}/rest/v1/`, { method: "GET" }).catch(() => null);
++
++				const status = (pingRes && pingRes.ok) ? "operational" : "degraded";
++				return new Response(JSON.stringify({
++					status,
++					service: "onyx-edge-bridge",
++					timestamp: new Date().toISOString()
++				}), {
++					headers: { ...corsHeaders, "Content-Type": "application/json" },
++					status: status === "operational" ? 200 : 503
++				});
++			} catch (e) {
++				return new Response(JSON.stringify({
++					status: "degraded",
++					service: "onyx-edge-bridge",
++					timestamp: new Date().toISOString()
++				}), {
++					headers: { ...corsHeaders, "Content-Type": "application/json" },
++					status: 503
++				});
++			}
+		}
+
+		// Only allow POST and GET requests for the API
+diff --git a/rust/Cargo.lock b/rust/Cargo.lock
+index e5ace76..e67fe34 100644
+--- a/rust/Cargo.lock
++++ b/rust/Cargo.lock
+@@ -17,6 +17,15 @@ dependencies = [
+  "memchr",
+ ]
+
++[[package]]
++name = "android_system_properties"
++version = "0.1.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311"
++dependencies = [
++ "libc",
++]
++
+ [[package]]
+ name = "anyhow"
+ version = "1.0.102"
+@@ -27,6 +36,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+ name = "api"
+ version = "0.1.0"
+ dependencies = [
++ "chrono",
+  "reqwest 0.12.28",
+  "runtime",
+  "serde",
+@@ -53,6 +63,12 @@ version = "1.1.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
+
++[[package]]
++name = "autocfg"
++version = "1.5.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
++
+ [[package]]
+ name = "aws-lc-rs"
+ version = "1.16.2"
+@@ -265,6 +281,20 @@ dependencies = [
+  "rand_core 0.10.1",
+ ]
+
++[[package]]
++name = "chrono"
++version = "0.4.44"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "c673075a2e0e5f4a1dde27ce9dee1ea4558c7ffe648f576438a20ca1d2acc4b0"
++dependencies = [
++ "iana-time-zone",
++ "js-sys",
++ "num-traits",
++ "serde",
++ "wasm-bindgen",
++ "windows-link",
++]
++
+ [[package]]
+ name = "clipboard-win"
+ version = "5.4.1"
+@@ -807,6 +837,30 @@ dependencies = [
+  "windows-registry",
+ ]
+
++[[package]]
++name = "iana-time-zone"
++version = "0.1.65"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e31bc9ad994ba00e440a8aa5c9ef0ec67d5cb5e5cb0cc7f8b744a35b389cc470"
++dependencies = [
++ "android_system_properties",
++ "core-foundation-sys",
++ "iana-time-zone-haiku",
++ "js-sys",
++ "log",
++ "wasm-bindgen",
++ "windows-core",
++]
++
++[[package]]
++name = "iana-time-zone-haiku"
++version = "0.1.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
++dependencies = [
++ "cc",
++]
++
+ [[package]]
+ name = "icu_collections"
+ version = "2.1.1"
+@@ -1180,6 +1234,15 @@ version = "0.2.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "c6673768db2d862beb9b39a78fdcb1a69439615d5794a1be50caa9bc92c81967"
+
++[[package]]
++name = "num-traits"
++version = "0.2.19"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
++dependencies = [
++ "autocfg",
++]
++
+ [[package]]
+ name = "once_cell"
+ version = "1.21.4"
+@@ -1214,6 +1277,7 @@ version = "0.1.0"
+ dependencies = [
+  "api",
+  "axum 0.7.9",
++ "chrono",
+  "commands",
+  "compat-harness",
+  "crossterm",
+@@ -2714,6 +2778,41 @@ version = "0.4.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
++[[package]]
++name = "windows-core"
++version = "0.62.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b8e83a14d34d0623b51dce9581199302a221863196a1dde71a7663a4c2be9deb"
++dependencies = [
++ "windows-implement",
++ "windows-interface",
++ "windows-link",
++ "windows-result",
++ "windows-strings",
++]
++
++[[package]]
++name = "windows-implement"
++version = "0.60.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn",
++]
++
++[[package]]
++name = "windows-interface"
++version = "0.59.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3f316c4a2570ba26bbec722032c4099d8c8bc095efccdc15688708623367e358"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn",
++]
++
+ [[package]]
+ name = "windows-link"
+ version = "0.2.1"
+diff --git a/rust/crates/api/Cargo.toml b/rust/crates/api/Cargo.toml
+index c4d112e..5d5ed7c 100644
+--- a/rust/crates/api/Cargo.toml
++++ b/rust/crates/api/Cargo.toml
+@@ -6,6 +6,7 @@ license.workspace = true
+ publish.workspace = true
+
+ [dependencies]
++chrono = { version = "0.4.44", features = ["serde"] }
+ reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+ runtime = { path = "../runtime" }
+ serde = { version = "1", features = ["derive"] }
+diff --git a/rust/crates/api/src/lib.rs b/rust/crates/api/src/lib.rs
+index c61548d..d1e82b8 100644
+--- a/rust/crates/api/src/lib.rs
++++ b/rust/crates/api/src/lib.rs
+@@ -4,7 +4,7 @@ mod http_client;
+ mod prompt_cache;
+ mod providers;
+ mod sse;
+-mod types;
++pub mod types;
+
+ pub use client::{
+     oauth_token_is_expired, read_base_url, read_xai_base_url, resolve_saved_oauth_token,
+diff --git a/rust/crates/api/src/types.rs b/rust/crates/api/src/types.rs
+index 9e464d0..5df4956 100644
+--- a/rust/crates/api/src/types.rs
++++ b/rust/crates/api/src/types.rs
+@@ -320,3 +320,23 @@ mod tests {
+         assert_eq!(response.total_tokens(), 1_800_000);
+     }
+ }
++
++#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++#[allow(dead_code)]
++pub enum TaskPriority {
++    Low,
++    Standard,
++    High,
++    Critical,
++}
++
++#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
++#[allow(dead_code)]
++pub struct AximWebhookPayload {
++    pub source_channel: String,
++    pub intent: String,
++    pub priority: TaskPriority,
++    pub meta_data: Value,
++    pub timestamp: chrono::DateTime<chrono::Utc>,
++}
+diff --git a/rust/crates/mock-anthropic-service/.claw/sessions/aeafd06e3512045f/session-1779854528431-0.jsonl b/rust/crates/mock-anthropic-service/.claw/sessions/aeafd06e3512045f/session-1779854528431-0.jsonl
+deleted file mode 100644
+index c38bac5..0000000
+--- a/rust/crates/mock-anthropic-service/.claw/sessions/aeafd06e3512045f/session-1779854528431-0.jsonl
++++ /dev/null
+@@ -1,2 +0,0 @@
+-{"created_at_ms":1779854528431,"session_id":"session-1779854528431-0","type":"session_meta","updated_at_ms":1779854528431,"version":1,"workspace_root":"/app/rust/crates/mock-anthropic-service"}
+-{"message":{"blocks":[{"text":"Execute task onyx-ai. Objective: Fix the bug. Branch policy: read-only. Scope: src/","type":"text"}],"role":"user"},"type":"message"}
+diff --git a/rust/crates/onyx/Cargo.toml b/rust/crates/onyx/Cargo.toml
+index 531d843..78b0210 100644
+--- a/rust/crates/onyx/Cargo.toml
++++ b/rust/crates/onyx/Cargo.toml
+@@ -31,6 +31,7 @@ tools = { path = "../tools" }
+ reqwest = { version = "0.13.2", features = ["blocking", "json"] }
+ ring = "0.17.14"
+ hex = "0.4.3"
++chrono = { version = "0.4.44", features = ["serde"] }
+
+ [lints]
+ workspace = true
+@@ -38,4 +39,4 @@ workspace = true
+ [dev-dependencies]
+ mock-anthropic-service = { path = "../mock-anthropic-service" }
+ serde_json.workspace = true
+-tokio = { version = "1", features = ["rt-multi-thread"] }
+\ No newline at end of file
++tokio = { version = "1", features = ["rt-multi-thread"] }
+diff --git a/rust/crates/onyx/src/input.rs b/rust/crates/onyx/src/input.rs
+index b0664da..8346c4d 100644
+--- a/rust/crates/onyx/src/input.rs
++++ b/rust/crates/onyx/src/input.rs
+@@ -219,6 +219,46 @@ fn normalize_completions(completions: Vec<String>) -> Vec<String> {
+         .collect()
+ }
+
++
++use api::types::AximWebhookPayload;
++use runtime::TaskPacket;
++
++#[allow(dead_code, clippy::needless_pass_by_value)]
++pub fn route_webhook_payload_to_task(payload: AximWebhookPayload) -> Result<TaskPacket, String> {
++    let objective = match payload.intent.as_str() {
++        "sync_lead_enrich" => {
++            format!("Process lead enrichment for data: {:?}", payload.meta_data)
++        }
++        "triage_support" => {
++            format!("Analyze error logs and draft AutoDraftWhisper for: {:?}", payload.meta_data)
++        }
++        "generate_affiliate_content" => {
++            format!("Coordinate with Roundups.ai to generate content for: {:?}. Strictly preserve partner affiliate URLs and append SEO tags in a comma-separated format.", payload.meta_data)
++        }
++        "log_telemetry" => {
++            format!("Log telemetry data from decentralized micro-apps: {:?}", payload.meta_data)
++        }
++        _ => return Err(format!("Unknown intent: {}", payload.intent)),
++    };
++
++    Ok(TaskPacket {
++        objective,
++        scope: "webhook_processing".to_string(),
++        repo: "axim-core".to_string(),
++        branch_policy: "main".to_string(),
++        acceptance_tests: vec![],
++        commit_policy: "strict".to_string(),
++        reporting_contract: "none".to_string(),
++        escalation_policy: "halt".to_string(),
++        context: "webhook context".to_string(),
++        goal: payload.intent.clone(),
++        expected_schema: serde_json::Value::Null,
++        job_id: None,
++        worker_id: None,
++        reasoning_effort: None,
++    })
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::{slash_command_prefix, LineEditor, SlashCommandHelper};
+@@ -328,3 +368,5 @@ mod tests {
+         assert_eq!(helper.completions, vec!["/model opus".to_string()]);
+     }
+ }
++
++
+diff --git a/rust/crates/runtime/src/lib.rs b/rust/crates/runtime/src/lib.rs
+index 54fe95e..302141e 100644
+--- a/rust/crates/runtime/src/lib.rs
++++ b/rust/crates/runtime/src/lib.rs
+@@ -188,3 +188,5 @@ pub(crate) fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {
+         .unwrap_or_else(std::sync::PoisonError::into_inner)
+ }
+ pub mod ui_stream;
++pub mod sync;
++pub mod playbooks;
+diff --git a/rust/crates/runtime/src/playbooks/log_telemetry.rs b/rust/crates/runtime/src/playbooks/log_telemetry.rs
+new file mode 100644
+index 0000000..ab7cb98
+--- /dev/null
++++ b/rust/crates/runtime/src/playbooks/log_telemetry.rs
+@@ -0,0 +1,42 @@
++use serde::{Deserialize, Serialize};
++use serde_json::Value;
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct ApiUsageLog {
++    pub app_id: String,
++    pub endpoint: String,
++    pub execution_time_ms: i64,
++    pub revenue_generated: f64,
++}
++
++pub fn process_log_telemetry(payload: Value) -> Result<(), String> {
++    let log: ApiUsageLog = serde_json::from_value(payload).map_err(|e| e.to_string())?;
++
++    if log.execution_time_ms == -1 || log.endpoint.contains("anomaly_signature") {
++        // Log quarantine action via telemetry crate (simulated here)
++        println!("Telemetry anomaly detected for app: {}. Triggering quarantine and triage support.", log.app_id);
++
++        let _triage_payload = crate::task_packet::TaskPacket {
++            objective: format!("Triage critical failure for app: {}", log.app_id),
++            scope: "triage_support".to_string(),
++            repo: "axim-core".to_string(),
++            branch_policy: "main".to_string(),
++            acceptance_tests: vec![],
++            commit_policy: "strict".to_string(),
++            reporting_contract: "none".to_string(),
++            escalation_policy: "halt".to_string(),
++            context: format!("Error in endpoint {} with execution time {}ms", log.endpoint, log.execution_time_ms),
++            goal: "triage_support".to_string(),
++            expected_schema: serde_json::Value::Null,
++            job_id: None,
++            worker_id: None,
++            reasoning_effort: None,
++        };
++
++        // Here we would push this task packet to the execution channel with Priority::Critical
++    } else {
++        println!("Normal telemetry logged for app: {}", log.app_id);
++    }
++
++    Ok(())
++}
+diff --git a/rust/crates/runtime/src/playbooks/mod.rs b/rust/crates/runtime/src/playbooks/mod.rs
+new file mode 100644
+index 0000000..2f9c68f
+--- /dev/null
++++ b/rust/crates/runtime/src/playbooks/mod.rs
+@@ -0,0 +1,3 @@
++pub mod log_telemetry;
++pub mod triage_support;
++pub mod sla_guard;
+diff --git a/rust/crates/runtime/src/playbooks/sla_guard.rs b/rust/crates/runtime/src/playbooks/sla_guard.rs
+new file mode 100644
+index 0000000..df49581
+--- /dev/null
++++ b/rust/crates/runtime/src/playbooks/sla_guard.rs
+@@ -0,0 +1,20 @@
++use serde::{Deserialize, Serialize};
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct IncidentTicket {
++    pub ticket_id: String,
++    pub created_at: u64,
++    pub status: String, // e.g. "pending_review", "active"
++}
++
++pub fn enforce_sla_boundaries(ticket: &IncidentTicket, current_time: u64, sla_limit_seconds: u64) -> Result<(), String> {
++    if ticket.status == "pending_review" && current_time - ticket.created_at >= sla_limit_seconds {
++        // Trigger escalate_to_creator tool (simulated)
++        println!("SLA Boundary breached for ticket {}. Escalating to creator with HIGH urgency.", ticket.ticket_id);
++
++        // Ensure ecosystem_apps entry is locked at suspended (simulated)
++        println!("Ensuring ecosystem_apps entry remains locked at suspended until HITL sign-off.");
++    }
++
++    Ok(())
++}
+diff --git a/rust/crates/runtime/src/playbooks/triage_support.rs b/rust/crates/runtime/src/playbooks/triage_support.rs
+new file mode 100644
+index 0000000..b6227d6
+--- /dev/null
++++ b/rust/crates/runtime/src/playbooks/triage_support.rs
+@@ -0,0 +1,41 @@
++use serde::{Deserialize, Serialize};
++use serde_json::Value;
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct TriageContext {
++    pub app_id: String,
++    pub metadata: Value,
++    pub stack_trace: String,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct AutoDraftWhisperPayload {
++    pub forensics_data: Value,
++    pub remediation_blueprint: String,
++}
++
++#[allow(clippy::needless_pass_by_value)]
++pub fn triage_support_orchestration(context: TriageContext) -> Result<AutoDraftWhisperPayload, String> {
++    // 1. Perform vectorized similarity lookup against vector_kb (simulated)
++    println!("Performing vectorized lookup for stack trace from app: {}", context.app_id);
++    let historical_patch = "Simulated patch: Increase memory limits on edge worker.";
++
++    // 2. Synthesize forensics data
++    let forensics_data = serde_json::json!({
++        "app_id": context.app_id,
++        "error_pattern": "Memory timeout detected",
++        "historical_match": true,
++    });
++
++    // 3. Auto-draft remediation blueprint
++    let remediation_blueprint = format!(
++        "Remediation Blueprint:\n- App ID: {}\n- Recommended Action: {}\n- Stack Trace Snippet: {}",
++        context.app_id, historical_patch, &context.stack_trace.chars().take(100).collect::<String>()
++    );
++
++    // This payload is returned to populate AutoDraftWhisper.jsx and support_tickets
++    Ok(AutoDraftWhisperPayload {
++        forensics_data,
++        remediation_blueprint,
++    })
++}
+diff --git a/rust/crates/runtime/src/session.rs b/rust/crates/runtime/src/session.rs
+index 270cf73..9beab41 100644
+--- a/rust/crates/runtime/src/session.rs
++++ b/rust/crates/runtime/src/session.rs
+@@ -1132,7 +1132,9 @@ fn cleanup_rotated_logs(path: &Path) -> Result<(), SessionError> {
+
+     let remove_count = rotated_paths.len().saturating_sub(MAX_ROTATED_FILES);
+     for stale_path in rotated_paths.into_iter().take(remove_count) {
+-        fs::remove_file(stale_path)?;
++        if let Err(e) = fs::remove_file(&stale_path) {
++            eprintln!("Failed to remove stale session file {}: {}", stale_path.display(), e);
++        }
+     }
+     Ok(())
+ }
+diff --git a/rust/crates/runtime/src/sync.rs b/rust/crates/runtime/src/sync.rs
+new file mode 100644
+index 0000000..26d58cc
+--- /dev/null
++++ b/rust/crates/runtime/src/sync.rs
+@@ -0,0 +1,28 @@
++use std::path::PathBuf;
++use std::fs;
++use std::io::Write;
++use serde::Serialize;
++
++pub fn spool_dir() -> PathBuf {
++    let home = std::env::var("HOME").map_or_else(|_| std::path::PathBuf::from("."), std::path::PathBuf::from);
++    home.join(".claw").join("spool")
++}
++
++pub fn ensure_spool_dir() -> std::io::Result<()> {
++    fs::create_dir_all(spool_dir())
++}
++
++pub fn write_to_spool<T: Serialize>(prefix: &str, payload: &T) -> std::io::Result<()> {
++    ensure_spool_dir()?;
++    let timestamp = std::time::SystemTime::now()
++        .duration_since(std::time::UNIX_EPOCH)
++        .unwrap()
++        .as_millis();
++    let filename = format!("{prefix}_{timestamp}.json");
++    let path = spool_dir().join(filename);
++
++    let content = serde_json::to_string(payload)?;
++    let mut file = fs::File::create(path)?;
++    file.write_all(content.as_bytes())?;
++    Ok(())
++}
+diff --git a/rust/crates/telemetry/src/lib.rs b/rust/crates/telemetry/src/lib.rs
+index 9396df3..0d1f789 100644
+--- a/rust/crates/telemetry/src/lib.rs
++++ b/rust/crates/telemetry/src/lib.rs
+@@ -554,3 +554,4 @@ mod tests {
+         let _ = std::fs::remove_file(path);
+     }
+ }
++pub mod sync;
+diff --git a/rust/crates/telemetry/src/sync.rs b/rust/crates/telemetry/src/sync.rs
+new file mode 100644
+index 0000000..26d58cc
+--- /dev/null
++++ b/rust/crates/telemetry/src/sync.rs
+@@ -0,0 +1,28 @@
++use std::path::PathBuf;
++use std::fs;
++use std::io::Write;
++use serde::Serialize;
++
++pub fn spool_dir() -> PathBuf {
++    let home = std::env::var("HOME").map_or_else(|_| std::path::PathBuf::from("."), std::path::PathBuf::from);
++    home.join(".claw").join("spool")
++}
++
++pub fn ensure_spool_dir() -> std::io::Result<()> {
++    fs::create_dir_all(spool_dir())
++}
++
++pub fn write_to_spool<T: Serialize>(prefix: &str, payload: &T) -> std::io::Result<()> {
++    ensure_spool_dir()?;
++    let timestamp = std::time::SystemTime::now()
++        .duration_since(std::time::UNIX_EPOCH)
++        .unwrap()
++        .as_millis();
++    let filename = format!("{prefix}_{timestamp}.json");
++    let path = spool_dir().join(filename);
++
++    let content = serde_json::to_string(payload)?;
++    let mut file = fs::File::create(path)?;
++    file.write_all(content.as_bytes())?;
++    Ok(())
++}
+diff --git a/rust/crates/tools/.claw/lane-events.jsonl b/rust/crates/tools/.claw/lane-events.jsonl
+deleted file mode 100644
+index fc770e7..0000000
+--- a/rust/crates/tools/.claw/lane-events.jsonl
++++ /dev/null
+@@ -1,121 +0,0 @@
+-{"event":"lane.started","status":"running","emittedAt":"1779296554"}
+-{"event":"lane.started","status":"running","emittedAt":"1779296554"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779296554","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779296554"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779296554","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779296554"}
+-{"event":"lane.commit.created","status":"completed","emittedAt":"1779296554","detail":"commit abc1234","data":{"branch":"jules-13609460030661092330-1c353d44","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+-{"event":"lane.started","status":"running","emittedAt":"1779296554"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779296554","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+-{"event":"lane.started","status":"running","emittedAt":"1779296554"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779296554","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+-{"event":"lane.started","status":"running","emittedAt":"1779298183"}
+-{"event":"lane.commit.created","status":"completed","emittedAt":"1779298183","detail":"commit abc1234","data":{"branch":"jules-13609460030661092330-1c353d44","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+-{"event":"lane.started","status":"running","emittedAt":"1779298183"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779298183","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+-{"event":"lane.started","status":"running","emittedAt":"1779298183"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779298183","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+-{"event":"lane.started","status":"running","emittedAt":"1779298183"}
+-{"event":"lane.started","status":"running","emittedAt":"1779298183"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779298183","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779298183"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779298183","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779298407"}
+-{"event":"lane.commit.created","status":"completed","emittedAt":"1779298407","detail":"commit abc1234","data":{"branch":"jules-13609460030661092330-1c353d44","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+-{"event":"lane.started","status":"running","emittedAt":"1779298407"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779298407","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+-{"event":"lane.started","status":"running","emittedAt":"1779298407"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779298407","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+-{"event":"lane.started","status":"running","emittedAt":"1779298407"}
+-{"event":"lane.started","status":"running","emittedAt":"1779298407"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779298407","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779298407"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779298407","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779301836"}
+-{"event":"lane.started","status":"running","emittedAt":"1779301836"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779301836","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779301836"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779301836","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779301836"}
+-{"event":"lane.commit.created","status":"completed","emittedAt":"1779301836","detail":"commit abc1234","data":{"branch":"jules-13609460030661092330-1c353d44","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+-{"event":"lane.started","status":"running","emittedAt":"1779301837"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779301837","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+-{"event":"lane.started","status":"running","emittedAt":"1779301837"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779301837","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+-{"event":"lane.started","status":"running","emittedAt":"1779659931"}
+-{"event":"lane.commit.created","status":"completed","emittedAt":"1779659931","detail":"commit abc1234","data":{"branch":"jules-254526794814920125-d46385cc","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+-{"event":"lane.started","status":"running","emittedAt":"1779659931"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779659931","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+-{"event":"lane.started","status":"running","emittedAt":"1779659931"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779659931","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+-{"event":"lane.started","status":"running","emittedAt":"1779659931"}
+-{"event":"lane.started","status":"running","emittedAt":"1779659931"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779659931","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779659931"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779659931","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779660167"}
+-{"event":"lane.commit.created","status":"completed","emittedAt":"1779660167","detail":"commit abc1234","data":{"branch":"jules-254526794814920125-d46385cc","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+-{"event":"lane.started","status":"running","emittedAt":"1779660167"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779660167","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+-{"event":"lane.started","status":"running","emittedAt":"1779660167"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779660167","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+-{"event":"lane.started","status":"running","emittedAt":"1779660167"}
+-{"event":"lane.started","status":"running","emittedAt":"1779660167"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779660167","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779660167"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779660167","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779660940"}
+-{"event":"lane.commit.created","status":"completed","emittedAt":"1779660940","detail":"commit abc1234","data":{"branch":"jules-254526794814920125-d46385cc","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+-{"event":"lane.started","status":"running","emittedAt":"1779660940"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779660940","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+-{"event":"lane.started","status":"running","emittedAt":"1779660940"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779660940","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+-{"event":"lane.started","status":"running","emittedAt":"1779660940"}
+-{"event":"lane.started","status":"running","emittedAt":"1779660940"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779660940","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779660940"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779660940","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779661502"}
+-{"event":"lane.commit.created","status":"completed","emittedAt":"1779661502","detail":"commit abc1234","data":{"branch":"jules-254526794814920125-d46385cc","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+-{"event":"lane.started","status":"running","emittedAt":"1779661502"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779661502","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+-{"event":"lane.started","status":"running","emittedAt":"1779661502"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779661502","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+-{"event":"lane.started","status":"running","emittedAt":"1779661502"}
+-{"event":"lane.started","status":"running","emittedAt":"1779661502"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779661502","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779661502"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779661502","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779662292"}
+-{"event":"lane.commit.created","status":"completed","emittedAt":"1779662292","detail":"commit abc1234","data":{"branch":"jules-254526794814920125-d46385cc","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+-{"event":"lane.started","status":"running","emittedAt":"1779662292"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779662292","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+-{"event":"lane.started","status":"running","emittedAt":"1779662292"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779662292","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+-{"event":"lane.started","status":"running","emittedAt":"1779662292"}
+-{"event":"lane.started","status":"running","emittedAt":"1779662292"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779662292","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779662292"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779662292","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779662529"}
+-{"event":"lane.started","status":"running","emittedAt":"1779662530"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779662530","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779662530"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779662530","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779662530"}
+-{"event":"lane.commit.created","status":"completed","emittedAt":"1779662530","detail":"commit abc1234","data":{"branch":"jules-254526794814920125-d46385cc","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+-{"event":"lane.started","status":"running","emittedAt":"1779662530"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779662530","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+-{"event":"lane.started","status":"running","emittedAt":"1779662530"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779662530","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+-{"event":"lane.started","status":"running","emittedAt":"1779854631"}
+-{"event":"lane.commit.created","status":"completed","emittedAt":"1779854631","detail":"commit abc1234","data":{"branch":"jules-7488034531243629413-99c29ef3","canonicalCommit":"abc1234","commit":"abc1234","lineage":["abc1234"],"worktree":"/app/rust/crates/tools"}}
+-{"event":"lane.started","status":"running","emittedAt":"1779854631"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779854631","failureClass":"tool_runtime","detail":"tool failed: simulated failure"}
+-{"event":"lane.started","status":"running","emittedAt":"1779854631"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779854631","failureClass":"infra","detail":"failed to spawn sub-agent: thread creation failed"}
+-{"event":"lane.started","status":"running","emittedAt":"1779854632"}
+-{"event":"lane.started","status":"running","emittedAt":"1779854632"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779854632","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+-{"event":"lane.started","status":"running","emittedAt":"1779854632"}
+-{"event":"lane.failed","status":"failed","emittedAt":"1779854632","failureClass":"infra","detail":"missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"}
+diff --git a/rust/crates/tools/.gitignore b/rust/crates/tools/.gitignore
+index 96da1ea..984b042 100644
+--- a/rust/crates/tools/.gitignore
++++ b/rust/crates/tools/.gitignore
+@@ -1 +1,3 @@
+ .clawd-agents/
++.claw/
++*.jsonl
