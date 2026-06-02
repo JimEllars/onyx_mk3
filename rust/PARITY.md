@@ -146,3 +146,7 @@ Harness note: current coverage now includes write-file denial, bash escalation a
 - [ ] No `#[ignore]` tests hiding failures (only 1 allowed: `live_stream_smoke_test`)
 - [ ] CI green on every commit
 - [ ] Codebase shape clean for handoff
+
+## Phase 17: Production Sweep
+- Workspace compiled and tested completely with 0 warnings
+- Hardened math formulas in telemetry processing

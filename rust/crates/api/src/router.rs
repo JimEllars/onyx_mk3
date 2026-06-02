@@ -39,8 +39,30 @@ pub async fn handle_dispatch(
         ).into_response();
     }
 
+
+
     let payload = match payload_result {
-        Ok(Json(payload)) => payload,
+        Ok(Json(payload)) => {
+            if let Err(validation_err) = payload.validate() {
+                let _ = runtime::internal_mcp::call_telemetry_event_handler(&runtime::TelemetryEvent {
+                    r#type: "webhook_ingest_validation_error".to_string(),
+                    payload: json!({
+                        "session_id": "system",
+                        "agent_id": "axim_router",
+                        "error": validation_err
+                    }),
+                }).await;
+
+                return (
+                    StatusCode::BAD_REQUEST,
+                    axum::Json(json!({
+                        "error": "Validation failed",
+                        "details": validation_err
+                    })),
+                ).into_response();
+            }
+            payload
+        },
         Err(e) => {
             let error_msg = format!("Malformed payload structure: {}", e.body_text());
 
