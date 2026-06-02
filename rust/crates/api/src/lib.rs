@@ -4,6 +4,7 @@ mod http_client;
 mod prompt_cache;
 mod providers;
 mod sse;
+pub mod router;
 pub mod types;
 
 pub use client::{
