@@ -1,12 +1,12 @@
-# AXiM Onyx AI App Review & Continued Development Plan
+# Phase 17 Review
 
-## Current State
-- **Stateless Intake API & Async Queueing**: The application successfully ingests Webhooks from external systems through `/v1/commands/dispatch` and converts them into `TaskPacket` requests.
-- **Priority-Based Swarm Routing**: Multi-tenancy queueing safely handles inbound telemetry and alerts, with MPSC mechanisms correctly prioritizing Critical workflows (Auto-Healer) over low-impact batch queries.
-- **Agent Handoffs**: Full internal Playbook matrices are online via MCP, executing natively using safe Rust boundaries.
-- **Edge Deployment Ready**: The TypeScript Edge Bridge provides solid ingress filtering before dropping secure payload data into this new Rust execution core.
+## Accomplishments
+- Implemented payload validation logic inside `rust/crates/api/src/types.rs` via the `validate()` method for `AximWebhookPayload`.
+- Implemented integration for validation error handling directly in the `handle_dispatch` block in `rust/crates/api/src/router.rs`, tracking ingest validation errors in the telemetry trace and blocking processing with a proper HTTP 400 Bad Request error.
+- Expanded the logic in `rust/crates/runtime/src/playbooks/log_telemetry.rs` to compute `execution_time_ms` robustly using `.saturating_sub` along with safe casting (via `i64::try_from().unwrap_or(i64::MAX)`) and strict numerical bounds processing logic for `log.execution_time_ms`.
+- Achieved a perfectly clean `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` result with zero warnings.
 
-## Immediate Development Directives (Next Sprint)
-1. **Deeper CRM Integrations**: We must finalize the deskera data sync structures outlined in `sync_lead_enrich`. The current internal command logic is in place, but we need the exact API payload formats integrated directly into `rust/crates/tools/src/crm.rs`.
-2. **Auto-Healer & RCA Output Refinement**: Implement actual generation logic that populates vector matching inside the `AutoDraftWhisper` UI rather than placeholders in `triage_support`. Ensure `vector_memory.rs` properly intercepts stack traces during these events.
-3. **HITL Notification Bridge**: When Onyx halts for executive signoff on high-stakes operations (like WordPress publishing), wire the Rust runtime to actively broadcast a notification via Discord/Slack or internal AXiM dashboards, so executives aren't forced to poll actively.
+## Remaining Items & Continued Development Plan
+The current sprint objectives are successfully completed. Next development phase requires:
+1. Advancing the front-end AXiM interface by creating a dedicated UI component capable of communicating efficiently with the newly integrated headless `onyx` agent via WebSockets or long-polling over REST, which serves as Phase 18.
+2. Expanding the internal RAG (Retrieval-Augmented Generation) infrastructure for more intelligent incident response support for Onyx.
