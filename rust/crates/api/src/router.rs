@@ -1,13 +1,17 @@
 use axum::{
-    extract::{State, Json, rejection::JsonRejection},
+    extract::{rejection::JsonRejection, Json, State},
     http::StatusCode,
     response::IntoResponse,
     routing::post,
     Router,
 };
+use commands::extensions::lead_scoring::PredictiveLeadScoring;
+use commands::extensions::demand_letter::DemandLetterGenerator;
+use commands::extensions::nda::NDAGenerator;
+use commands::micro_program::MicroProgram;
+use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use runtime::dispatch::Dispatcher;
 use serde_json::json;
-use crate::types::AximWebhookPayload;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -23,6 +27,7 @@ pub fn create_router(state: AppState) -> Router {
 }
 
 #[axum::debug_handler]
+#[allow(clippy::too_many_lines)]
 pub async fn handle_dispatch(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
@@ -36,22 +41,23 @@ pub async fn handle_dispatch(
         return (
             StatusCode::UNAUTHORIZED,
             axum::Json(json!({"error": "Unauthorized"})),
-        ).into_response();
+        )
+            .into_response();
     }
-
-
 
     let payload = match payload_result {
         Ok(Json(payload)) => {
             if let Err(validation_err) = payload.validate() {
-                let _ = runtime::internal_mcp::call_telemetry_event_handler(&runtime::TelemetryEvent {
-                    r#type: "webhook_ingest_validation_error".to_string(),
-                    payload: json!({
-                        "session_id": "system",
-                        "agent_id": "axim_router",
-                        "error": validation_err
-                    }),
-                }).await;
+                let _ =
+                    runtime::internal_mcp::call_telemetry_event_handler(&runtime::TelemetryEvent {
+                        r#type: "webhook_ingest_validation_error".to_string(),
+                        payload: json!({
+                            "session_id": "system",
+                            "agent_id": "axim_router",
+                            "error": validation_err
+                        }),
+                    })
+                    .await;
 
                 return (
                     StatusCode::BAD_REQUEST,
@@ -59,10 +65,11 @@ pub async fn handle_dispatch(
                         "error": "Validation failed",
                         "details": validation_err
                     })),
-                ).into_response();
+                )
+                    .into_response();
             }
             payload
-        },
+        }
         Err(e) => {
             let error_msg = format!("Malformed payload structure: {}", e.body_text());
 
@@ -74,7 +81,8 @@ pub async fn handle_dispatch(
                     "agent_id": "axim_router",
                     "error": error_msg
                 }),
-            }).await;
+            })
+            .await;
 
             return (
                 StatusCode::BAD_REQUEST,
@@ -82,9 +90,39 @@ pub async fn handle_dispatch(
                     "error": "Malformed payload structure",
                     "details": e.body_text()
                 })),
-            ).into_response();
+            )
+                .into_response();
         }
     };
+
+
+    // Route to micro-programs based on intent
+    let lead_scoring = PredictiveLeadScoring;
+    let demand_letter = DemandLetterGenerator;
+    let nda = NDAGenerator;
+
+    let micro_program_result = if payload.intent == lead_scoring.signature() {
+        Some(lead_scoring.execute(&payload).await)
+    } else if payload.intent == demand_letter.signature() {
+        Some(demand_letter.execute(&payload).await)
+    } else if payload.intent == nda.signature() {
+        Some(nda.execute(&payload).await)
+    } else {
+        None
+    };
+
+    if let Some(result) = micro_program_result {
+        return match result {
+            Ok(data) => (
+                StatusCode::OK,
+                axum::Json(json!({"status": "Success", "data": data})),
+            ).into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(json!({"error": e})),
+            ).into_response(),
+        };
+    }
 
     let packet = runtime::TaskPacket {
         job_id: None,
@@ -107,11 +145,13 @@ pub async fn handle_dispatch(
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             axum::Json(json!({"error": e})),
-        ).into_response();
+        )
+            .into_response();
     }
 
     (
         StatusCode::OK,
         axum::Json(json!({"status": "Success", "message": "Task dispatched"})),
-    ).into_response()
+    )
+        .into_response()
 }

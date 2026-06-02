@@ -3,8 +3,8 @@ mod error;
 mod http_client;
 mod prompt_cache;
 mod providers;
-mod sse;
 pub mod router;
+mod sse;
 pub mod types;
 
 pub use client::{

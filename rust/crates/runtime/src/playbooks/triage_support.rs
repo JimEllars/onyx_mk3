@@ -15,9 +15,14 @@ pub struct AutoDraftWhisperPayload {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-pub fn triage_support_orchestration(context: TriageContext) -> Result<AutoDraftWhisperPayload, String> {
+pub fn triage_support_orchestration(
+    context: TriageContext,
+) -> Result<AutoDraftWhisperPayload, String> {
     // 1. Perform vectorized similarity lookup against vector_kb (simulated)
-    println!("Performing vectorized lookup for stack trace from app: {}", context.app_id);
+    println!(
+        "Performing vectorized lookup for stack trace from app: {}",
+        context.app_id
+    );
     let historical_patch = "Simulated patch: Increase memory limits on edge worker.";
 
     // 2. Synthesize forensics data
@@ -28,7 +33,8 @@ pub fn triage_support_orchestration(context: TriageContext) -> Result<AutoDraftW
     });
 
     // 3. Auto-draft remediation blueprint
-    let remediation_blueprint = format!(
+    let remediation_blueprint =
+        format!(
         "Remediation Blueprint:\n- App ID: {}\n- Recommended Action: {}\n- Stack Trace Snippet: {}",
         context.app_id, historical_patch, &context.stack_trace.chars().take(100).collect::<String>()
     );

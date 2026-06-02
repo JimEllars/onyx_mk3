@@ -5558,3 +5558,5 @@ mod tests {
         let _ = fs::remove_dir_all(bundled_root);
     }
 }
+pub mod extensions;
+pub mod micro_program;

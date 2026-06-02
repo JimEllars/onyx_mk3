@@ -219,8 +219,7 @@ fn normalize_completions(completions: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-
-use api::types::AximWebhookPayload;
+use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use runtime::TaskPacket;
 
 #[allow(dead_code, clippy::needless_pass_by_value)]
@@ -230,13 +229,19 @@ pub fn route_webhook_payload_to_task(payload: AximWebhookPayload) -> Result<Task
             format!("Process lead enrichment for data: {:?}", payload.meta_data)
         }
         "triage_support" => {
-            format!("Analyze error logs and draft AutoDraftWhisper for: {:?}", payload.meta_data)
+            format!(
+                "Analyze error logs and draft AutoDraftWhisper for: {:?}",
+                payload.meta_data
+            )
         }
         "generate_affiliate_content" => {
             format!("Coordinate with Roundups.ai to generate content for: {:?}. Strictly preserve partner affiliate URLs and append SEO tags in a comma-separated format.", payload.meta_data)
         }
         "log_telemetry" => {
-            format!("Log telemetry data from decentralized micro-apps: {:?}", payload.meta_data)
+            format!(
+                "Log telemetry data from decentralized micro-apps: {:?}",
+                payload.meta_data
+            )
         }
         _ => return Err(format!("Unknown intent: {}", payload.intent)),
     };

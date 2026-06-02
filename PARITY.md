@@ -198,3 +198,10 @@ Canonical scenario map: `rust/mock_parity_scenarios.json`
 - [x] No `#[ignore]` tests hiding failures
 - [ ] CI green on every commit
 - [x] Codebase shape clean enough for handoff documentation
+
+### Lane 10 — Micro-Program Extension Routing
+
+- **Status:** merged on `main`.
+- **Feature:** Extensible trait-based dispatch router `MicroProgram`.
+- **Evidence:** `rust/crates/api/src/router.rs` handles extension dispatch natively using signatures like `sync_lead_enrich`.
+- **Why it matters:** Moves intelligence implementations to isolated extensions matching decentralized architectures without muddying the API crate logic.
