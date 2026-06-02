@@ -1,10 +1,11 @@
-use std::path::PathBuf;
+use serde::Serialize;
 use std::fs;
 use std::io::Write;
-use serde::Serialize;
+use std::path::PathBuf;
 
 pub fn spool_dir() -> PathBuf {
-    let home = std::env::var("HOME").map_or_else(|_| std::path::PathBuf::from("."), std::path::PathBuf::from);
+    let home = std::env::var("HOME")
+        .map_or_else(|_| std::path::PathBuf::from("."), std::path::PathBuf::from);
     home.join(".claw").join("spool")
 }
 

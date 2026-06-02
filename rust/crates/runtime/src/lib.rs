@@ -1,6 +1,6 @@
 pub mod dispatch;
-pub mod swarm;
 pub mod ecosystem_tools;
+pub mod swarm;
 pub mod swarm_lock;
 // Core runtime primitives for the `onyx` CLI and supporting crates.
 //
@@ -189,6 +189,7 @@ pub(crate) fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
-pub mod ui_stream;
-pub mod sync;
+pub mod api_specs;
 pub mod playbooks;
+pub mod sync;
+pub mod ui_stream;

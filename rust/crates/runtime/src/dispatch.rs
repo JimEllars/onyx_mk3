@@ -59,6 +59,8 @@ impl Dispatcher {
             TaskPriority::Low => &self.low,
         };
 
-        tx.send(packet).await.map_err(|e| format!("Failed to dispatch task: {e}"))
+        tx.send(packet)
+            .await
+            .map_err(|e| format!("Failed to dispatch task: {e}"))
     }
 }

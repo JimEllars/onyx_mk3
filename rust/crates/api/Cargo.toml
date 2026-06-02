@@ -10,6 +10,7 @@ axum = { version = "0.8.8", features = ["macros"] }
 chrono = { version = "0.4.44", features = ["serde"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 runtime = { path = "../runtime" }
+commands = { path = "../commands" }
 serde = { version = "1", features = ["derive"] }
 serde_json.workspace = true
 telemetry = { path = "../telemetry" }
