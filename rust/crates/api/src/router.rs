@@ -1,5 +1,5 @@
 use axum::{
-    extract::{State, Json},
+    extract::{State, Json, rejection::JsonRejection},
     http::StatusCode,
     response::IntoResponse,
     routing::post,
@@ -26,7 +26,7 @@ pub fn create_router(state: AppState) -> Router {
 pub async fn handle_dispatch(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
-    Json(payload): Json<AximWebhookPayload>,
+    payload_result: Result<Json<AximWebhookPayload>, JsonRejection>,
 ) -> impl IntoResponse {
     // Verify authorization
     let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
@@ -38,6 +38,31 @@ pub async fn handle_dispatch(
             axum::Json(json!({"error": "Unauthorized"})),
         ).into_response();
     }
+
+    let payload = match payload_result {
+        Ok(Json(payload)) => payload,
+        Err(e) => {
+            let error_msg = format!("Malformed payload structure: {}", e.body_text());
+
+            // Record telemetry event before termination
+            let _ = runtime::internal_mcp::call_telemetry_event_handler(&runtime::TelemetryEvent {
+                r#type: "webhook_ingest_error".to_string(),
+                payload: json!({
+                    "session_id": "system",
+                    "agent_id": "axim_router",
+                    "error": error_msg
+                }),
+            }).await;
+
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(json!({
+                    "error": "Malformed payload structure",
+                    "details": e.body_text()
+                })),
+            ).into_response();
+        }
+    };
 
     let packet = runtime::TaskPacket {
         job_id: None,

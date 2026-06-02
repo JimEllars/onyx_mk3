@@ -69,3 +69,29 @@ async fn high_volume_throughput_and_priority() {
     }
     assert_eq!(high_count, 13);
 }
+
+#[tokio::test]
+async fn webhook_payload_bad_request() {
+    let (dispatcher, _) = Dispatcher::new(100);
+    let app_state = AppState {
+        dispatcher: Arc::new(dispatcher),
+        auth_token: "test_token".to_string(),
+    };
+
+    let app = create_router(app_state);
+
+    let payload = json!({
+        "intent": "missing_fields"
+    });
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/commands/dispatch")
+        .header("content-type", "application/json")
+        .header("authorization", "Bearer test_token")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+}
