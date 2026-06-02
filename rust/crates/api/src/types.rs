@@ -321,15 +321,7 @@ mod tests {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[allow(dead_code)]
-pub enum TaskPriority {
-    Low,
-    Standard,
-    High,
-    Critical,
-}
+use runtime::dispatch::TaskPriority;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[allow(dead_code)]
