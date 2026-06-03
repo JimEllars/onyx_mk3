@@ -1670,6 +1670,7 @@ mod tests {
             "EXIT_AFTER_TOOLS_LIST = os.environ.get('MCP_EXIT_AFTER_TOOLS_LIST') == '1'",
             "FAIL_ONCE_MODE = os.environ.get('MCP_FAIL_ONCE_MODE')",
             "FAIL_ONCE_MARKER = os.environ.get('MCP_FAIL_ONCE_MARKER')",
+            "DELAY_MS = int(os.environ.get('MCP_TOOL_CALL_DELAY_MS', '0'))",
             "initialize_count = 0",
             "",
             "def log(method):",
@@ -2324,7 +2325,7 @@ mod tests {
         runtime.block_on(async {
             let script_path = write_mcp_server_script();
             let root = script_path.parent().expect("script parent");
-            let log_path = root.join("timeout.log");
+            let _log_path = root.join("timeout.log");
             let servers = BTreeMap::from([(
                 "slow".to_string(),
                 ScopedMcpServerConfig {
@@ -2342,55 +2343,27 @@ mod tests {
             )]);
             let mut manager = McpServerManager::from_servers(&servers);
 
-
-
             manager.discover_tools().await.expect("discover tools");
 
             let first_call = manager
                 .call_tool(
-                    &mcp_tool_name("alpha", "echo"),
+                    &mcp_tool_name("slow", "echo"),
                     Some(json!({"text": "reconnect"})),
                 )
                 .await;
 
             match first_call {
-                Err(McpServerManagerError::Transport {
+                Err(McpServerManagerError::Timeout {
                     server_name,
                     method,
-                    source,
+                    timeout_ms: _,
                 }) => {
-                    assert_eq!(server_name, "alpha");
+                    assert_eq!(server_name, "slow");
                     assert_eq!(method, "tools/call");
-                    assert_eq!(source.kind(), ErrorKind::UnexpectedEof);
                 }
-                Err(other) => panic!("expected transport error or success, got {other:?}"),
-                Ok(_) => {
-                    // It managed to auto-reconnect fast enough, which is also a valid resilient behavior.
-                }
+                Err(other) => panic!("expected timeout error, got {other:?}"),
+                Ok(_) => panic!("expected timeout error, got ok"),
             }
-
-            let response = manager
-
-                .call_tool(
-                    &mcp_tool_name("alpha", "echo"),
-                    Some(json!({"text": "reconnect"})),
-                )
-                .await
-                .expect("second tool call should succeed after reset");
-
-            assert_eq!(
-                response
-                    .result
-                    .as_ref()
-                    .and_then(|result| result.structured_content.as_ref())
-                    .and_then(|value| value.get("server")),
-                Some(&json!("alpha"))
-            );
-            let log = fs::read_to_string(&log_path).expect("read log");
-            assert_eq!(
-                log.lines().collect::<Vec<_>>(),
-                vec!["initialize", "tools/list", "initialize", "tools/call"]
-            );
 
             manager.shutdown().await.expect("shutdown");
             cleanup_script(&script_path);
@@ -2763,35 +2736,9 @@ mod tests {
             )]);
             let mut manager = McpServerManager::from_servers(&servers);
 
-
-
             manager.discover_tools().await.expect("discover tools");
 
-            let first_call = manager
-                .call_tool(
-                    &mcp_tool_name("alpha", "echo"),
-                    Some(json!({"text": "reconnect"})),
-                )
-                .await;
-
-            match first_call {
-                Err(McpServerManagerError::Transport {
-                    server_name,
-                    method,
-                    source,
-                }) => {
-                    assert_eq!(server_name, "alpha");
-                    assert_eq!(method, "tools/call");
-                    assert_eq!(source.kind(), ErrorKind::UnexpectedEof);
-                }
-                Err(other) => panic!("expected transport error or success, got {other:?}"),
-                Ok(_) => {
-                    // It managed to auto-reconnect fast enough, which is also a valid resilient behavior.
-                }
-            }
-
             let response = manager
-
                 .call_tool(
                     &mcp_tool_name("alpha", "echo"),
                     Some(json!({"text": "reuse"})),
@@ -2808,7 +2755,7 @@ mod tests {
                 Some(&json!(1))
             );
 
-            let log = fs::read_to_string(&log_path).expect("read log");
+            let log = std::fs::read_to_string(&log_path).expect("read log");
             assert_eq!(log.lines().filter(|line| *line == "initialize").count(), 1);
             assert_eq!(
                 log.lines().collect::<Vec<_>>(),
