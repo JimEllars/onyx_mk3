@@ -211,3 +211,13 @@ Canonical scenario map: `rust/mock_parity_scenarios.json`
 - **Feature:** `SupportTriage` micro-program routing anomaly logs and surfacing `AutoDraftWhisper` and `OnyxInvestigationPanel` contexts.
 - **Evidence:** `rust/crates/commands/src/extensions/support_triage.rs` routes diagnostic payloads through a tier 4 escalation vector. Includes `apply_security_mask` to prevent sensitive credentials like `STRIPE_SECRET_KEY` from being passed directly to action agents.
 - **Why it matters:** Solidifies Onyx's role as a resilient, autonomous edge orchestrator.
+
+## Support Triage & Action Agent Escalation JSON Structures
+
+Added explicit mapping and typing of AXiM Core diagnostic payload schemas in `rust/crates/commands/src/extensions/support_triage.rs` to ensure full parity with `AXiM` expectations. The schemas include:
+- `DiagnosticLog`: Incoming asynchronous log representation.
+- `SupportTriageResponse`: Standard JSON envelope structured to populate frontend React components natively.
+  - Generates `OnyxInvestigationPanel` for frontend comparison view.
+  - Generates `AutoDraftWhisper` to structure human-readable instructions.
+- `DiagnosticPayload`: A secure packaging wrapper required to handoff failure diagnostics to Tier 4 AI Action Agents.
+- `SecurityMask`: A dedicated struct tracking redacted, production variables. Evaluated via the `apply_security_mask` utility to guarantee safety inside externally run sandbox environments.
