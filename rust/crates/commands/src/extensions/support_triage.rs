@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use crate::micro_program::MicroProgram;
 use std::collections::HashMap;
+use regex::Regex;
 
 // -----------------------------------------------------------------------------
 // Core Request/Response Schemas
@@ -11,12 +12,19 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiagnosticLog {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub incident_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub endpoint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub http_status: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_signature: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stack_trace: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_time_ms: Option<i32>,
     #[serde(default)]
     pub raw_env: HashMap<String, String>,
@@ -24,22 +32,28 @@ pub struct DiagnosticLog {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SupportTriageResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub incident_id: Option<String>,
     pub confidence_score: f64,
     pub investigation_panel: OnyxInvestigationPanel,
     pub auto_draft_whisper: AutoDraftWhisper,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub escalation_payload: Option<DiagnosticPayload>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OnyxInvestigationPanel {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code_difference_metrics: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_analysis: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AutoDraftWhisper {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deployment_commands: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proposed_fix: Option<String>,
 }
 
@@ -49,6 +63,7 @@ pub struct AutoDraftWhisper {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DiagnosticPayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub incident_id: Option<String>,
     pub timestamp: String,
     pub target_application: TargetApplication,
@@ -59,6 +74,7 @@ pub struct DiagnosticPayload {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TargetApplication {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app_id: Option<String>,
     pub runtime_environment: String,
     pub active_branch: String,
@@ -67,9 +83,13 @@ pub struct TargetApplication {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TelemetryContext {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub endpoint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub http_status: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_signature: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stack_trace: Option<String>,
     pub last_10_transaction_logs: Vec<TransactionLog>,
 }
@@ -100,7 +120,7 @@ pub struct SecurityMask {
 // -----------------------------------------------------------------------------
 
 /// Masks sensitive production credentials from telemetry/env data
-/// replacing them with safe mock stubs.
+/// replacing them with safe deterministic mock stubs.
 #[must_use]
 pub fn apply_security_mask<S: ::std::hash::BuildHasher + Default>(raw_env: &HashMap<String, String, S>) -> (HashMap<String, String>, SecurityMask) {
     let mut masked_env: HashMap<String, String> = raw_env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
@@ -109,12 +129,30 @@ pub fn apply_security_mask<S: ::std::hash::BuildHasher + Default>(raw_env: &Hash
 
     for key in raw_env.keys() {
         let k_lower = key.to_lowercase();
-        if k_lower.contains("stripe") || k_lower.contains("secret") || k_lower.contains("token")
-            || k_lower.contains("key") || k_lower.contains("password") || k_lower.contains("auth")
+
+        let is_sensitive = k_lower.contains("stripe")
+            || k_lower.contains("secret")
+            || k_lower.contains("token")
+            || k_lower.contains("key")
+            || k_lower.contains("password")
+            || k_lower.contains("auth")
             || k_lower.contains("credential")
-        {
+            || k_lower.contains("axim")
+            || k_lower.contains("supabase");
+
+        if is_sensitive {
             stripped_variables.push(key.clone());
-            let mock_stub = format!("mock_{}_stub_safe_for_sandboxing", key.to_lowercase());
+
+            let mock_stub = if k_lower.contains("stripe") {
+                "[STRIPE_MASKED]".to_string()
+            } else if k_lower.contains("supabase") {
+                "[SUPABASE_MASKED]".to_string()
+            } else if k_lower.contains("axim") {
+                "[AXIM_MASKED]".to_string()
+            } else {
+                "[CREDENTIAL_MASKED]".to_string()
+            };
+
             mock_variable_stubs.insert(key.clone(), mock_stub.clone());
             masked_env.insert(key.clone(), mock_stub);
         }
@@ -127,6 +165,38 @@ pub fn apply_security_mask<S: ::std::hash::BuildHasher + Default>(raw_env: &Hash
 
     (masked_env, mask)
 }
+
+/// Scrub explicit keys/tokens from freeform text like error signatures and stack traces.
+#[must_use]
+pub fn scrub_error_log(text: &str) -> String {
+    let mut scrubbed = text.to_string();
+
+    let _re_assignment = Regex::new(r#"(?i)("?'?(stripe_secret_key|supabase_service_role_key|api_key|secret_key|password|token|auth)"?'?\s*[:=]\s*)("?'?[^"'\s,{}]+?"?'?)"#).unwrap();
+
+    let re_assignment_safe = Regex::new(r#"(?i)("?'?(stripe_secret_key|supabase_service_role_key|api_key|secret_key|password|token|auth)"?'?\s*[:=]\s*)("?'?)[^"'\s,{}]+("?'?)"#).unwrap();
+    scrubbed = re_assignment_safe.replace_all(&scrubbed, "${1}${3}[CREDENTIAL_MASKED]${4}").to_string();
+
+    let re_stripe = Regex::new(r"(?i)\b(sk_(live|test)_[a-zA-Z0-9]+)\b").unwrap();
+    let re_jwt = Regex::new(r"\b(ey[A-Za-z0-9_-]+\.ey[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b").unwrap();
+
+    scrubbed = re_stripe.replace_all(&scrubbed, "[STRIPE_MASKED]").to_string();
+    scrubbed = re_jwt.replace_all(&scrubbed, "[CREDENTIAL_MASKED]").to_string();
+
+    scrubbed
+}
+
+/// Truncate logs to avoid overflowing serialization blocks and crashing frontends.
+#[must_use]
+pub fn truncate_log(text: &str, max_len: usize) -> String {
+    if text.len() > max_len {
+        let mut truncated = text[..max_len].to_string();
+        truncated.push_str("\n...[TRUNCATED_DUE_TO_SIZE]...");
+        truncated
+    } else {
+        text.to_string()
+    }
+}
+
 
 // -----------------------------------------------------------------------------
 // MicroProgram Implementation
@@ -168,7 +238,9 @@ impl MicroProgram for SupportTriage {
             .map_err(|e| format!("Failed to parse diagnostic log: {e}"))?;
 
         // 1. Semantic search to query internal vector_kb
-        let error_sig = diagnostic_log.error_signature.clone().unwrap_or_default();
+        let raw_error_sig = diagnostic_log.error_signature.clone().unwrap_or_default();
+        let error_sig = truncate_log(&scrub_error_log(&raw_error_sig), 2000);
+
         let (confidence_score, historical_analysis) = self
             .query_vector_kb(&error_sig)
             .await?;
@@ -188,6 +260,8 @@ impl MicroProgram for SupportTriage {
         let escalation_payload = if confidence_score < 0.85 {
             let (_, security_mask) = apply_security_mask(&diagnostic_log.raw_env);
 
+            let stack_trace = diagnostic_log.stack_trace.clone().map(|st| truncate_log(&scrub_error_log(&st), 4000));
+
             Some(DiagnosticPayload {
                 incident_id: diagnostic_log.incident_id.clone(),
                 timestamp: chrono::Utc::now().to_rfc3339(),
@@ -200,8 +274,8 @@ impl MicroProgram for SupportTriage {
                 telemetry_context: TelemetryContext {
                     endpoint: diagnostic_log.endpoint.clone(),
                     http_status: diagnostic_log.http_status,
-                    error_signature: diagnostic_log.error_signature.clone(),
-                    stack_trace: diagnostic_log.stack_trace.clone(),
+                    error_signature: Some(error_sig),
+                    stack_trace,
                     last_10_transaction_logs: vec![], // In a real scenario, fetch recent logs
                 },
                 sandboxed_workspace_rules: SandboxedWorkspaceRules {
@@ -244,21 +318,53 @@ mod tests {
         raw_env.insert("MY_token_123".to_string(), "tkn_xyz".to_string());
         raw_env.insert("database_password".to_string(), "p@ssw0rd".to_string());
         raw_env.insert("MULTILINE_SECRET".to_string(), "abc\ndef".to_string());
+        raw_env.insert("AXIM_API_KEY".to_string(), "123axim".to_string());
+        raw_env.insert("supabase_service_role".to_string(), "sb_mock".to_string());
 
         let (masked_env, security_mask) = apply_security_mask(&raw_env);
 
         assert_eq!(masked_env.get("NORMAL_VAR").unwrap(), "hello_world");
         assert_ne!(masked_env.get("STRIPE_SECRET_KEY").unwrap(), "sk_live_12345");
-        assert_eq!(masked_env.get("STRIPE_SECRET_KEY").unwrap(), "mock_stripe_secret_key_stub_safe_for_sandboxing");
+        assert_eq!(masked_env.get("STRIPE_SECRET_KEY").unwrap(), "[STRIPE_MASKED]");
 
-        assert_ne!(masked_env.get("MY_token_123").unwrap(), "tkn_xyz");
-        assert_ne!(masked_env.get("database_password").unwrap(), "p@ssw0rd");
-        assert_ne!(masked_env.get("MULTILINE_SECRET").unwrap(), "abc\ndef");
+        assert_eq!(masked_env.get("MY_token_123").unwrap(), "[CREDENTIAL_MASKED]");
+        assert_eq!(masked_env.get("database_password").unwrap(), "[CREDENTIAL_MASKED]");
+        assert_eq!(masked_env.get("AXIM_API_KEY").unwrap(), "[AXIM_MASKED]");
+        assert_eq!(masked_env.get("supabase_service_role").unwrap(), "[SUPABASE_MASKED]");
 
         assert!(security_mask.stripped_variables.contains(&"STRIPE_SECRET_KEY".to_string()));
         assert!(security_mask.stripped_variables.contains(&"MY_token_123".to_string()));
         assert!(security_mask.stripped_variables.contains(&"database_password".to_string()));
         assert!(security_mask.stripped_variables.contains(&"MULTILINE_SECRET".to_string()));
+    }
+
+    #[test]
+    fn test_scrub_error_log() {
+        let input1 = "Error: Invalid stripe_secret_key=sk_live_abcdef123456 in configuration.";
+        let out1 = scrub_error_log(input1);
+        assert_eq!(out1, "Error: Invalid stripe_secret_key=[CREDENTIAL_MASKED] in configuration.");
+
+        let input2 = "Token mismatch: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c failed validation";
+        let out2 = scrub_error_log(input2);
+        assert_eq!(out2, "Token mismatch: [CREDENTIAL_MASKED] failed validation");
+
+        let input3 = r#"{"stripe_secret_key": "sk_test_999xxx", "other": 123}"#;
+        let out3 = scrub_error_log(input3);
+        assert_eq!(out3, r#"{"stripe_secret_key": "[CREDENTIAL_MASKED]", "other": 123}"#);
+
+        let input4 = "Using sk_live_testtesttest for initialization.";
+        let out4 = scrub_error_log(input4);
+        assert_eq!(out4, "Using [STRIPE_MASKED] for initialization.");
+    }
+
+    #[test]
+    fn test_truncate_log() {
+        let input = "1234567890";
+        let out1 = truncate_log(input, 5);
+        assert_eq!(out1, "12345\n...[TRUNCATED_DUE_TO_SIZE]...");
+
+        let out2 = truncate_log(input, 20);
+        assert_eq!(out2, "1234567890");
     }
 
     #[test]
