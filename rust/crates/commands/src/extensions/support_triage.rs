@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn test_security_mask_strips_sensitive_keys() {
         let mut raw_env = HashMap::new();
-        raw_env.insert("STRIPE_SECRET_KEY".to_string(), "sk_live_12345".to_string());
+        raw_env.insert("STRIPE_SECRET_KEY".to_string(), "sk_live_dummy".to_string());
         raw_env.insert("NORMAL_VAR".to_string(), "hello_world".to_string());
         raw_env.insert("MY_token_123".to_string(), "tkn_xyz".to_string());
         raw_env.insert("database_password".to_string(), "p@ssw0rd".to_string());
@@ -324,7 +324,7 @@ mod tests {
         let (masked_env, security_mask) = apply_security_mask(&raw_env);
 
         assert_eq!(masked_env.get("NORMAL_VAR").unwrap(), "hello_world");
-        assert_ne!(masked_env.get("STRIPE_SECRET_KEY").unwrap(), "sk_live_12345");
+        assert_ne!(masked_env.get("STRIPE_SECRET_KEY").unwrap(), "sk_live_dummy");
         assert_eq!(masked_env.get("STRIPE_SECRET_KEY").unwrap(), "[STRIPE_MASKED]");
 
         assert_eq!(masked_env.get("MY_token_123").unwrap(), "[CREDENTIAL_MASKED]");
@@ -340,11 +340,11 @@ mod tests {
 
     #[test]
     fn test_scrub_error_log() {
-        let input1 = "Error: Invalid stripe_secret_key=sk_live_abcdef123456 in configuration.";
+        let input1 = "Error: Invalid stripe_secret_key=sk_live_dummykey123 in configuration.";
         let out1 = scrub_error_log(input1);
         assert_eq!(out1, "Error: Invalid stripe_secret_key=[CREDENTIAL_MASKED] in configuration.");
 
-        let input2 = "Token mismatch: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c failed validation";
+        let input2 = "Token mismatch: eyJDVU1NWSJ9.eyJEVU1NWSJ9.ZHVtbXlfc2lnbmF0dXJl failed validation";
         let out2 = scrub_error_log(input2);
         assert_eq!(out2, "Token mismatch: [CREDENTIAL_MASKED] failed validation");
 
