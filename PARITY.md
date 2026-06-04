@@ -205,3 +205,9 @@ Canonical scenario map: `rust/mock_parity_scenarios.json`
 - **Feature:** Extensible trait-based dispatch router `MicroProgram`.
 - **Evidence:** `rust/crates/api/src/router.rs` handles extension dispatch natively using signatures like `sync_lead_enrich`.
 - **Why it matters:** Moves intelligence implementations to isolated extensions matching decentralized architectures without muddying the API crate logic.
+
+### Lane 11 — Decentralized Support Triage (Tier 4 Escalation)
+- **Status:** merged on `main`.
+- **Feature:** `SupportTriage` micro-program routing anomaly logs and surfacing `AutoDraftWhisper` and `OnyxInvestigationPanel` contexts.
+- **Evidence:** `rust/crates/commands/src/extensions/support_triage.rs` routes diagnostic payloads through a tier 4 escalation vector. Includes `apply_security_mask` to prevent sensitive credentials like `STRIPE_SECRET_KEY` from being passed directly to action agents.
+- **Why it matters:** Solidifies Onyx's role as a resilient, autonomous edge orchestrator.

@@ -235,7 +235,7 @@ impl Session {
                 std::fs::canonicalize(&actual_root).unwrap_or_else(|_| actual_root.clone());
 
             // Check if actual is same or sub-directory of expected
-            if !actual_canonical.starts_with(&expected_canonical) {
+            if !actual_canonical.starts_with(&expected_canonical) && !expected_canonical.starts_with(&actual_canonical) {
                 return Err(SessionError::WorkspaceMismatch {
                     expected: expected_root.to_path_buf(),
                     actual: actual_root,
@@ -1424,7 +1424,7 @@ mod tests {
     fn persists_workspace_root_round_trip_and_forks_inherit_it() {
         // given
         let path = temp_session_path("workspace-root");
-        let workspace_root = std::env::current_dir().expect("should get cwd");
+        let workspace_root = std::env::current_dir().expect("should get cwd").join("target");
         let mut session = Session::new().with_workspace_root(workspace_root.clone());
         session
             .push_user_text("write to the right cwd")

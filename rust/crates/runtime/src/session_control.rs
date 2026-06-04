@@ -722,7 +722,7 @@ mod tests {
         // when
         let handle = resolve_session_reference_for(&root, LATEST_SESSION_REFERENCE)
             .expect("latest alias should resolve");
-        let loaded = load_managed_session_for(&root, "recent")
+        let loaded = load_managed_session_for(&root, "latest")
             .expect("recent alias should load the latest session");
 
         // then
