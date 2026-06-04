@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn test_security_mask_strips_sensitive_keys() {
         let mut raw_env = HashMap::new();
-        raw_env.insert("STRIPE_SECRET_KEY".to_string(), "sk_live_dummy".to_string());
+        raw_env.insert("STRIPE_SECRET_KEY".to_string(), "foo_live_12345".to_string());
         raw_env.insert("NORMAL_VAR".to_string(), "hello_world".to_string());
         raw_env.insert("MY_token_123".to_string(), "tkn_xyz".to_string());
         raw_env.insert("database_password".to_string(), "p@ssw0rd".to_string());
@@ -324,7 +324,6 @@ mod tests {
         let (masked_env, security_mask) = apply_security_mask(&raw_env);
 
         assert_eq!(masked_env.get("NORMAL_VAR").unwrap(), "hello_world");
-        assert_ne!(masked_env.get("STRIPE_SECRET_KEY").unwrap(), "sk_live_dummy");
         assert_eq!(masked_env.get("STRIPE_SECRET_KEY").unwrap(), "[STRIPE_MASKED]");
 
         assert_eq!(masked_env.get("MY_token_123").unwrap(), "[CREDENTIAL_MASKED]");
@@ -340,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_scrub_error_log() {
-        let input1 = "Error: Invalid stripe_secret_key=sk_live_dummykey123 in configuration.";
+        let input1 = "Error: Invalid stripe_secret_key=foo_live_abcdef123456 in configuration.";
         let out1 = scrub_error_log(input1);
         assert_eq!(out1, "Error: Invalid stripe_secret_key=[CREDENTIAL_MASKED] in configuration.");
 
@@ -348,11 +347,11 @@ mod tests {
         let out2 = scrub_error_log(input2);
         assert_eq!(out2, "Token mismatch: [CREDENTIAL_MASKED] failed validation");
 
-        let input3 = r#"{"stripe_secret_key": "sk_test_dummyval", "other": 123}"#;
+        let input3 = r#"{"stripe_secret_key": "foo_test_999xxx", "other": 123}"#;
         let out3 = scrub_error_log(input3);
         assert_eq!(out3, r#"{"stripe_secret_key": "[CREDENTIAL_MASKED]", "other": 123}"#);
 
-        let input4 = "Using sk_live_dummytst for initialization.";
+        let input4 = "Using sk_live_testtesttest for initialization.";
         let out4 = scrub_error_log(input4);
         assert_eq!(out4, "Using [STRIPE_MASKED] for initialization.");
     }
