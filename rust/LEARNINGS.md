@@ -1,5 +1,12 @@
 # Developer Learnings
 
+## Support Triage & Action Agent Escalation (Tier 4)
+We successfully integrated the decentralized Support Triage module (`rust/crates/commands/src/extensions/support_triage.rs`) to act as the primary incident response handler for anomalous micro-app worker crashes.
+
+Key structural learnings:
+1. **Frontend-Native JSON Schemas:** Onyx now packages its semantic findings into explicitly mapped JSON schemas (`OnyxInvestigationPanel`, `AutoDraftWhisper`) to match the props structure expected by the AXiM Support React frontend. This prevents tedious re-mapping on the API layer.
+2. **Safe Handoff Packaging (security_mask):** The newly implemented `security_mask` utility demonstrates a strict separation of concerns. Before Onyx passes context to a non-deterministic Tier 4 agent (like Claude Cowork), it forcefully scrubs defined environment variable keys (e.g. `STRIPE_SECRET_KEY`) and mocks them, preserving our vault security while providing enough context for sandboxed debugging.
+
 ## MCP Stdio Process Management
 When writing integration tests for stdio-based MCP servers (like the `mcp_stdio` tests), simply passing an environment variable (like `MCP_TOOL_CALL_DELAY_MS`) to the child process isn't enough to trigger application logic unless the mock server script is explicitly programmed to parse it and act (e.g., `time.sleep()`).
 
