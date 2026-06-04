@@ -8,6 +8,7 @@ use axum::{
 use commands::extensions::lead_scoring::PredictiveLeadScoring;
 use commands::extensions::demand_letter::DemandLetterGenerator;
 use commands::extensions::nda::NDAGenerator;
+use commands::extensions::support_triage::SupportTriage;
 use commands::micro_program::MicroProgram;
 use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use runtime::dispatch::Dispatcher;
@@ -100,6 +101,7 @@ pub async fn handle_dispatch(
     let lead_scoring = PredictiveLeadScoring;
     let demand_letter = DemandLetterGenerator;
     let nda = NDAGenerator;
+    let support_triage = SupportTriage;
 
     let micro_program_result = if payload.intent == lead_scoring.signature() {
         Some(lead_scoring.execute(&payload).await)
@@ -107,6 +109,8 @@ pub async fn handle_dispatch(
         Some(demand_letter.execute(&payload).await)
     } else if payload.intent == nda.signature() {
         Some(nda.execute(&payload).await)
+    } else if payload.intent == support_triage.signature() {
+        Some(support_triage.execute(&payload).await)
     } else {
         None
     };
