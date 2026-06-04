@@ -348,11 +348,11 @@ mod tests {
         let out2 = scrub_error_log(input2);
         assert_eq!(out2, "Token mismatch: [CREDENTIAL_MASKED] failed validation");
 
-        let input3 = r#"{"stripe_secret_key": "sk_test_999xxx", "other": 123}"#;
+        let input3 = r#"{"stripe_secret_key": "sk_test_dummyval", "other": 123}"#;
         let out3 = scrub_error_log(input3);
         assert_eq!(out3, r#"{"stripe_secret_key": "[CREDENTIAL_MASKED]", "other": 123}"#);
 
-        let input4 = "Using sk_live_testtesttest for initialization.";
+        let input4 = "Using sk_live_dummytst for initialization.";
         let out4 = scrub_error_log(input4);
         assert_eq!(out4, "Using [STRIPE_MASKED] for initialization.");
     }
