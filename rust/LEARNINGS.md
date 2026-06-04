@@ -14,3 +14,8 @@ Additionally, when verifying idempotent shutdowns and process kills via log line
 
 ## Cargo Workspace Hygiene
 When a Cargo workspace grows (currently 9 crates), tracking test failures requires running `--workspace` globally, but targeting fixes should be done via `-p <crate_name>` to speed up compilation.
+
+## Onyx Mk3 Support Triage Hardening
+- Strengthened `support_triage` module with robust regex masking (`scrub_error_log`) to securely strip sensitive credential patterns (Stripe, JWT, etc.) and direct key-value assignments from freeform diagnostic logs.
+- Enforced strict payload serialization bounds by implementing `#[serde(default, skip_serializing_if = "Option::is_none")]` across all optional diagnostic schemas.
+- Refactored logic to securely truncate excessive stack trace inputs, avoiding JSON bloat and UI crashing on frontend reporting layers.
