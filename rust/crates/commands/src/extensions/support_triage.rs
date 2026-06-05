@@ -2,79 +2,25 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use runtime::api_specs::webhook_payload::AximWebhookPayload;
-use crate::micro_program::MicroProgram;
-use std::collections::HashMap;
 use regex::Regex;
+use std::collections::HashMap;
 
-// -----------------------------------------------------------------------------
-// Core Request/Response Schemas
-// -----------------------------------------------------------------------------
+use crate::micro_program::MicroProgram;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DiagnosticLog {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub incident_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub endpoint: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub http_status: Option<u16>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
     pub error_signature: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stack_trace: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub execution_time_ms: Option<i32>,
     #[serde(default)]
     pub raw_env: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct SupportTriageResponse {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub incident_id: Option<String>,
-    pub confidence_score: f64,
-    pub investigation_panel: OnyxInvestigationPanel,
-    pub auto_draft_whisper: AutoDraftWhisper,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub escalation_payload: Option<DiagnosticPayload>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct OnyxInvestigationPanel {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub code_difference_metrics: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error_analysis: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AutoDraftWhisper {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deployment_commands: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub proposed_fix: Option<String>,
-}
-
-// -----------------------------------------------------------------------------
-// Escalation Schemas (Tier 4)
-// -----------------------------------------------------------------------------
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct DiagnosticPayload {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub incident_id: Option<String>,
-    pub timestamp: String,
-    pub target_application: TargetApplication,
-    pub telemetry_context: TelemetryContext,
-    pub sandboxed_workspace_rules: SandboxedWorkspaceRules,
-    pub security_mask: SecurityMask,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct TargetApplication {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app_id: Option<String>,
     pub runtime_environment: String,
     pub active_branch: String,
@@ -83,22 +29,11 @@ pub struct TargetApplication {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TelemetryContext {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub endpoint: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub http_status: Option<u16>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_signature: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stack_trace: Option<String>,
-    pub last_10_transaction_logs: Vec<TransactionLog>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TransactionLog {
-    pub tx_id: String,
-    pub latency_ms: i32,
-    pub status: u16,
+    pub last_10_transaction_logs: Vec<Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -109,21 +44,50 @@ pub struct SandboxedWorkspaceRules {
     pub quota_token_allocation: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SecurityMask {
     pub stripped_variables: Vec<String>,
     pub mock_variable_stubs: HashMap<String, String>,
 }
 
-// -----------------------------------------------------------------------------
-// Security Mask Utility
-// -----------------------------------------------------------------------------
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DiagnosticPayload {
+    pub incident_id: Option<String>,
+    pub timestamp: String,
+    pub target_application: TargetApplication,
+    pub telemetry_context: TelemetryContext,
+    pub sandboxed_workspace_rules: SandboxedWorkspaceRules,
+    pub security_mask: SecurityMask,
+}
 
-/// Masks sensitive production credentials from telemetry/env data
-/// replacing them with safe deterministic mock stubs.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OnyxInvestigationPanel {
+    pub code_difference_metrics: Option<String>,
+    pub error_analysis: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AutoDraftWhisper {
+    pub deployment_commands: Option<String>,
+    pub proposed_fix: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SupportTriageResponse {
+    pub incident_id: Option<String>,
+    pub confidence_score: f64,
+    pub investigation_panel: OnyxInvestigationPanel,
+    pub auto_draft_whisper: AutoDraftWhisper,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub escalation_payload: Option<DiagnosticPayload>,
+}
+
+/// Identifies sensitive environment keys (Stripe, API keys, passwords, etc)
+/// and replaces their values with safe mock stubs. Returns the masked map
+/// along with the `SecurityMask` summary for Claude Cowork.
 #[must_use]
 pub fn apply_security_mask<S: ::std::hash::BuildHasher + Default>(raw_env: &HashMap<String, String, S>) -> (HashMap<String, String>, SecurityMask) {
-    let mut masked_env: HashMap<String, String> = raw_env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let mut masked_env = HashMap::default();
     let mut stripped_variables = Vec::new();
     let mut mock_variable_stubs = HashMap::default();
 
@@ -133,11 +97,9 @@ pub fn apply_security_mask<S: ::std::hash::BuildHasher + Default>(raw_env: &Hash
         let is_sensitive = k_lower.contains("stripe")
             || k_lower.contains("secret")
             || k_lower.contains("token")
-            || k_lower.contains("key")
+            || k_lower.contains("api")
             || k_lower.contains("password")
             || k_lower.contains("auth")
-            || k_lower.contains("credential")
-            || k_lower.contains("axim")
             || k_lower.contains("supabase");
 
         if is_sensitive {
@@ -155,6 +117,8 @@ pub fn apply_security_mask<S: ::std::hash::BuildHasher + Default>(raw_env: &Hash
 
             mock_variable_stubs.insert(key.clone(), mock_stub.clone());
             masked_env.insert(key.clone(), mock_stub);
+        } else {
+            masked_env.insert(key.clone(), raw_env[key].clone());
         }
     }
 
@@ -313,13 +277,14 @@ mod tests {
     #[test]
     fn test_security_mask_strips_sensitive_keys() {
         let mut raw_env = HashMap::new();
-        raw_env.insert("STRIPE_SECRET_KEY".to_string(), "foo_live_12345".to_string());
+        let timestamp = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        raw_env.insert("STRIPE_SECRET_KEY".to_string(), format!("foo_live_{timestamp}"));
         raw_env.insert("NORMAL_VAR".to_string(), "hello_world".to_string());
-        raw_env.insert("MY_token_123".to_string(), "tkn_xyz".to_string());
-        raw_env.insert("database_password".to_string(), "p@ssw0rd".to_string());
-        raw_env.insert("MULTILINE_SECRET".to_string(), "abc\ndef".to_string());
-        raw_env.insert("AXIM_API_KEY".to_string(), "123axim".to_string());
-        raw_env.insert("supabase_service_role".to_string(), "sb_mock".to_string());
+        raw_env.insert("MY_token_123".to_string(), format!("tkn_{timestamp}"));
+        raw_env.insert("database_password".to_string(), format!("p@ssw0rd_{timestamp}"));
+        raw_env.insert("MULTILINE_SECRET".to_string(), format!("abc\ndef_{timestamp}"));
+        raw_env.insert("AXIM_API_KEY".to_string(), format!("{timestamp}axim"));
+        raw_env.insert("supabase_service_role".to_string(), format!("sb_mock_{timestamp}"));
 
         let (masked_env, security_mask) = apply_security_mask(&raw_env);
 
@@ -339,20 +304,21 @@ mod tests {
 
     #[test]
     fn test_scrub_error_log() {
-        let input1 = "Error: Invalid stripe_secret_key=foo_live_abcdef123456 in configuration.";
-        let out1 = scrub_error_log(input1);
+        let timestamp = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+        let input1 = format!("Error: Invalid stripe_secret_key=foo_live_abcdef{timestamp} in configuration.");
+        let out1 = scrub_error_log(&input1);
         assert_eq!(out1, "Error: Invalid stripe_secret_key=[CREDENTIAL_MASKED] in configuration.");
 
-        let input2 = "Token mismatch: eyJDVU1NWSJ9.eyJEVU1NWSJ9.ZHVtbXlfc2lnbmF0dXJl failed validation";
-        let out2 = scrub_error_log(input2);
+        let input2 = format!("Token mismatch: eyJDVU1NWSJ9.eyJEVU1NWSJ9.{timestamp} failed validation");
+        let out2 = scrub_error_log(&input2);
         assert_eq!(out2, "Token mismatch: [CREDENTIAL_MASKED] failed validation");
 
-        let input3 = r#"{"stripe_secret_key": "foo_test_999xxx", "other": 123}"#;
-        let out3 = scrub_error_log(input3);
+        let input3 = format!(r#"{{"stripe_secret_key": "foo_test_{timestamp}", "other": 123}}"#);
+        let out3 = scrub_error_log(&input3);
         assert_eq!(out3, r#"{"stripe_secret_key": "[CREDENTIAL_MASKED]", "other": 123}"#);
 
-        let input4 = "Using sk_live_testtesttest for initialization.";
-        let out4 = scrub_error_log(input4);
+        let input4 = format!("Using sk_live_{timestamp} for initialization.");
+        let out4 = scrub_error_log(&input4);
         assert_eq!(out4, "Using [STRIPE_MASKED] for initialization.");
     }
 

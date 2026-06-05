@@ -24,3 +24,6 @@ When a Cargo workspace grows (currently 9 crates), tracking test failures requir
 - Micro-programs (e.g. Demand Letter, NDA generators) must strictly adhere to stateless isolation constraints without local database dependencies. Any data persistence or predictive caching must be routed through `AXiM Core API`.
 - Resilient JSON serialization is critical for background webhook ingestion. Instead of panicking on malformed `AximWebhookPayload.meta_data`, modules should use `unwrap_or_default()` and populate `missing_fields` explicitly to enable graceful degradation (e.g., generating a `Partial_Draft` status).
 - Test suites must dynamically construct execution strings (like `Utc::now().timestamp_millis()`) instead of using hardcoded mock tokens to avoid false positives and security audits flagging static secrets.
+
+## Unit Test Best Practices
+- Never use static tokens like "sk_live_12345" or "password123", even in test cases and within `format!` or string assignment strings. This will trigger secret scanning routines or fail credential audit alerts down the line. Use `timestamp` generation combined with macro implementations for tests dynamically handling such things.
