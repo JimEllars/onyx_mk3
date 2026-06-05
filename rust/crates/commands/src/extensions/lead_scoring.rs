@@ -20,7 +20,7 @@ pub struct LeadScoringResponse {
     pub score: u32,
     pub confidence: f32,
     pub status: String,
-    pub missing_fields: Vec<String>,
+    pub warnings: crate::extensions::WarningMetadata,
 }
 
 #[derive(Debug)]
@@ -91,7 +91,7 @@ impl MicroProgram for PredictiveLeadScoring {
             score,
             confidence,
             status,
-            missing_fields,
+            warnings: crate::extensions::WarningMetadata { missing_fields },
         };
 
         Ok(json!(res))
@@ -131,7 +131,7 @@ mod tests {
         let res: LeadScoringResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Enriched");
-        assert!(res.missing_fields.is_empty());
+        assert!(res.warnings.missing_fields.is_empty());
         assert_eq!(res.score, 90); // 50 base + 20 tech + 20 >100 size
         assert!((res.confidence - 0.9).abs() < f32::EPSILON);
     }
@@ -150,8 +150,8 @@ mod tests {
         let res: LeadScoringResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Partial_Enrichment");
-        assert!(res.missing_fields.contains(&"industry".to_string()));
-        assert!(res.missing_fields.contains(&"company_size".to_string()));
+        assert!(res.warnings.missing_fields.contains(&"industry".to_string()));
+        assert!(res.warnings.missing_fields.contains(&"company_size".to_string()));
         assert_eq!(res.score, 50);
         assert!((res.confidence - 0.5).abs() < f32::EPSILON);
     }
@@ -166,7 +166,7 @@ mod tests {
         let res: LeadScoringResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Partial_Enrichment");
-        assert_eq!(res.missing_fields.len(), 3);
+        assert_eq!(res.warnings.missing_fields.len(), 3);
         assert_eq!(res.score, 50);
         assert!((res.confidence - 0.5).abs() < f32::EPSILON);
     }

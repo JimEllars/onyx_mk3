@@ -22,7 +22,7 @@ pub struct DemandLetterRequest {
 pub struct DemandLetterResponse {
     pub document_url: Option<String>,
     pub status: String,
-    pub missing_fields: Vec<String>,
+    pub warnings: crate::extensions::WarningMetadata,
 }
 
 #[derive(Debug)]
@@ -74,7 +74,7 @@ impl MicroProgram for DemandLetterGenerator {
         let res = DemandLetterResponse {
             document_url,
             status,
-            missing_fields,
+            warnings: crate::extensions::WarningMetadata { missing_fields },
         };
 
         Ok(json!(res))
@@ -116,7 +116,7 @@ mod tests {
         let res: DemandLetterResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Generated");
-        assert!(res.missing_fields.is_empty());
+        assert!(res.warnings.missing_fields.is_empty());
         assert!(res.document_url.unwrap().contains("temp_"));
     }
 
@@ -134,8 +134,8 @@ mod tests {
         let res: DemandLetterResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Partial_Draft");
-        assert!(res.missing_fields.contains(&"debtor_name".to_string()));
-        assert!(res.missing_fields.contains(&"amount".to_string()));
+        assert!(res.warnings.missing_fields.contains(&"debtor_name".to_string()));
+        assert!(res.warnings.missing_fields.contains(&"amount".to_string()));
         assert!(res.document_url.unwrap().contains("draft_"));
     }
 
@@ -150,6 +150,6 @@ mod tests {
         let res: DemandLetterResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Partial_Draft");
-        assert_eq!(res.missing_fields.len(), 3);
+        assert_eq!(res.warnings.missing_fields.len(), 3);
     }
 }

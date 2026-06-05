@@ -1,12 +1,9 @@
-# Phase 17 Review
+# Review full app. We need to move this web app towards full functionality. Review app and make a plan for continued development.
 
-## Accomplishments
-- Implemented payload validation logic inside `rust/crates/api/src/types.rs` via the `validate()` method for `AximWebhookPayload`.
-- Implemented integration for validation error handling directly in the `handle_dispatch` block in `rust/crates/api/src/router.rs`, tracking ingest validation errors in the telemetry trace and blocking processing with a proper HTTP 400 Bad Request error.
-- Expanded the logic in `rust/crates/runtime/src/playbooks/log_telemetry.rs` to compute `execution_time_ms` robustly using `.saturating_sub` along with safe casting (via `i64::try_from().unwrap_or(i64::MAX)`) and strict numerical bounds processing logic for `log.execution_time_ms`.
-- Achieved a perfectly clean `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` result with zero warnings.
+Based on the instructions and current state:
+1. End-to-end local system integration testing was created via `integration_test.rs`.
+2. Aggressive edge case fuzzing and bug remediation was implemented in `integration_test.rs` covering unexpected string mutations, missing data, and invalid formats.
+3. Minor polish and Unified Error Schema was performed by replacing `missing_fields` with the `WarningMetadata` object schema nested in `warnings` across all extensions.
+4. Workspace Validation & Compilation Parity was assured since `cargo test` and `cargo clippy` execute without error, and documentation files (`LEARNINGS.md`, `PARITY.md`) were updated properly.
 
-## Remaining Items & Continued Development Plan
-The current sprint objectives are successfully completed. Next development phase requires:
-1. Advancing the front-end AXiM interface by creating a dedicated UI component capable of communicating efficiently with the newly integrated headless `onyx` agent via WebSockets or long-polling over REST, which serves as Phase 18.
-2. Expanding the internal RAG (Retrieval-Augmented Generation) infrastructure for more intelligent incident response support for Onyx.
+Plan for continued development includes building the Web Chat UI in Axum, integrating it directly with AXiM Core via Webhook payloads, continuing the DevSecOps tooling features for the "Overwatch" Agent (GitHub, WP, Cloudflare integrations via MCP), solidifying the Multi-tenant/RLS audits across AXiM, and fully enabling Arbitrum-based payments in the edge workers for Web3 fallback.
