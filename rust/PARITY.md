@@ -16,3 +16,5 @@
 - Removed all hardcoded test strings and API keys, replacing them with dynamic mock generation logic.
 - Ensured stateless execution boundaries, verifying that these modules safely utilize central AXiM Core API endpoints for persistence without spinning up local database connections.
 - Implemented robust fallback logic for payload serialization, allowing micro-programs to autonomously recover and generate partial data rather than crashing on malformed webhooks.
+- Scrubbed `support_triage.rs` to not use any static secrets within tests, opting for `chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)` dynamically created values, resolving any static mock tokens alerts.
+- Ensured parity rules, clippy lint checks, and testing assertions within `support_triage.rs` are all functionally validated resulting in a clean test execution.
