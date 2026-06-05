@@ -98,6 +98,7 @@ impl MicroProgram for PredictiveLeadScoring {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,7 +107,7 @@ mod tests {
 
     fn create_payload(meta_data: Value) -> AximWebhookPayload {
         AximWebhookPayload {
-            source_channel: "test_channel".to_string(),
+            source_channel: format!("channel_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0)),
             intent: "sync_lead_enrich".to_string(),
             priority: TaskPriority::Standard,
             meta_data,
@@ -117,9 +118,11 @@ mod tests {
     #[tokio::test]
     async fn test_full_lead_payload() {
         let scorer = PredictiveLeadScoring;
+        let lead_id = format!("lead_xyz_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let industry = format!("technology_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
         let meta = json!({
-            "lead_id": "lead_xyz_999",
-            "industry": "technology",
+            "lead_id": lead_id,
+            "industry": industry,
             "company_size": 250
         });
 
@@ -136,8 +139,9 @@ mod tests {
     #[tokio::test]
     async fn test_partial_lead_payload() {
         let scorer = PredictiveLeadScoring;
+        let lead_id = format!("lead_abc_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
         let meta = json!({
-            "lead_id": "lead_abc_123"
+            "lead_id": lead_id
             // Missing industry and company_size
         });
 

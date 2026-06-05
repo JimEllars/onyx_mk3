@@ -19,3 +19,8 @@ When a Cargo workspace grows (currently 9 crates), tracking test failures requir
 - Strengthened `support_triage` module with robust regex masking (`scrub_error_log`) to securely strip sensitive credential patterns (Stripe, JWT, etc.) and direct key-value assignments from freeform diagnostic logs.
 - Enforced strict payload serialization bounds by implementing `#[serde(default, skip_serializing_if = "Option::is_none")]` across all optional diagnostic schemas.
 - Refactored logic to securely truncate excessive stack trace inputs, avoiding JSON bloat and UI crashing on frontend reporting layers.
+
+## Micro-Program Decentralization & Hardening
+- Micro-programs (e.g. Demand Letter, NDA generators) must strictly adhere to stateless isolation constraints without local database dependencies. Any data persistence or predictive caching must be routed through `AXiM Core API`.
+- Resilient JSON serialization is critical for background webhook ingestion. Instead of panicking on malformed `AximWebhookPayload.meta_data`, modules should use `unwrap_or_default()` and populate `missing_fields` explicitly to enable graceful degradation (e.g., generating a `Partial_Draft` status).
+- Test suites must dynamically construct execution strings (like `Utc::now().timestamp_millis()`) instead of using hardcoded mock tokens to avoid false positives and security audits flagging static secrets.
