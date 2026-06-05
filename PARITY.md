@@ -7,3 +7,6 @@
   - Refactored `demand_letter.rs`, `lead_scoring.rs`, and `nda.rs` extensions inside `rust/crates/commands/src/extensions`. Replaced all test-only credential representations with dynamic string interpolation and explicit structural defaults via `#[serde(default)]` and `Option<T>`.
   - Added deterministic fallback logics to ensure functional partial states (`Partial_Draft`, `Partial_Enrichment`) are safely returned instead of executing panicked network handlers.
   - Eliminated zero local state dependencies matching AXiM Core database minimization strategies, achieving total runtime validation across the suite.
+## Onyx Mk3 Extensions Parity
+- `demand_letter`, `nda`, and `lead_scoring` extensions unified to export a standard `WarningMetadata` schema on their response payloads.
+- Added fuzzing and integration checks to ensure resilient fallback handling.

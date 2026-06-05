@@ -20,7 +20,7 @@ pub struct NDARequest {
 pub struct NDAResponse {
     pub document_url: Option<String>,
     pub status: String,
-    pub missing_fields: Vec<String>,
+    pub warnings: crate::extensions::WarningMetadata,
 }
 
 #[derive(Debug)]
@@ -69,7 +69,7 @@ impl MicroProgram for NDAGenerator {
         let res = NDAResponse {
             document_url,
             status,
-            missing_fields,
+            warnings: crate::extensions::WarningMetadata { missing_fields },
         };
 
         Ok(json!(res))
@@ -110,7 +110,7 @@ mod tests {
         let res: NDAResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Generated");
-        assert!(res.missing_fields.is_empty());
+        assert!(res.warnings.missing_fields.is_empty());
         assert!(res.document_url.unwrap().contains("temp_nda_"));
     }
 
@@ -127,8 +127,8 @@ mod tests {
         let res: NDAResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Partial_Draft");
-        assert!(res.missing_fields.contains(&"receiving_party".to_string()));
-        assert!(res.missing_fields.contains(&"purpose".to_string()));
+        assert!(res.warnings.missing_fields.contains(&"receiving_party".to_string()));
+        assert!(res.warnings.missing_fields.contains(&"purpose".to_string()));
         assert!(res.document_url.unwrap().contains("draft_nda_"));
     }
 
@@ -142,7 +142,7 @@ mod tests {
         let res: NDAResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Partial_Draft");
-        assert_eq!(res.missing_fields.len(), 3);
+        assert_eq!(res.warnings.missing_fields.len(), 3);
         assert!(res.document_url.unwrap().contains("draft_nda_"));
     }
 }
