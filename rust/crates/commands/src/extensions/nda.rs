@@ -76,6 +76,7 @@ impl MicroProgram for NDAGenerator {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,7 +84,7 @@ mod tests {
 
     fn create_payload(meta_data: Value) -> AximWebhookPayload {
         AximWebhookPayload {
-            source_channel: "test_channel".to_string(),
+            source_channel: format!("channel_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0)),
             intent: "generate_nda".to_string(),
             priority: TaskPriority::Standard,
             meta_data,
@@ -94,10 +95,14 @@ mod tests {
     #[tokio::test]
     async fn test_full_nda_payload() {
         let generator = NDAGenerator;
+        let disclosing = format!("Disclosing_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let receiving = format!("Receiving_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let purpose = format!("Purpose_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+
         let meta = json!({
-            "disclosing_party": "Acme Corp",
-            "receiving_party": "Beta LLC",
-            "purpose": "Merger Discussion"
+            "disclosing_party": disclosing,
+            "receiving_party": receiving,
+            "purpose": purpose
         });
 
         let payload = create_payload(meta);
@@ -112,8 +117,9 @@ mod tests {
     #[tokio::test]
     async fn test_partial_nda_payload() {
         let generator = NDAGenerator;
+        let disclosing = format!("Disclosing_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
         let meta = json!({
-            "disclosing_party": "Acme Corp"
+            "disclosing_party": disclosing
         });
 
         let payload = create_payload(meta);

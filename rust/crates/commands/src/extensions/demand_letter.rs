@@ -81,6 +81,7 @@ impl MicroProgram for DemandLetterGenerator {
     }
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,7 +89,7 @@ mod tests {
 
     fn create_payload(meta_data: Value) -> AximWebhookPayload {
         AximWebhookPayload {
-            source_channel: "test_channel".to_string(),
+            source_channel: format!("channel_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0)),
             intent: "generate_demand_letter".to_string(),
             priority: TaskPriority::Standard,
             meta_data,
@@ -99,11 +100,15 @@ mod tests {
     #[tokio::test]
     async fn test_full_payload_generation() {
         let generator = DemandLetterGenerator;
+        let creditor = format!("Creditor_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let debtor = format!("Debtor_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let item = format!("Item_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+
         let meta = json!({
-            "creditor_name": "Acme Corp",
-            "debtor_name": "John Doe",
+            "creditor_name": creditor,
+            "debtor_name": debtor,
             "amount": 1500.00,
-            "items": ["Unpaid Invoice #104"]
+            "items": [item]
         });
 
         let payload = create_payload(meta);
@@ -118,8 +123,9 @@ mod tests {
     #[tokio::test]
     async fn test_partial_payload_generation() {
         let generator = DemandLetterGenerator;
+        let creditor = format!("Creditor_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
         let meta = json!({
-            "creditor_name": "Acme Corp"
+            "creditor_name": creditor
             // Missing debtor_name and amount
         });
 
