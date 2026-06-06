@@ -1,7 +1,7 @@
 use async_trait::async_trait;
+use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use runtime::api_specs::webhook_payload::AximWebhookPayload;
 
 use crate::micro_program::MicroProgram;
 
@@ -32,10 +32,30 @@ impl MicroProgram for BillingFallback {
         "billing_fallback"
     }
 
+    async fn check_idempotency(
+        &self,
+        payload: &AximWebhookPayload,
+    ) -> Result<Option<Value>, String> {
+        let req: BillingFallbackRequest =
+            serde_json::from_value(payload.meta_data.clone()).unwrap_or_default();
+        if let Some(h) = req.on_chain_tx_hash {
+            // Mock API call to check if this transaction has already been verified
+            if h == "0x_already_verified" {
+                return Ok(Some(json!({
+                    "status": "Verified",
+                    "payment_gateway": "arbitrum_layer2",
+                    "on_chain_tx_hash": h,
+                    "verification_message": "Transaction verified previously (idempotent cache hit)"
+                })));
+            }
+        }
+        Ok(None)
+    }
+
     async fn execute(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
         // Retrieve transaction hash from payload
-        let req: BillingFallbackRequest = serde_json::from_value(payload.meta_data.clone())
-            .unwrap_or_default();
+        let req: BillingFallbackRequest =
+            serde_json::from_value(payload.meta_data.clone()).unwrap_or_default();
 
         let tx_hash = match req.on_chain_tx_hash {
             Some(h) if !h.is_empty() => h,
@@ -52,11 +72,15 @@ impl MicroProgram for BillingFallback {
                 payment_gateway: "arbitrum_layer2".to_string(),
                 on_chain_tx_hash: tx_hash.clone(),
                 status: "Verified".to_string(),
-                verification_message: format!("Transaction {tx_hash} successfully verified on Arbitrum L2"),
+                verification_message: format!(
+                    "Transaction {tx_hash} successfully verified on Arbitrum L2"
+                ),
             };
             Ok(json!(res))
         } else {
-            Err(format!("Transaction {tx_hash} could not be verified on-chain"))
+            Err(format!(
+                "Transaction {tx_hash} could not be verified on-chain"
+            ))
         }
     }
 }
@@ -71,8 +95,8 @@ impl BillingFallback {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runtime::dispatch::TaskPriority;
     use chrono::Utc;
+    use runtime::dispatch::TaskPriority;
 
     fn create_payload(meta_data: Value) -> AximWebhookPayload {
         AximWebhookPayload {

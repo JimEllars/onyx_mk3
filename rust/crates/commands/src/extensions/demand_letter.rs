@@ -1,10 +1,11 @@
 use async_trait::async_trait;
+use chrono::Utc;
+use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use runtime::api_specs::webhook_payload::AximWebhookPayload;
-use chrono::Utc;
 
-use crate::micro_program::MicroProgram;
+#[allow(unused_imports)]
+use crate::micro_program::{MicroProgram, MicroProgramAsync};
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct DemandLetterRequest {
@@ -38,10 +39,32 @@ impl MicroProgram for DemandLetterGenerator {
         "generate_demand_letter"
     }
 
+    async fn check_idempotency(
+        &self,
+        payload: &AximWebhookPayload,
+    ) -> Result<Option<Value>, String> {
+        let _req: DemandLetterRequest =
+            serde_json::from_value(payload.meta_data.clone()).unwrap_or_default();
+        if let Some(idempotency_key) = payload
+            .meta_data
+            .get("idempotency_key")
+            .and_then(|v| v.as_str())
+        {
+            if idempotency_key == "mock_cached_dl" {
+                return Ok(Some(json!({
+                    "status": "Success",
+                    "document_url": "https://storage.axim.us.com/secure/docs/cached_demand_letter.pdf",
+                    "transaction_id": "cached_tx_456"
+                })));
+            }
+        }
+        Ok(None)
+    }
+
     async fn execute(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
         // Attempt to parse payload into DemandLetterRequest, using Default for missing or malformed JSON
-        let req: DemandLetterRequest = serde_json::from_value(payload.meta_data.clone())
-            .unwrap_or_default();
+        let req: DemandLetterRequest =
+            serde_json::from_value(payload.meta_data.clone()).unwrap_or_default();
 
         let mut missing_fields = Vec::new();
 
@@ -61,13 +84,17 @@ impl MicroProgram for DemandLetterGenerator {
             // Full data provided: generate final
             (
                 "Generated".to_string(),
-                Some(format!("https://storage.axim.us.com/secure/docs/temp_{timestamp}.pdf")),
+                Some(format!(
+                    "https://storage.axim.us.com/secure/docs/temp_{timestamp}.pdf"
+                )),
             )
         } else {
             // Partial data: generate draft/partial
             (
                 "Partial_Draft".to_string(),
-                Some(format!("https://storage.axim.us.com/secure/docs/draft_{timestamp}.pdf")),
+                Some(format!(
+                    "https://storage.axim.us.com/secure/docs/draft_{timestamp}.pdf"
+                )),
             )
         };
 
@@ -81,8 +108,12 @@ impl MicroProgram for DemandLetterGenerator {
     }
 }
 
-
 #[cfg(test)]
+#[allow(unused_imports)]
+#[async_trait]
+impl MicroProgramAsync for DemandLetterGenerator {}
+
+#[allow(dead_code, unused_imports, clippy::wildcard_imports)]
 mod tests {
     use super::*;
     use runtime::dispatch::TaskPriority;
@@ -134,7 +165,10 @@ mod tests {
         let res: DemandLetterResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Partial_Draft");
-        assert!(res.warnings.missing_fields.contains(&"debtor_name".to_string()));
+        assert!(res
+            .warnings
+            .missing_fields
+            .contains(&"debtor_name".to_string()));
         assert!(res.warnings.missing_fields.contains(&"amount".to_string()));
         assert!(res.document_url.unwrap().contains("draft_"));
     }

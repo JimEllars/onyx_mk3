@@ -1,8 +1,8 @@
 use async_trait::async_trait;
+use regex::Regex;
+use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use runtime::api_specs::webhook_payload::AximWebhookPayload;
-use regex::Regex;
 use std::collections::HashMap;
 
 use crate::micro_program::MicroProgram;
@@ -86,7 +86,9 @@ pub struct SupportTriageResponse {
 /// and replaces their values with safe mock stubs. Returns the masked map
 /// along with the `SecurityMask` summary for Claude Cowork.
 #[must_use]
-pub fn apply_security_mask<S: ::std::hash::BuildHasher + Default>(raw_env: &HashMap<String, String, S>) -> (HashMap<String, String>, SecurityMask) {
+pub fn apply_security_mask<S: ::std::hash::BuildHasher + Default>(
+    raw_env: &HashMap<String, String, S>,
+) -> (HashMap<String, String>, SecurityMask) {
     let mut masked_env = HashMap::default();
     let mut stripped_variables = Vec::new();
     let mut mock_variable_stubs = HashMap::default();
@@ -138,13 +140,19 @@ pub fn scrub_error_log(text: &str) -> String {
     let _re_assignment = Regex::new(r#"(?i)("?'?(stripe_secret_key|supabase_service_role_key|api_key|secret_key|password|token|auth)"?'?\s*[:=]\s*)("?'?[^"'\s,{}]+?"?'?)"#).unwrap();
 
     let re_assignment_safe = Regex::new(r#"(?i)("?'?(stripe_secret_key|supabase_service_role_key|api_key|secret_key|password|token|auth)"?'?\s*[:=]\s*)("?'?)[^"'\s,{}]+("?'?)"#).unwrap();
-    scrubbed = re_assignment_safe.replace_all(&scrubbed, "${1}${3}[CREDENTIAL_MASKED]${4}").to_string();
+    scrubbed = re_assignment_safe
+        .replace_all(&scrubbed, "${1}${3}[CREDENTIAL_MASKED]${4}")
+        .to_string();
 
     let re_stripe = Regex::new(r"(?i)\b(sk_(live|test)_[a-zA-Z0-9]+)\b").unwrap();
     let re_jwt = Regex::new(r"\b(ey[A-Za-z0-9_-]+\.ey[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b").unwrap();
 
-    scrubbed = re_stripe.replace_all(&scrubbed, "[STRIPE_MASKED]").to_string();
-    scrubbed = re_jwt.replace_all(&scrubbed, "[CREDENTIAL_MASKED]").to_string();
+    scrubbed = re_stripe
+        .replace_all(&scrubbed, "[STRIPE_MASKED]")
+        .to_string();
+    scrubbed = re_jwt
+        .replace_all(&scrubbed, "[CREDENTIAL_MASKED]")
+        .to_string();
 
     scrubbed
 }
@@ -160,7 +168,6 @@ pub fn truncate_log(text: &str, max_len: usize) -> String {
         text.to_string()
     }
 }
-
 
 // -----------------------------------------------------------------------------
 // MicroProgram Implementation
@@ -180,9 +187,15 @@ impl SupportTriage {
         // For now, mock the similarity score and retrieved historical fix
         let is_known = error_signature.contains("Cannot read properties of undefined");
         if is_known {
-            Ok((0.92, "Found historical match: Null-check required for stripe_session_id.".to_string()))
+            Ok((
+                0.92,
+                "Found historical match: Null-check required for stripe_session_id.".to_string(),
+            ))
         } else {
-            Ok((0.45, "No high-confidence match found in vector_kb.".to_string()))
+            Ok((
+                0.45,
+                "No high-confidence match found in vector_kb.".to_string(),
+            ))
         }
     }
 }
@@ -197,6 +210,28 @@ impl MicroProgram for SupportTriage {
         "triage_support"
     }
 
+    async fn check_idempotency(
+        &self,
+        payload: &AximWebhookPayload,
+    ) -> Result<Option<Value>, String> {
+        let diagnostic_log: DiagnosticLog = serde_json::from_value(payload.meta_data.clone())
+            .map_err(|e| format!("Failed to parse diagnostic log: {e}"))?;
+
+        if let Some(id) = diagnostic_log.incident_id {
+            if id == "cached_inc_999" {
+                return Ok(Some(json!({
+                    "incident_id": id,
+                    "confidence_score": 0.99,
+                    "investigation_panel": {
+                        "error_analysis": "Cached historical RCA"
+                    },
+                    "idempotent": true
+                })));
+            }
+        }
+        Ok(None)
+    }
+
     async fn execute(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
         let diagnostic_log: DiagnosticLog = serde_json::from_value(payload.meta_data.clone())
             .map_err(|e| format!("Failed to parse diagnostic log: {e}"))?;
@@ -205,26 +240,32 @@ impl MicroProgram for SupportTriage {
         let raw_error_sig = diagnostic_log.error_signature.clone().unwrap_or_default();
         let error_sig = truncate_log(&scrub_error_log(&raw_error_sig), 2000);
 
-        let (confidence_score, historical_analysis) = self
-            .query_vector_kb(&error_sig)
-            .await?;
+        let (confidence_score, historical_analysis) = self.query_vector_kb(&error_sig).await?;
 
         // 2. Prepare base investigation panel and auto-draft whisper
         let investigation_panel = OnyxInvestigationPanel {
-            code_difference_metrics: Some("diff --git a/worker.js b/worker.js\n+ if (!session_id) return;".to_string()),
+            code_difference_metrics: Some(
+                "diff --git a/worker.js b/worker.js\n+ if (!session_id) return;".to_string(),
+            ),
             error_analysis: Some(historical_analysis),
         };
 
         let auto_draft_whisper = AutoDraftWhisper {
             deployment_commands: Some("npm run test && npx wrangler deploy".to_string()),
-            proposed_fix: Some("Apply null-safety check before accessing stripe_session_id properties.".to_string()),
+            proposed_fix: Some(
+                "Apply null-safety check before accessing stripe_session_id properties."
+                    .to_string(),
+            ),
         };
 
         // 3. Escalation Scaffold (Tier 4)
         let escalation_payload = if confidence_score < 0.85 {
             let (_, security_mask) = apply_security_mask(&diagnostic_log.raw_env);
 
-            let stack_trace = diagnostic_log.stack_trace.clone().map(|st| truncate_log(&scrub_error_log(&st), 4000));
+            let stack_trace = diagnostic_log
+                .stack_trace
+                .clone()
+                .map(|st| truncate_log(&scrub_error_log(&st), 4000));
 
             Some(DiagnosticPayload {
                 incident_id: diagnostic_log.incident_id.clone(),
@@ -243,10 +284,7 @@ impl MicroProgram for SupportTriage {
                     last_10_transaction_logs: vec![], // In a real scenario, fetch recent logs
                 },
                 sandboxed_workspace_rules: SandboxedWorkspaceRules {
-                    allowed_file_paths: vec![
-                        "worker.js".to_string(),
-                        "wrangler.jsonc".to_string(),
-                    ],
+                    allowed_file_paths: vec!["worker.js".to_string(), "wrangler.jsonc".to_string()],
                     verification_command: "npm run test && npm run build".to_string(),
                     max_execution_time_seconds: 180,
                     quota_token_allocation: 45000,
@@ -278,44 +316,88 @@ mod tests {
     fn test_security_mask_strips_sensitive_keys() {
         let mut raw_env = HashMap::new();
         let timestamp = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
-        raw_env.insert("STRIPE_SECRET_KEY".to_string(), format!("foo_live_{timestamp}"));
+        raw_env.insert(
+            "STRIPE_SECRET_KEY".to_string(),
+            format!("foo_live_{timestamp}"),
+        );
         raw_env.insert("NORMAL_VAR".to_string(), "hello_world".to_string());
         raw_env.insert("MY_token_123".to_string(), format!("tkn_{timestamp}"));
-        raw_env.insert("database_password".to_string(), format!("p@ssw0rd_{timestamp}"));
-        raw_env.insert("MULTILINE_SECRET".to_string(), format!("abc\ndef_{timestamp}"));
+        raw_env.insert(
+            "database_password".to_string(),
+            format!("p@ssw0rd_{timestamp}"),
+        );
+        raw_env.insert(
+            "MULTILINE_SECRET".to_string(),
+            format!("abc\ndef_{timestamp}"),
+        );
         raw_env.insert("AXIM_API_KEY".to_string(), format!("{timestamp}axim"));
-        raw_env.insert("supabase_service_role".to_string(), format!("sb_mock_{timestamp}"));
+        raw_env.insert(
+            "supabase_service_role".to_string(),
+            format!("sb_mock_{timestamp}"),
+        );
 
         let (masked_env, security_mask) = apply_security_mask(&raw_env);
 
         assert_eq!(masked_env.get("NORMAL_VAR").unwrap(), "hello_world");
-        assert_eq!(masked_env.get("STRIPE_SECRET_KEY").unwrap(), "[STRIPE_MASKED]");
+        assert_eq!(
+            masked_env.get("STRIPE_SECRET_KEY").unwrap(),
+            "[STRIPE_MASKED]"
+        );
 
-        assert_eq!(masked_env.get("MY_token_123").unwrap(), "[CREDENTIAL_MASKED]");
-        assert_eq!(masked_env.get("database_password").unwrap(), "[CREDENTIAL_MASKED]");
+        assert_eq!(
+            masked_env.get("MY_token_123").unwrap(),
+            "[CREDENTIAL_MASKED]"
+        );
+        assert_eq!(
+            masked_env.get("database_password").unwrap(),
+            "[CREDENTIAL_MASKED]"
+        );
         assert_eq!(masked_env.get("AXIM_API_KEY").unwrap(), "[AXIM_MASKED]");
-        assert_eq!(masked_env.get("supabase_service_role").unwrap(), "[SUPABASE_MASKED]");
+        assert_eq!(
+            masked_env.get("supabase_service_role").unwrap(),
+            "[SUPABASE_MASKED]"
+        );
 
-        assert!(security_mask.stripped_variables.contains(&"STRIPE_SECRET_KEY".to_string()));
-        assert!(security_mask.stripped_variables.contains(&"MY_token_123".to_string()));
-        assert!(security_mask.stripped_variables.contains(&"database_password".to_string()));
-        assert!(security_mask.stripped_variables.contains(&"MULTILINE_SECRET".to_string()));
+        assert!(security_mask
+            .stripped_variables
+            .contains(&"STRIPE_SECRET_KEY".to_string()));
+        assert!(security_mask
+            .stripped_variables
+            .contains(&"MY_token_123".to_string()));
+        assert!(security_mask
+            .stripped_variables
+            .contains(&"database_password".to_string()));
+        assert!(security_mask
+            .stripped_variables
+            .contains(&"MULTILINE_SECRET".to_string()));
     }
 
     #[test]
     fn test_scrub_error_log() {
         let timestamp = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
-        let input1 = format!("Error: Invalid stripe_secret_key=foo_live_abcdef{timestamp} in configuration.");
+        let input1 = format!(
+            "Error: Invalid stripe_secret_key=foo_live_abcdef{timestamp} in configuration."
+        );
         let out1 = scrub_error_log(&input1);
-        assert_eq!(out1, "Error: Invalid stripe_secret_key=[CREDENTIAL_MASKED] in configuration.");
+        assert_eq!(
+            out1,
+            "Error: Invalid stripe_secret_key=[CREDENTIAL_MASKED] in configuration."
+        );
 
-        let input2 = format!("Token mismatch: eyJDVU1NWSJ9.eyJEVU1NWSJ9.{timestamp} failed validation");
+        let input2 =
+            format!("Token mismatch: eyJDVU1NWSJ9.eyJEVU1NWSJ9.{timestamp} failed validation");
         let out2 = scrub_error_log(&input2);
-        assert_eq!(out2, "Token mismatch: [CREDENTIAL_MASKED] failed validation");
+        assert_eq!(
+            out2,
+            "Token mismatch: [CREDENTIAL_MASKED] failed validation"
+        );
 
         let input3 = format!(r#"{{"stripe_secret_key": "foo_test_{timestamp}", "other": 123}}"#);
         let out3 = scrub_error_log(&input3);
-        assert_eq!(out3, r#"{"stripe_secret_key": "[CREDENTIAL_MASKED]", "other": 123}"#);
+        assert_eq!(
+            out3,
+            r#"{"stripe_secret_key": "[CREDENTIAL_MASKED]", "other": 123}"#
+        );
 
         let input4 = format!("Using sk_live_{timestamp} for initialization.");
         let out4 = scrub_error_log(&input4);
