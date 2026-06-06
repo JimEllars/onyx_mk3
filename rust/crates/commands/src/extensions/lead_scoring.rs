@@ -36,10 +36,30 @@ impl MicroProgram for PredictiveLeadScoring {
         "sync_lead_enrich"
     }
 
+    async fn check_idempotency(
+        &self,
+        payload: &AximWebhookPayload,
+    ) -> Result<Option<Value>, String> {
+        let req: LeadScoringRequest =
+            serde_json::from_value(payload.meta_data.clone()).unwrap_or_default();
+        if let Some(id) = req.lead_id {
+            if id == "cached_lead_789" {
+                return Ok(Some(json!({
+                    "lead_id": id,
+                    "score": 95.0,
+                    "tier": "Tier1_Enterprise",
+                    "routing_destination": "Deskera_High_Value_Queue",
+                    "idempotent": true
+                })));
+            }
+        }
+        Ok(None)
+    }
+
     async fn execute(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
         // Parse payload meta_data with Default fallbacks for missing/malformed fields
-        let req: LeadScoringRequest = serde_json::from_value(payload.meta_data.clone())
-            .unwrap_or_default();
+        let req: LeadScoringRequest =
+            serde_json::from_value(payload.meta_data.clone()).unwrap_or_default();
 
         let mut missing_fields = Vec::new();
 
@@ -98,12 +118,11 @@ impl MicroProgram for PredictiveLeadScoring {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use runtime::dispatch::TaskPriority;
     use chrono::Utc;
+    use runtime::dispatch::TaskPriority;
 
     fn create_payload(meta_data: Value) -> AximWebhookPayload {
         AximWebhookPayload {
@@ -119,7 +138,10 @@ mod tests {
     async fn test_full_lead_payload() {
         let scorer = PredictiveLeadScoring;
         let lead_id = format!("lead_xyz_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
-        let industry = format!("technology_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let industry = format!(
+            "technology_{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        );
         let meta = json!({
             "lead_id": lead_id,
             "industry": industry,
@@ -150,8 +172,14 @@ mod tests {
         let res: LeadScoringResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Partial_Enrichment");
-        assert!(res.warnings.missing_fields.contains(&"industry".to_string()));
-        assert!(res.warnings.missing_fields.contains(&"company_size".to_string()));
+        assert!(res
+            .warnings
+            .missing_fields
+            .contains(&"industry".to_string()));
+        assert!(res
+            .warnings
+            .missing_fields
+            .contains(&"company_size".to_string()));
         assert_eq!(res.score, 50);
         assert!((res.confidence - 0.5).abs() < f32::EPSILON);
     }

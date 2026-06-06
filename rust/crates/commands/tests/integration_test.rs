@@ -1,13 +1,13 @@
+use chrono::Utc;
 use commands::extensions::{
     demand_letter::{DemandLetterGenerator, DemandLetterResponse},
+    lead_scoring::{LeadScoringResponse, PredictiveLeadScoring},
     nda::{NDAGenerator, NDAResponse},
-    lead_scoring::{PredictiveLeadScoring, LeadScoringResponse},
 };
 use commands::micro_program::MicroProgram;
 use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use runtime::dispatch::TaskPriority;
 use serde_json::json;
-use chrono::Utc;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
@@ -115,7 +115,10 @@ async fn test_fuzzing_edge_cases() {
         timestamp: Utc::now(),
     };
 
-    let dl_res_val = demand_letter_gen.execute(&dl_payload_wrong_type).await.unwrap();
+    let dl_res_val = demand_letter_gen
+        .execute(&dl_payload_wrong_type)
+        .await
+        .unwrap();
     let dl_res: DemandLetterResponse = serde_json::from_value(dl_res_val).unwrap();
     assert_eq!(dl_res.status, "Partial_Draft");
 }

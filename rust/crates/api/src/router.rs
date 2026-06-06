@@ -5,8 +5,8 @@ use axum::{
     routing::post,
     Router,
 };
-use commands::extensions::lead_scoring::PredictiveLeadScoring;
 use commands::extensions::demand_letter::DemandLetterGenerator;
+use commands::extensions::lead_scoring::PredictiveLeadScoring;
 use commands::extensions::nda::NDAGenerator;
 use commands::extensions::support_triage::SupportTriage;
 use commands::micro_program::MicroProgram;
@@ -96,35 +96,59 @@ pub async fn handle_dispatch(
         }
     };
 
-
     // Route to micro-programs based on intent
     let lead_scoring = PredictiveLeadScoring;
     let demand_letter = DemandLetterGenerator;
     let nda = NDAGenerator;
     let support_triage = SupportTriage;
+    let billing_fallback = commands::extensions::billing_fallback::BillingFallback;
 
-    let micro_program_result = if payload.intent == lead_scoring.signature() {
-        Some(lead_scoring.execute(&payload).await)
+    let mut micro_program_result = None;
+
+    if payload.intent == lead_scoring.signature() {
+        if let Ok(Some(cached)) = lead_scoring.check_idempotency(&payload).await {
+            micro_program_result = Some(Ok(cached));
+        } else {
+            micro_program_result = Some(lead_scoring.execute(&payload).await);
+        }
     } else if payload.intent == demand_letter.signature() {
-        Some(demand_letter.execute(&payload).await)
+        if let Ok(Some(cached)) = demand_letter.check_idempotency(&payload).await {
+            micro_program_result = Some(Ok(cached));
+        } else {
+            micro_program_result = Some(demand_letter.execute(&payload).await);
+        }
     } else if payload.intent == nda.signature() {
-        Some(nda.execute(&payload).await)
+        if let Ok(Some(cached)) = nda.check_idempotency(&payload).await {
+            micro_program_result = Some(Ok(cached));
+        } else {
+            micro_program_result = Some(nda.execute(&payload).await);
+        }
     } else if payload.intent == support_triage.signature() {
-        Some(support_triage.execute(&payload).await)
-    } else {
-        None
-    };
+        if let Ok(Some(cached)) = support_triage.check_idempotency(&payload).await {
+            micro_program_result = Some(Ok(cached));
+        } else {
+            micro_program_result = Some(support_triage.execute(&payload).await);
+        }
+    } else if payload.intent == billing_fallback.signature() {
+        if let Ok(Some(cached)) = billing_fallback.check_idempotency(&payload).await {
+            micro_program_result = Some(Ok(cached));
+        } else {
+            micro_program_result = Some(billing_fallback.execute(&payload).await);
+        }
+    }
 
     if let Some(result) = micro_program_result {
         return match result {
             Ok(data) => (
                 StatusCode::OK,
                 axum::Json(json!({"status": "Success", "data": data})),
-            ).into_response(),
+            )
+                .into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 axum::Json(json!({"error": e})),
-            ).into_response(),
+            )
+                .into_response(),
         };
     }
 

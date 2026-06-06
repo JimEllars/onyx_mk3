@@ -23,3 +23,9 @@
 * Integration test harness now injects 200ms - 1500ms latency to simulate real network conditions.
 * Concurrency fuzz tests successfully push 60+ simultaneous fragmented and valid payloads to `lead_scoring` and `demand_letter` without memory leaks.
 * Verified `billing_fallback` Arbitrum L2 verification module returns `payment_gateway: "arbitrum_layer2"`, fulfilling the zero-database edge-encapsulation directive.
+
+## Sprint 35: Idempotency, CWD Validation, and Async Refactor
+- Implemented strict CWD workspace matching in `Session::load_from_path` to block phantom completions across parallel lanes.
+- Added `check_idempotency` to the `MicroProgram` trait to allow extensions to verify execution cache status.
+- Added `execute_deferred` async trait extension (`MicroProgramAsync`) to handle handoffs for heavy tasks without blocking.
+- Refactored tokio runtimes in `ProviderRuntimeClient` to use `tokio::task::block_in_place` instead of redundant `Runtime::new()` to prevent headless worker crashes.

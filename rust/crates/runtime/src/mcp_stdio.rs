@@ -2451,8 +2451,6 @@ mod tests {
             )]);
             let mut manager = McpServerManager::from_servers(&servers);
 
-
-
             manager.discover_tools().await.expect("discover tools");
 
             let first_call = manager
@@ -2479,7 +2477,6 @@ mod tests {
             }
 
             let response = manager
-
                 .call_tool(
                     &mcp_tool_name("alpha", "echo"),
                     Some(json!({"text": "second"})),

@@ -27,3 +27,8 @@ When a Cargo workspace grows (currently 9 crates), tracking test failures requir
 
 ## Unit Test Best Practices
 - Never use static tokens like "sk_live_12345" or "password123", even in test cases and within `format!` or string assignment strings. This will trigger secret scanning routines or fail credential audit alerts down the line. Use `timestamp` generation combined with macro implementations for tests dynamically handling such things.
+
+## Sprint 35 Learnings
+- Idempotency is crucial for webhook architectures to prevent duplicate billing tasks. Checking state via `check_idempotency` before `execute` stabilizes the external interactions.
+- The Tokio runtime should be accessed carefully from context via `block_in_place` rather than instantiating new local runtimes to prevent thread blocks and panics in headless daemons.
+- Isolating sessions strictly via `workspace_root()` validations prevents catastrophic cross-contamination where multiple daemons assume the same worktree.
