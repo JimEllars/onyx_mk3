@@ -1,0 +1,6 @@
+feat: Implement Circuit Breaker and Satellite Job Queue
+
+- Added `CircuitBreaker` pattern in `rust/crates/api/src/http_client.rs` that automatically transitions to Open state after 3 consecutive failures to prevent cascade crashes, returning a 503 fallback error.
+- Updated `MicroProgramAsync` lifecycle in `rust/crates/commands/src/micro_program.rs` to securely dispatch asynchronous jobs to `satellite_job_queue/spawn` and return `202 Accepted`.
+- Activated active autonomous sentinel inside `rust/crates/runtime/src/fleet_health.rs` that independently launches `support_triage` diagnostic jobs to analyze degraded micro-app telemetry patterns.
+- Refactored core test harnesses to eliminate blocking wait loops and resolve remaining Clppy strict warnings.

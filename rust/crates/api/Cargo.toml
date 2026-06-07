@@ -17,6 +17,7 @@ telemetry = { path = "../telemetry" }
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "time"] }
 tower = { version = "0.5.3", features = ["util"] }
 tracing = "0.1.44"
+http = "1.4.1"
 
 [lints]
 workspace = true

@@ -1,0 +1,78 @@
+--- rust/crates/tools/src/support_ops.rs
++++ rust/crates/tools/src/support_ops.rs
+@@ -25,7 +25,7 @@
+         .header("Authorization", format!("Bearer {service_key}"))
+         .json(&payload);
+
+-    let response: reqwest::Response = send_with_circuit_breaker(request)
++    let response = send_with_circuit_breaker(request)
+         .await
+         .map_err(|e| ToolError::new(format!("Network error: {e}")))?;
+
+@@ -47,7 +47,7 @@
+         .header("Authorization", format!("Bearer {service_key}"))
+         .json(&payload);
+
+-    let response: reqwest::Response = send_with_circuit_breaker(request)
++    let response = send_with_circuit_breaker(request)
+         .await
+         .map_err(|e| ToolError::new(format!("Network error: {e}")))?;
+
+--- rust/crates/tools/src/swarm_ops.rs
++++ rust/crates/tools/src/swarm_ops.rs
+@@ -34,7 +34,7 @@
+         .header("Authorization", format!("Bearer {service_key}"))
+         .header("Content-Type", "application/json")
+         .json(&payload);
+-    let res: reqwest::Response = send_with_circuit_breaker(request).await.map_err(ToolError::new)?;
++    let res = send_with_circuit_breaker(request).await.map_err(ToolError::new)?;
+
+     if res.status().is_success() {
+         let response_data: Value = res.json::<Value>().await.unwrap_or_default();
+@@ -69,7 +69,7 @@
+     let request = client
+         .get(&url)
+         .header("Authorization", format!("Bearer {service_key}"));
+-    let res: reqwest::Response = send_with_circuit_breaker(request).await.map_err(ToolError::new)?;
++    let res = send_with_circuit_breaker(request).await.map_err(ToolError::new)?;
+
+     if res.status().is_success() {
+         let response_data = res
+--- rust/crates/tools/src/axim_ops.rs
++++ rust/crates/tools/src/axim_ops.rs
+@@ -43,7 +43,7 @@
+         .header("Authorization", format!("Bearer {service_key}"))
+         .json(&payload);
+
+-    let res: reqwest::Response = send_with_circuit_breaker(request).await?;
++    let res = send_with_circuit_breaker(request).await.map_err(|e| e.to_string())?;
+
+     if res.status().is_success() {
+         Ok(res.json::<Value>().await.map_err(|e| e.to_string())?)
+@@ -89,7 +89,7 @@
+         .header("Authorization", format!("Bearer {service_key}"))
+         .json(&payload);
+
+-    let res: reqwest::Response = send_with_circuit_breaker(request).await?;
++    let res = send_with_circuit_breaker(request).await.map_err(|e| e.to_string())?;
+
+     if res.status().is_success() {
+         Ok(res.json::<Value>().await.map_err(|e| e.to_string())?)
+@@ -140,7 +140,7 @@
+         .header("Authorization", format!("Bearer {service_key}"))
+         .json(&payload);
+
+-    let res: reqwest::Response = send_with_circuit_breaker(request).await?;
++    let res = send_with_circuit_breaker(request).await.map_err(|e| e.to_string())?;
+
+     if res.status().is_success() {
+         Ok(res.json::<Value>().await.map_err(|e| e.to_string())?)
+@@ -169,7 +169,7 @@
+         .header("Authorization", format!("Bearer {service_key}"))
+         .json(&payload);
+
+-    let res: reqwest::Response = send_with_circuit_breaker(request).await?;
++    let res = send_with_circuit_breaker(request).await.map_err(|e| e.to_string())?;
+
+     if res.status().is_success() {
+         Ok(res.json::<Value>().await.map_err(|e| e.to_string())?)

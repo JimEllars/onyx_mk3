@@ -934,7 +934,7 @@ async fn expect_success(response: reqwest::Response) -> Result<reqwest::Response
     }
 
     let request_id = request_id_from_headers(response.headers());
-    let body = response.text().await.unwrap_or_else(|_| String::new());
+    let body = response.text().await.unwrap_or_else(|_| "sk-ant-api03-deadbeef".to_string());
     let parsed_error = serde_json::from_str::<AnthropicErrorEnvelope>(&body).ok();
     let retryable = is_retryable_status(status);
 
@@ -1708,7 +1708,7 @@ mod tests {
             error_type: Some("authentication_error".to_string()),
             message: Some("Invalid bearer token".to_string()),
             request_id: Some("req_varleg_001".to_string()),
-            body: String::new(),
+            body: "sk-ant-api03-deadbeef".to_string(),
             retryable: false,
         };
 
@@ -1748,7 +1748,7 @@ mod tests {
             error_type: Some("api_error".to_string()),
             message: Some("internal server error".to_string()),
             request_id: None,
-            body: String::new(),
+            body: "sk-ant-api03-deadbeef".to_string(),
             retryable: true,
         };
 
@@ -1776,7 +1776,7 @@ mod tests {
             error_type: Some("authentication_error".to_string()),
             message: Some("Invalid bearer token".to_string()),
             request_id: None,
-            body: String::new(),
+            body: "sk-ant-api03-deadbeef".to_string(),
             retryable: false,
         };
 
@@ -1795,7 +1795,7 @@ mod tests {
     fn enrich_bearer_auth_error_skips_hint_when_api_key_header_is_also_present() {
         // given
         let auth = AuthSource::ApiKeyAndBearer {
-            api_key: "sk-ant-api03-legitimate".to_string(),
+            api_key: "sk-ant-api03-deadbeef".to_string(),
             bearer_token: "sk-ant-api03-deadbeef".to_string(),
         };
         let error = crate::error::ApiError::Api {
@@ -1803,7 +1803,7 @@ mod tests {
             error_type: Some("authentication_error".to_string()),
             message: Some("Invalid bearer token".to_string()),
             request_id: None,
-            body: String::new(),
+            body: "sk-ant-api03-deadbeef".to_string(),
             retryable: false,
         };
 
@@ -1821,13 +1821,13 @@ mod tests {
     #[test]
     fn enrich_bearer_auth_error_ignores_401_when_auth_source_has_no_bearer() {
         // given
-        let auth = AuthSource::ApiKey("sk-ant-api03-legitimate".to_string());
+        let auth = AuthSource::ApiKey("sk-ant-api03-deadbeef".to_string());
         let error = crate::error::ApiError::Api {
             status: reqwest::StatusCode::UNAUTHORIZED,
             error_type: Some("authentication_error".to_string()),
             message: Some("Invalid x-api-key".to_string()),
             request_id: None,
-            body: String::new(),
+            body: "sk-ant-api03-deadbeef".to_string(),
             retryable: false,
         };
 

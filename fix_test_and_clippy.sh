@@ -1,0 +1,47 @@
+cat << 'INNER_EOF' > rust/crates/api/src/http_client.rs.patch
+--- rust/crates/api/src/http_client.rs
++++ rust/crates/api/src/http_client.rs
+@@ -107,24 +107,24 @@
+
+     Ok(builder.build()?)
+ }
+
++#[allow(dead_code)]
+ #[derive(Debug, Clone, PartialEq, Eq)]
+-#[allow(dead_code)]
+ pub enum CircuitBreakerState {
+     Closed,
+     Open,
+     HalfOpen,
+ }
+
++#[allow(dead_code)]
+-#[allow(dead_code)]
+ pub struct CircuitBreaker {
+     pub failure_count: AtomicUsize,
+     pub last_failure_time: AtomicU64,
+     pub failure_threshold: usize,
+     pub reset_timeout_secs: u64,
+ }
+
++#[allow(dead_code)]
+-#[allow(dead_code)]
+ impl CircuitBreaker {
+     pub fn new(failure_threshold: usize, reset_timeout_secs: u64) -> Self {
+         Self {
+@@ -171,11 +171,11 @@
+     }
+ }
+
++#[allow(dead_code)]
+-#[allow(dead_code)]
+ pub static GLOBAL_CIRCUIT_BREAKER: std::sync::LazyLock<Arc<CircuitBreaker>> = std::sync::LazyLock::new(|| Arc::new(CircuitBreaker::new(3, 30)));
+
++#[allow(dead_code)]
+-#[allow(dead_code)]
+ pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Response, String> {
+     let state = GLOBAL_CIRCUIT_BREAKER.state();
+     if state == CircuitBreakerState::Open {
+
+INNER_EOF
+patch rust/crates/api/src/http_client.rs rust/crates/api/src/http_client.rs.patch
