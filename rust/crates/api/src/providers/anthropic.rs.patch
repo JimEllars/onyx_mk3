@@ -1,0 +1,32 @@
+--- rust/crates/api/src/providers/anthropic.rs
++++ rust/crates/api/src/providers/anthropic.rs
+@@ -1004,18 +1004,10 @@
+         // Standard oauth-style token or refresh token. Don't prompt the user
+         // to move it to the API key config field since it doesn't belong there.
+     } else {
+-        if let AuthSource::BearerToken(token) = auth_source.clone() {
+-            if token.starts_with("sk-ant-") || token.starts_with("mock_ant") {
+-                let msg = format!("{message}\n\nHint: {SK_ANT_BEARER_HINT}");
+-                return ApiError::Provider(Box::new(ProviderFailure::Authentication {
+-                    message: msg,
+-                    body: response.body,
+-                    request_id: response.request_id,
+-                }));
+-            }
+-        }
+         if let AuthSource::BearerToken(token) = auth_source {
+-            if token == "" || token.starts_with("sk-ant-") || token.starts_with("mock_ant_token") {
++            if token == "" || token.starts_with("sk-ant-") || token.starts_with("mock_ant") {
+                 let msg = format!("{message}\n\nHint: {SK_ANT_BEARER_HINT}");
+                 return ApiError::Provider(Box::new(ProviderFailure::Authentication {
+                     message: msg,
+@@ -1721,8 +1713,8 @@
+         let rendered = enriched.to_string();
+
+         assert!(
+-            rendered.contains("sk-ant-*"),
+-            "rendered error should include the sk-ant-* hint: {rendered}"
++            rendered.contains("sk-ant-*"),
++            "rendered error should include the sk-ant-* hint: {rendered}"
+         );
+     }
