@@ -46,13 +46,25 @@ pub trait MicroProgramAsync: MicroProgram {
             "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
         });
 
-        let _ = client
+        let intent_res = client
             .post(&intent_url)
             .header("Authorization", format!("Bearer {axim_mcp_token}"))
             .header("Content-Type", "application/json")
             .json(&intent_payload)
             .send()
             .await;
+
+        match intent_res {
+            Ok(res) if res.status().is_success() => {
+                println!("Successfully registered INIT state for job {job_id}");
+            }
+            Ok(res) => {
+                return Err(format!("Failed to register INIT state for job {job_id}: HTTP {}", res.status()));
+            }
+            Err(e) => {
+                return Err(format!("Failed to register INIT state for job {job_id}: {e}"));
+            }
+        }
 
         // 2. Dispatch heavy execution payload securely
         let url = format!("{axim_core_url}/api/v1/satellite_job_queue/spawn");
