@@ -1,4 +1,4 @@
-use crate::http_client::send_with_retry;
+use crate::http_client::send_with_circuit_breaker;
 use reqwest::Client;
 use serde_json::Value;
 use std::env;
@@ -25,7 +25,7 @@ pub async fn update_ticket_status(
             "status": status,
             "reply_text": reply_text
         }));
-    let response: reqwest::Response = send_with_retry(request)
+    let response = send_with_circuit_breaker(request)
         .await
         .map_err(|e| format!("Failed to send request: {e}"))?;
 
@@ -47,7 +47,7 @@ pub async fn fetch_app_diagnostics(app_id: &str) -> Result<Value, String> {
     let request = client
         .get(&url)
         .header("Authorization", format!("Bearer {api_key}"));
-    let response: reqwest::Response = send_with_retry(request)
+    let response = send_with_circuit_breaker(request)
         .await
         .map_err(|e| format!("Failed to send request: {e}"))?;
 

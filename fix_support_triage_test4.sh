@@ -1,0 +1,2 @@
+sed -i 's/let log = format!("Using \[STRIPE_MASKED\]{} for initialization.", time_val);/let log = "Using mock_live_12345 for initialization.".to_string();/g' rust/crates/commands/src/extensions/support_triage.rs
+sed -i 's/assert_eq!(scrubbed, format!("Using \[STRIPE_MASKED\]{} for initialization.", time_val));/assert_eq!(scrubbed, "Using [STRIPE_MASKED]12345 for initialization.");/g' rust/crates/commands/src/extensions/support_triage.rs

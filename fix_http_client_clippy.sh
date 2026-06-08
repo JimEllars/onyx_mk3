@@ -1,0 +1,178 @@
+cat << 'INNER_EOF' > patch_http_client_clippy.patch
+--- rust/crates/api/src/http_client.rs
++++ rust/crates/api/src/http_client.rs
+@@ -1,6 +1,84 @@
+ use crate::error::ApiError;
++use reqwest::{RequestBuilder, Response};
++use std::sync::atomic::{AtomicUsize, AtomicU64, Ordering};
++use std::sync::Arc;
++use tokio::time::{timeout, Duration};
+
+ const HTTP_PROXY_KEYS: [&str; 2] = ["HTTP_PROXY", "http_proxy"];
+ const HTTPS_PROXY_KEYS: [&str; 2] = ["HTTPS_PROXY", "https_proxy"];
+ const NO_PROXY_KEYS: [&str; 2] = ["NO_PROXY", "no_proxy"];
+
++#[derive(Debug, Clone, PartialEq, Eq)]
++#[allow(dead_code)]
++pub enum CircuitBreakerState {
++    Closed,
++    Open,
++    HalfOpen,
++}
++
++#[allow(dead_code)]
++pub struct CircuitBreaker {
++    pub failure_count: AtomicUsize,
++    pub last_failure_time: AtomicU64,
++    pub failure_threshold: usize,
++    pub reset_timeout_secs: u64,
++}
++
++#[allow(dead_code)]
++impl CircuitBreaker {
++    pub fn new(failure_threshold: usize, reset_timeout_secs: u64) -> Self {
++        Self {
++            failure_count: AtomicUsize::new(0),
++            last_failure_time: AtomicU64::new(0),
++            failure_threshold,
++            reset_timeout_secs,
++        }
++    }
++
++    pub fn state(&self) -> CircuitBreakerState {
++        let failures = self.failure_count.load(Ordering::SeqCst);
++        if failures >= self.failure_threshold {
++            let last_failure = self.last_failure_time.load(Ordering::SeqCst);
++            let now = std::time::SystemTime::now()
++                .duration_since(std::time::UNIX_EPOCH)
++                .unwrap()
++                .as_secs();
++            if now - last_failure > self.reset_timeout_secs {
++                CircuitBreakerState::HalfOpen
++            } else {
++                CircuitBreakerState::Open
++            }
++        } else {
++            CircuitBreakerState::Closed
++        }
++    }
++
++    pub fn record_success(&self) {
++        self.failure_count.store(0, Ordering::SeqCst);
++    }
++
++    pub fn record_failure(&self) {
++        self.failure_count.fetch_add(1, Ordering::SeqCst);
++        self.last_failure_time.store(
++            std::time::SystemTime::now()
++                .duration_since(std::time::UNIX_EPOCH)
++                .unwrap()
++                .as_secs(),
++            Ordering::SeqCst,
++        );
++    }
++}
++
++#[allow(dead_code)]
++pub static GLOBAL_CIRCUIT_BREAKER: std::sync::LazyLock<Arc<CircuitBreaker>> = std::sync::LazyLock::new(|| Arc::new(CircuitBreaker::new(3, 30)));
++
+ /// Snapshot of the proxy-related environment variables that influence the
+ /// outbound HTTP client. Captured up front so callers can inspect, log, and
+ /// test the resolved configuration without re-reading the process environment.
+@@ -101,75 +179,6 @@
+
+     Ok(builder.build()?)
+ }
+-
+-use std::sync::atomic::{AtomicUsize, AtomicU64, Ordering};
+-use std::sync::Arc;
+-use tokio::time::{timeout, Duration};
+-
+-#[derive(Debug, Clone, PartialEq, Eq)]
+-#[allow(dead_code)]
+-pub enum CircuitBreakerState {
+-    Closed,
+-    Open,
+-    HalfOpen,
+-}
+-
+-#[allow(dead_code)]
+-pub struct CircuitBreaker {
+-    pub failure_count: AtomicUsize,
+-    pub last_failure_time: AtomicU64,
+-    pub failure_threshold: usize,
+-    pub reset_timeout_secs: u64,
+-}
+-
+-#[allow(dead_code)]
+-impl CircuitBreaker {
+-    pub fn new(failure_threshold: usize, reset_timeout_secs: u64) -> Self {
+-        Self {
+-            failure_count: AtomicUsize::new(0),
+-            last_failure_time: AtomicU64::new(0),
+-            failure_threshold,
+-            reset_timeout_secs,
+-        }
+-    }
+-
+-    pub fn state(&self) -> CircuitBreakerState {
+-        let failures = self.failure_count.load(Ordering::SeqCst);
+-        if failures >= self.failure_threshold {
+-            let last_failure = self.last_failure_time.load(Ordering::SeqCst);
+-            let now = std::time::SystemTime::now()
+-                .duration_since(std::time::UNIX_EPOCH)
+-                .unwrap()
+-                .as_secs();
+-            if now - last_failure > self.reset_timeout_secs {
+-                CircuitBreakerState::HalfOpen
+-            } else {
+-                CircuitBreakerState::Open
+-            }
+-        } else {
+-            CircuitBreakerState::Closed
+-        }
+-    }
+-
+-    pub fn record_success(&self) {
+-        self.failure_count.store(0, Ordering::SeqCst);
+-    }
+-
+-    pub fn record_failure(&self) {
+-        self.failure_count.fetch_add(1, Ordering::SeqCst);
+-        self.last_failure_time.store(
+-            std::time::SystemTime::now()
+-                .duration_since(std::time::UNIX_EPOCH)
+-                .unwrap()
+-                .as_secs(),
+-            Ordering::SeqCst,
+-        );
+-    }
+-}
+-
+-#[allow(dead_code)]
+-pub static GLOBAL_CIRCUIT_BREAKER: std::sync::LazyLock<Arc<CircuitBreaker>> = std::sync::LazyLock::new(|| Arc::new(CircuitBreaker::new(3, 30)));
+
+ #[allow(dead_code)]
+ pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Response, String> {
+@@ -177,7 +186,6 @@
+     let state = GLOBAL_CIRCUIT_BREAKER.state();
+     if state == CircuitBreakerState::Open {
+-        let _body = r#"{"warning": "Circuit breaker is OPEN. Service Unavailable."}"#;
+         return Ok(reqwest::Response::from(http::response::Builder::new().status(503).body("{\"warning\": \"Circuit breaker is OPEN. Service Unavailable.\"}".to_string()).unwrap()));
+     }
+
+@@ -194,10 +202,9 @@
+                         let backoff = 2_u64.pow(attempt - 1);
+                         tokio::time::sleep(Duration::from_secs(backoff)).await;
+                         continue;
+-                    } else {
+-                        GLOBAL_CIRCUIT_BREAKER.record_failure();
+-                        return Ok(res);
+                     }
++                    GLOBAL_CIRCUIT_BREAKER.record_failure();
++                    return Ok(res);
+                 }
+                 GLOBAL_CIRCUIT_BREAKER.record_success();
+                 return Ok(res);
+INNER_EOF
+patch rust/crates/api/src/http_client.rs patch_http_client_clippy.patch

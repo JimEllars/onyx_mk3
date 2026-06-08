@@ -1,4 +1,4 @@
-use crate::http_client::send_with_retry;
+use crate::http_client::send_with_circuit_breaker;
 use runtime::ToolError;
 use serde_json::Value;
 use std::env;
@@ -34,7 +34,9 @@ pub async fn spawn_sub_agent(
         .header("Authorization", format!("Bearer {service_key}"))
         .header("Content-Type", "application/json")
         .json(&payload);
-    let res: reqwest::Response = send_with_retry(request).await.map_err(ToolError::new)?;
+    let res = send_with_circuit_breaker(request)
+        .await
+        .map_err(ToolError::new)?;
 
     if res.status().is_success() {
         let response_data: Value = res.json::<Value>().await.unwrap_or_default();
@@ -69,7 +71,9 @@ pub async fn check_swarm_status(parent_job_id: &str) -> Result<Value, ToolError>
     let request = client
         .get(&url)
         .header("Authorization", format!("Bearer {service_key}"));
-    let res: reqwest::Response = send_with_retry(request).await.map_err(ToolError::new)?;
+    let res = send_with_circuit_breaker(request)
+        .await
+        .map_err(ToolError::new)?;
 
     if res.status().is_success() {
         let response_data = res

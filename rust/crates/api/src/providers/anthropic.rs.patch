@@ -1,5 +1,5 @@
---- anthropic.rs
-+++ anthropic.rs
+--- rust/crates/api/src/providers/anthropic.rs
++++ rust/crates/api/src/providers/anthropic.rs
 @@ -1004,8 +1004,8 @@
          // Standard oauth-style token or refresh token. Don't prompt the user
          // to move it to the API key config field since it doesn't belong there.

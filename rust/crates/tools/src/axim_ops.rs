@@ -1,4 +1,4 @@
-use crate::http_client::send_with_retry;
+use crate::http_client::send_with_circuit_breaker;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,7 +43,7 @@ pub async fn execute_escalate_to_admin(
         .header("Authorization", format!("Bearer {service_key}"))
         .header("Content-Type", "application/json")
         .json(&payload);
-    let res: reqwest::Response = send_with_retry(request).await?;
+    let res = send_with_circuit_breaker(request).await?;
 
     if res.status().is_success() {
         Ok(EscalateToAdminOutput { success: true })
@@ -89,7 +89,7 @@ pub async fn execute_trigger_marketing_loop(
         .header("Authorization", format!("Bearer {service_key}"))
         .header("Content-Type", "application/json")
         .json(&payload);
-    let res: reqwest::Response = send_with_retry(request).await?;
+    let res = send_with_circuit_breaker(request).await?;
 
     if res.status().is_success() {
         Ok(TriggerMarketingLoopOutput {
@@ -140,7 +140,7 @@ pub async fn execute_reconcile_micro_app_revenue(
         .header("Authorization", format!("Bearer {service_key}"))
         .header("Content-Type", "application/json")
         .json(&payload);
-    let res: reqwest::Response = send_with_retry(request).await?;
+    let res = send_with_circuit_breaker(request).await?;
 
     if res.status().is_success() {
         Ok(ReconcileMicroAppRevenueOutput {
@@ -169,7 +169,7 @@ pub async fn execute_fetch_ecosystem_manifest() -> Result<serde_json::Value, Str
     let request = client
         .get(&url)
         .header("Authorization", format!("Bearer {service_key}"));
-    let res: reqwest::Response = send_with_retry(request).await?;
+    let res = send_with_circuit_breaker(request).await?;
 
     if res.status().is_success() {
         let json: serde_json::Value = res

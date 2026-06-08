@@ -1,6 +1,7 @@
+cat << 'INNER_EOF' > rust/crates/api/src/http_client.rs
 use crate::error::ApiError;
 use reqwest::{RequestBuilder, Response};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::time::{timeout, Duration};
 
@@ -70,8 +71,7 @@ impl CircuitBreaker {
 }
 
 #[allow(dead_code)]
-pub static GLOBAL_CIRCUIT_BREAKER: std::sync::LazyLock<Arc<CircuitBreaker>> =
-    std::sync::LazyLock::new(|| Arc::new(CircuitBreaker::new(3, 30)));
+pub static GLOBAL_CIRCUIT_BREAKER: std::sync::LazyLock<Arc<CircuitBreaker>> = std::sync::LazyLock::new(|| Arc::new(CircuitBreaker::new(3, 30)));
 
 /// Snapshot of the proxy-related environment variables that influence the
 /// outbound HTTP client. Captured up front so callers can inspect, log, and
@@ -186,14 +186,8 @@ pub fn build_http_client_with(config: &ProxyConfig) -> Result<reqwest::Client, A
 pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Response, String> {
     let state = GLOBAL_CIRCUIT_BREAKER.state();
     if state == CircuitBreakerState::Open {
-        return Ok(reqwest::Response::from(
-            http::response::Builder::new()
-                .status(503)
-                .body(
-                    "{\"warning\": \"Circuit breaker is OPEN. Service Unavailable.\"}".to_string(),
-                )
-                .unwrap(),
-        ));
+
+        return Ok(reqwest::Response::from(http::response::Builder::new().status(503).body("{\"warning\": \"Circuit breaker is OPEN. Service Unavailable.\"}".to_string()).unwrap()));
     }
 
     for attempt in 1..=3 {
@@ -491,3 +485,4 @@ mod tests {
         assert_eq!(cb.state(), CircuitBreakerState::Closed);
     }
 }
+INNER_EOF

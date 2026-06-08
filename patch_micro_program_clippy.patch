@@ -1,0 +1,42 @@
+--- rust/crates/commands/src/micro_program.rs
++++ rust/crates/commands/src/micro_program.rs
+@@ -29,16 +29,16 @@
+         let job_id = uuid::Uuid::new_v4().to_string();
+
+         let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+-        let axim_mcp_token = std::env::var("AXIM_MCP_TOKEN").unwrap_or_else(|_| "".to_string());
++        let axim_mcp_token = std::env::var("AXIM_MCP_TOKEN").unwrap_or_else(|_| String::new());
+
+         let client = reqwest::Client::builder()
+             .timeout(std::time::Duration::from_secs(10))
+             .build()
+-            .map_err(|e| format!("Failed to build client: {}", e))?;
++            .map_err(|e| format!("Failed to build client: {e}"))?;
+
+-        let url = format!("{}/api/v1/satellite_job_queue/spawn", axim_core_url);
++        let url = format!("{axim_core_url}/api/v1/satellite_job_queue/spawn");
+
+         let mut secure_payload = payload.clone();
+         if let serde_json::Value::Object(ref mut map) = secure_payload.meta_data {
+@@ -54,19 +54,19 @@
+
+         let request = client
+             .post(&url)
+-            .header("Authorization", format!("Bearer {}", axim_mcp_token))
++            .header("Authorization", format!("Bearer {axim_mcp_token}"))
+             .header("Content-Type", "application/json")
+             .json(&request_payload);
+
+         match request.send().await {
+             Ok(res) if res.status().is_success() => {
+-                println!("Successfully dispatched job {} to satellite queue", job_id);
++                println!("Successfully dispatched job {job_id} to satellite queue");
+             }
+             Ok(res) => {
+                 eprintln!("Failed to dispatch job {} to satellite queue: HTTP {}", job_id, res.status());
+             }
+             Err(e) => {
+-                eprintln!("Failed to dispatch job {} to satellite queue: {}", job_id, e);
++                eprintln!("Failed to dispatch job {job_id} to satellite queue: {e}");
+             }
+         }

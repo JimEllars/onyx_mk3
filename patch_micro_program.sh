@@ -1,3 +1,4 @@
+cat << 'INNER_EOF' > rust/crates/commands/src/micro_program.rs
 use async_trait::async_trait;
 use serde_json::Value;
 use std::fmt::Debug;
@@ -101,3 +102,4 @@ pub trait MicroProgramAsync: MicroProgram {
         }))
     }
 }
+INNER_EOF

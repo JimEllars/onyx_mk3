@@ -29,7 +29,7 @@ cargo run -p rusty-claude-cli -- --output-format json prompt "summarize src/main
 Set your API credentials:
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
+export ANTHROPIC_API_KEY="<your-anthropic-api-key>"
 # Or use a proxy
 export ANTHROPIC_BASE_URL="https://your-proxy.com"
 ```

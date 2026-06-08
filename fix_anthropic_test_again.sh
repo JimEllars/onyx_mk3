@@ -1,5 +1,6 @@
---- anthropic.rs
-+++ anthropic.rs
+cat << 'INNER_EOF' > rust/crates/api/src/providers/anthropic.rs.patch
+--- rust/crates/api/src/providers/anthropic.rs
++++ rust/crates/api/src/providers/anthropic.rs
 @@ -1004,8 +1004,8 @@
          // Standard oauth-style token or refresh token. Don't prompt the user
          // to move it to the API key config field since it doesn't belong there.
@@ -20,3 +21,6 @@
 +            "rendered error should include the hint: {rendered}"
          );
      }
+
+INNER_EOF
+patch rust/crates/api/src/providers/anthropic.rs rust/crates/api/src/providers/anthropic.rs.patch

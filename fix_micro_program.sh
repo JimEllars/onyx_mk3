@@ -1,3 +1,4 @@
+cat << 'INNER_EOF' > rust/crates/commands/src/micro_program.rs
 use async_trait::async_trait;
 use serde_json::Value;
 use std::fmt::Debug;
@@ -28,8 +29,7 @@ pub trait MicroProgramAsync: MicroProgram {
     async fn execute_deferred(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
         let job_id = uuid::Uuid::new_v4().to_string();
 
-        let axim_core_url = std::env::var("AXIM_CORE_URL")
-            .unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+        let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
         let axim_mcp_token = std::env::var("AXIM_MCP_TOKEN").unwrap_or_else(|_| String::new());
 
         let client = reqwest::Client::builder()
@@ -37,24 +37,6 @@ pub trait MicroProgramAsync: MicroProgram {
             .build()
             .map_err(|e| format!("Failed to build client: {e}"))?;
 
-        // 1. Send stateless initialization intent to establish polling marker immediately
-        let intent_url = format!("{axim_core_url}/api/v1/satellite_job_queue/intent");
-        let intent_payload = serde_json::json!({
-            "job_id": job_id,
-            "signature": self.signature(),
-            "status": "initializing",
-            "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
-        });
-
-        let _ = client
-            .post(&intent_url)
-            .header("Authorization", format!("Bearer {axim_mcp_token}"))
-            .header("Content-Type", "application/json")
-            .json(&intent_payload)
-            .send()
-            .await;
-
-        // 2. Dispatch heavy execution payload securely
         let url = format!("{axim_core_url}/api/v1/satellite_job_queue/spawn");
 
         let mut secure_payload = payload.clone();
@@ -81,11 +63,7 @@ pub trait MicroProgramAsync: MicroProgram {
                 println!("Successfully dispatched job {job_id} to satellite queue");
             }
             Ok(res) => {
-                eprintln!(
-                    "Failed to dispatch job {} to satellite queue: HTTP {}",
-                    job_id,
-                    res.status()
-                );
+                eprintln!("Failed to dispatch job {} to satellite queue: HTTP {}", job_id, res.status());
             }
             Err(e) => {
                 eprintln!("Failed to dispatch job {job_id} to satellite queue: {e}");
@@ -101,3 +79,4 @@ pub trait MicroProgramAsync: MicroProgram {
         }))
     }
 }
+INNER_EOF
