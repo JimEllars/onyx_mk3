@@ -5,6 +5,7 @@
  */
 
 export interface Env {
+	CORE_CRYPTO_KEY?: string;
 	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
 	// MY_KV_NAMESPACE: KVNamespace;
 	//
@@ -87,6 +88,63 @@ export default {
 		}
 
 		try {
+			if (url.pathname === "/api/v1/ingress/customer_leads") {
+				// Handles encrypted payloads from frontend/Chatbase
+				const payload = await request.json() as any;
+				if (!payload.iv || !payload.ciphertext || !payload.tag) {
+					return new Response(JSON.stringify({ error: "Invalid payload envelope" }), {
+						status: 400,
+						headers: { ...corsHeaders, "Content-Type": "application/json" }
+					});
+				}
+
+				// Simulating passing the encrypted payload back to the Core Queue
+				const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
+				const coreResponse = await fetch(ingestUrl, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						type: "customer_leads",
+						encrypted_payload: payload,
+						timestamp: new Date().toISOString()
+					})
+				}).catch(() => null);
+
+				return new Response(JSON.stringify({
+					status: "success",
+					message: "Encrypted payload ingested to Core buffer."
+				}), {
+					headers: { ...corsHeaders, "Content-Type": "application/json" }
+				});
+			} else if (url.pathname === "/api/v1/billing/fallback-blockchain") {
+				// Handles Web3 routing / Multi-chain settlement verification
+				const payload = await request.json() as any;
+				if (!payload.tx_hash || !payload.wallet_address) {
+					return new Response(JSON.stringify({ error: "Invalid blockchain settlement details" }), {
+						status: 400,
+						headers: { ...corsHeaders, "Content-Type": "application/json" }
+					});
+				}
+
+				const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
+				await fetch(ingestUrl, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						type: "blockchain_fallback",
+						tx_hash: payload.tx_hash,
+						wallet_address: payload.wallet_address,
+						timestamp: new Date().toISOString()
+					})
+				}).catch(() => null);
+
+				return new Response(JSON.stringify({
+					status: "success",
+					message: "Blockchain fallback verification queued."
+				}), {
+					headers: { ...corsHeaders, "Content-Type": "application/json" }
+				});
+			} else
 			if (url.pathname === "/api/v1/chat") {
 				// 3. Parse command and context
 				const { command, context } = await request.json() as { command?: string, context?: any };

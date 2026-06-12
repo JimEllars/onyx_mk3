@@ -1701,6 +1701,15 @@ fn execute_tool_with_enforcer(
                     .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
         }
+        "verify_edge_deployment" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<cloudflare_ops::VerifyEdgeDeploymentInput>(input).and_then(|i| {
+                tokio::runtime::Handle::current()
+                    .block_on(cloudflare_ops::execute_verify_edge_deployment(i))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
+        }
         "create_branch" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<github_ops::CreateBranchInput>(input).and_then(|i| {
