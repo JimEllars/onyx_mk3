@@ -24,6 +24,11 @@ pub type DailySyncCallback =
 
 pub static DAILY_SYNC_HANDLER: std::sync::OnceLock<DailySyncCallback> = std::sync::OnceLock::new();
 
+pub type PredictiveAnalysisCallback =
+    Box<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>> + Send + Sync>;
+
+pub static PREDICTIVE_ANALYSIS_HANDLER: std::sync::OnceLock<PredictiveAnalysisCallback> = std::sync::OnceLock::new();
+
 /// The Background "Tick" Architecture for Onyx Overwatch Tasks
 ///
 /// As an Overwatch AI, Onyx cannot only be reactive. This asynchronous loop
@@ -57,6 +62,7 @@ pub fn start_background_tick_loop(
     fleet_status: GlobalFleetStatus,
 ) -> tokio::task::JoinHandle<()> {
     static LAST_SYNC: std::sync::OnceLock<Mutex<u64>> = std::sync::OnceLock::new();
+    static LAST_PREDICTIVE_SYNC: std::sync::OnceLock<Mutex<u64>> = std::sync::OnceLock::new();
 
     // 1. Spawns an asynchronous background task.
     tokio::spawn(async move {
@@ -110,6 +116,23 @@ pub fn start_background_tick_loop(
                 if current_time - *last_sync >= 86400 {
                     *last_sync = current_time;
                     run_sync = true;
+                }
+            }
+
+            let mut run_predictive_sync = false;
+            {
+                let last_predictive_sync_mutex = LAST_PREDICTIVE_SYNC.get_or_init(|| Mutex::new(0));
+                let mut last_predictive_sync = last_predictive_sync_mutex.lock().unwrap();
+                // Every 5 minutes (300 seconds)
+                if current_time - *last_predictive_sync >= 300 {
+                    *last_predictive_sync = current_time;
+                    run_predictive_sync = true;
+                }
+            }
+
+            if run_predictive_sync {
+                if let Some(handler) = PREDICTIVE_ANALYSIS_HANDLER.get() {
+                    let _ = handler().await;
                 }
             }
 

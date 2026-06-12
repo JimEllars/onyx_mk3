@@ -4,12 +4,13 @@
   "description": "Cloudflare Worker Edge Bridge for Onyx mk3 and AXiM Core",
   "main": "src/index.ts",
   "scripts": {
+    "build": "tsc --noEmit",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20240320.1",
+    "@cloudflare/workers-types": "^4.20260612.1",
     "typescript": "^5.9.3",
-    "wrangler": "^3.36.0"
+    "wrangler": "^4.100.0"
   }
 }

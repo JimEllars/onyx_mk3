@@ -1,0 +1,8 @@
+{
+  "name": "onyx-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd edge-bridge && npm install && npx wrangler deploy --dry-run"
+  }
+}
