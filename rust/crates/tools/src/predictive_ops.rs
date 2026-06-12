@@ -1,6 +1,14 @@
 use runtime::ToolError;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::env;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DegradedApp {
+    pub app_id: String,
+    pub latency_ms: u64,
+    pub error_count: u64,
+}
 
 pub async fn check_predictive_engagement() -> Result<Option<Value>, ToolError> {
     let axim_core_url =
@@ -41,4 +49,50 @@ pub async fn check_predictive_engagement() -> Result<Option<Value>, ToolError> {
     } else {
         Err(ToolError::new(format!("Axim API error: {}", res.status())))
     }
+}
+
+pub async fn analyze_fleet_degradation() -> Result<Vec<DegradedApp>, String> {
+    let apps_to_check = vec![
+        "axim-demand-letter-generator",
+        "axim-nda-generator",
+        "axim-pay-stub-generator",
+    ];
+
+    let mut degraded_apps = Vec::new();
+
+    for app_id in apps_to_check {
+        match crate::support_ops::fetch_app_diagnostics(app_id).await {
+            Ok(diagnostics) => {
+                let mut latency_ms = 0;
+                let mut error_count = 0;
+
+                if let Some(metrics) = diagnostics.get("metrics") {
+                    latency_ms = metrics
+                        .get("average_latency_ms")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0);
+                    let count_429 = metrics
+                        .get("error_429_count")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0);
+                    let count_499 = metrics
+                        .get("error_499_count")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0);
+                    error_count = count_429 + count_499;
+                }
+
+                if latency_ms > 1500 || error_count > 10 {
+                    degraded_apps.push(DegradedApp {
+                        app_id: app_id.to_string(),
+                        latency_ms,
+                        error_count,
+                    });
+                }
+            }
+            Err(e) => eprintln!("Failed to fetch diagnostics for {app_id}: {e}"),
+        }
+    }
+
+    Ok(degraded_apps)
 }

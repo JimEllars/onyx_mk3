@@ -1,6 +1,21 @@
+pub mod axim_gateway;
+pub mod axim_ops;
+pub mod axim_vault;
+pub mod chatbase_ops;
 pub mod cloudflare_ops;
+pub mod communication_ops;
+pub mod executive_sync;
+pub mod financial_ops;
 pub mod github_ops;
+pub mod http_client;
+pub mod ingest_ops;
+pub mod network_ops;
+pub mod playbooks;
+pub mod predictive_ops;
 pub mod supabase_ops;
+pub mod support_ops;
+pub mod swarm_ops;
+pub mod vector_memory;
 pub mod wordpress_admin;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -49,6 +64,7 @@ fn global_mcp_registry() -> &'static McpToolRegistry {
     REGISTRY.get_or_init(|| {
         let registry = McpToolRegistry::new();
         runtime::internal_mcp::register_internal_mcp_server(&registry);
+        register_daily_sync_handler();
         registry
     })
 }
@@ -69,6 +85,35 @@ fn global_task_registry() -> &'static TaskRegistry {
     use std::sync::OnceLock;
     static REGISTRY: OnceLock<TaskRegistry> = OnceLock::new();
     REGISTRY.get_or_init(TaskRegistry::new)
+}
+
+pub fn register_daily_sync_handler() {
+    use runtime::team_cron_registry::DAILY_SYNC_HANDLER;
+    let _ = DAILY_SYNC_HANDLER.set(Box::new(|update: &str| {
+        let update = update.to_string();
+        Box::pin(async move { crate::executive_sync::run_daily_department_sync(&update).await })
+    }));
+
+    use runtime::team_cron_registry::PREDICTIVE_ANALYSIS_HANDLER;
+    let _ = PREDICTIVE_ANALYSIS_HANDLER.set(Box::new(|| {
+        Box::pin(async move {
+            match crate::predictive_ops::analyze_fleet_degradation().await {
+                Ok(degraded_apps) => {
+                    for app in degraded_apps {
+                        let _ = crate::support_ops::create_preventative_maintenance_ticket(
+                            &app.app_id,
+                            &format!("Preemptive Warning: Latency: {}ms, Errors: {}", app.latency_ms, app.error_count)
+                        ).await;
+                    }
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("Predictive analysis failed: {}", e);
+                    Err(format!("Predictive analysis failed: {}", e))
+                }
+            }
+        })
+    }));
 }
 
 fn global_worker_registry() -> &'static WorkerRegistry {
@@ -393,6 +438,107 @@ fn permission_mode_from_plugin(value: &str) -> Result<PermissionMode, String> {
 #[allow(clippy::too_many_lines)]
 pub fn mvp_tool_specs() -> Vec<ToolSpec> {
     vec![
+        ToolSpec {
+            name: "ExecuteRemoteCommand",
+            description: "Execute a command securely on a remote AXiM satellite server using a temporal SSH certificate.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "target_server": { "type": "string" },
+                    "command": { "type": "string" }
+                },
+                "required": ["target_server", "command"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::DangerFullAccess,
+        },
+        ToolSpec {
+            name: "IngestToKnowledgeBase",
+            description: "Crawl a URL, read a local directory of SOPs, or transcribe audio, and push that knowledge directly into AXiM Core's Foundational Knowledge Base.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "source_type": { "type": "string", "description": "e.g., 'url', 'pdf', 'audio'" },
+                    "uri": { "type": "string", "description": "The URI or path to the resource" },
+                    "metadata": { "type": "object", "description": "Additional context metadata" }
+                },
+                "required": ["source_type", "uri"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "SpawnSubAgent",
+            description: "Spawn a child sub-agent to perform a task in parallel.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "role": { "type": "string" },
+                    "task": { "type": "string" },
+                    "parent_worker_id": { "type": "string" }
+                },
+                "required": ["role", "task", "parent_worker_id"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::DangerFullAccess,
+        },
+        ToolSpec {
+            name: "CheckSwarmStatus",
+            description: "Check the status of child agents in a swarm.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "parent_job_id": { "type": "string" }
+                },
+                "required": ["parent_job_id"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "AuditFinancialMetrics",
+            description: "Audit finances, detect billing anomalies, and summarize revenue heatmaps. Restricted to @CFO persona.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "timeframe": { "type": "string", "description": "e.g., 'daily', 'weekly', 'monthly'" }
+                },
+                "required": ["timeframe"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "invoke_axim_micro_app",
+            description: "Invoke an external AXiM micro-app, CRM (SuiteDash), or automation (Albato) via the universal gateway.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "app_target": { "type": "string", "description": "The target app (e.g., 'albato', 'suitedash')" },
+                    "action": { "type": "string", "description": "The action to perform (e.g., 'trigger_webhook', 'create_contact')" },
+                    "payload": { "type": "object", "description": "JSON payload required by the target action" }
+                },
+                "required": ["app_target", "action", "payload"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::Prompt,
+        },
+
+        ToolSpec {
+            name: "consult_chatbase_agent",
+            description: "Consult one of the Chatbase Executive Agents for domain-specific knowledge (CEO, CTO, CFO, COO, Legal).",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "agent_role": { "type": "string", "enum": ["CEO", "CTO", "CFO", "COO", "Legal"] },
+                    "message": { "type": "string" },
+                    "conversation_id": { "type": "string" }
+                },
+                "required": ["agent_role", "message"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
         ToolSpec {
             name: "bash",
             description: "Execute a shell command in the current workspace.",
@@ -1374,6 +1520,71 @@ fn execute_tool_with_enforcer(
         }
         "REPL" => from_value::<ReplInput>(input).and_then(run_repl),
         "PowerShell" => from_value::<PowerShellInput>(input).and_then(run_powershell),
+        "VerifyUrlStatus" => {
+            let input =
+                serde_json::from_value::<crate::network_ops::VerifyUrlStatusInput>(input.clone())
+                    .map_err(|e| e.to_string())?;
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(crate::network_ops::execute_verify_url_status(input))
+            });
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "EscalateToAdmin" => {
+            let input =
+                serde_json::from_value::<crate::axim_ops::EscalateToAdminInput>(input.clone())
+                    .map_err(|e| e.to_string())?;
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(crate::axim_ops::execute_escalate_to_admin(input))
+            });
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "TriggerMarketingLoop" => {
+            let input =
+                serde_json::from_value::<crate::axim_ops::TriggerMarketingLoopInput>(input.clone())
+                    .map_err(|e| e.to_string())?;
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(crate::axim_ops::execute_trigger_marketing_loop(input))
+            });
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "ReconcileMicroAppRevenue" => {
+            let input = serde_json::from_value::<crate::axim_ops::ReconcileMicroAppRevenueInput>(
+                input.clone(),
+            )
+            .map_err(|e| e.to_string())?;
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(crate::axim_ops::execute_reconcile_micro_app_revenue(input))
+            });
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "DispatchSecureMessage" => {
+            let input = serde_json::from_value::<
+                crate::communication_ops::DispatchSecureMessageInput,
+            >(input.clone())
+            .map_err(|e| e.to_string())?;
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(
+                    crate::communication_ops::execute_dispatch_secure_message(input),
+                )
+            });
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "DispatchExecutiveBrief" => {
+            let input = serde_json::from_value::<
+                crate::communication_ops::DispatchExecutiveBriefInput,
+            >(input.clone())
+            .map_err(|e| e.to_string())?;
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(
+                    crate::communication_ops::execute_dispatch_executive_brief(input),
+                )
+            });
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
         "AskUserQuestion" => {
             from_value::<AskUserQuestionInput>(input).and_then(run_ask_user_question)
         }
@@ -1414,6 +1625,18 @@ fn execute_tool_with_enforcer(
         "TestingPermission" => {
             from_value::<TestingPermissionInput>(input).and_then(run_testing_permission)
         }
+        "IngestToKnowledgeBase" => from_value::<IngestToKnowledgeBaseInput>(input)
+            .and_then(|i| run_ingest_to_knowledge_base(&i)),
+        "SpawnSubAgent" => {
+            from_value::<SpawnSubAgentInput>(input).and_then(|i| run_spawn_sub_agent(&i))
+        }
+        "CheckSwarmStatus" => {
+            from_value::<CheckSwarmStatusInput>(input).and_then(|i| run_check_swarm_status(&i))
+        }
+        "AuditFinancialMetrics" => from_value::<AuditFinancialMetricsInput>(input)
+            .and_then(|i| run_audit_financial_metrics(&i)),
+        "ExecuteRemoteCommand" => from_value::<ExecuteRemoteCommandInput>(input)
+            .and_then(|i| run_execute_remote_command(&i)),
         "fetch_post" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<wordpress_admin::FetchPostInput>(input).and_then(|i| {
@@ -1437,6 +1660,25 @@ fn execute_tool_with_enforcer(
             from_value::<wordpress_admin::UpdateSeoMetadataInput>(input).and_then(|i| {
                 tokio::runtime::Handle::current()
                     .block_on(wordpress_admin::execute_update_seo_metadata(i))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
+        }
+
+        "invoke_axim_micro_app" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            let target = input["app_target"].as_str().unwrap_or_default();
+            let action = input["action"].as_str().unwrap_or_default();
+            let payload = input["payload"].clone();
+            let result = tokio::runtime::Handle::current()
+                .block_on(axim_gateway::invoke_axim_micro_app(target, action, payload));
+            result.map_err(|e| e.to_string())
+        }
+        "consult_chatbase_agent" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<chatbase_ops::ConsultChatbaseAgentInput>(input).and_then(|i| {
+                tokio::runtime::Handle::current()
+                    .block_on(chatbase_ops::execute_consult_chatbase_agent(i))
                     .map_err(|e| e.to_string())
                     .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
@@ -1489,6 +1731,13 @@ fn execute_tool_with_enforcer(
                     .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })
         }
+        "vault_artifact" => from_value::<supabase_ops::VaultArtifactInput>(input).and_then(|i| {
+            let config = runtime::RuntimeConfig::empty();
+            tokio::runtime::Handle::current()
+                .block_on(supabase_ops::execute_vault_artifact(i, &config))
+                .map_err(|e| e.to_string())
+                .map(|o| format!("Artifact successfully vaulted. [Download Here] ({})", o.url))
+        }),
         "check_micro_app_transactions" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
             from_value::<supabase_ops::CheckMicroAppTransactionsInput>(input).and_then(|i| {
@@ -3802,11 +4051,55 @@ fn write_agent_manifest(manifest: &AgentOutput) -> Result<(), String> {
 
             // Stream lane events to AXiM Core if the endpoint is configured
             if let Ok(axim_endpoint) = std::env::var("AXIM_CORE_LANE_EVENTS_ENDPOINT") {
-                let _ = reqwest::blocking::Client::new()
-                    .post(&axim_endpoint)
-                    .header("Content-Type", "application/json")
-                    .body(event_json)
-                    .send();
+                let event_json_clone = event_json.clone();
+                std::thread::spawn(move || {
+                    let client = reqwest::blocking::Client::builder()
+                        .timeout(std::time::Duration::from_secs(5))
+                        .build()
+                        .unwrap_or_else(|_| reqwest::blocking::Client::new());
+
+                    let mut attempts = 0;
+                    let max_attempts = 5;
+                    let base_delay = std::time::Duration::from_millis(500);
+
+                    while attempts < max_attempts {
+                        let res = client
+                            .post(&axim_endpoint)
+                            .header("Content-Type", "application/json")
+                            .body(event_json_clone.clone())
+                            .send();
+
+                        match res {
+                            Ok(response) if response.status().is_success() => {
+                                break;
+                            }
+                            _ => {
+                                attempts += 1;
+                                if attempts < max_attempts {
+                                    // Jittered exponential backoff
+                                    let subsec_nanos = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .subsec_nanos();
+                                    #[allow(clippy::cast_lossless)]
+                                    let frac = subsec_nanos as f64 / 1_000_000_000.0;
+                                    let jitter: f64 = 1.0 + frac * 0.4 - 0.2; // approx 0.8 to 1.2
+
+                                    #[allow(
+                                        clippy::cast_precision_loss,
+                                        clippy::cast_possible_truncation,
+                                        clippy::cast_sign_loss
+                                    )]
+                                    let delay_ms = (base_delay.as_millis() as f64
+                                        * (2.0_f64.powi(attempts - 1))
+                                        * jitter)
+                                        as u64;
+                                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                                }
+                            }
+                        }
+                    }
+                });
             }
         }
     }
@@ -4019,7 +4312,6 @@ struct ProviderEntry {
 }
 
 struct ProviderRuntimeClient {
-    runtime: tokio::runtime::Runtime,
     chain: Vec<ProviderEntry>,
     allowed_tools: BTreeSet<String>,
 }
@@ -4051,7 +4343,6 @@ impl ProviderRuntimeClient {
             }
         }
         Ok(Self {
-            runtime: tokio::runtime::Runtime::new().map_err(|error| error.to_string())?,
             chain,
             allowed_tools,
         })
@@ -4091,7 +4382,6 @@ impl ApiClient for ProviderRuntimeClient {
             (!request.system_prompt.is_empty()).then(|| request.system_prompt.join("\n\n"));
         let tool_choice = (!self.allowed_tools.is_empty()).then_some(ToolChoice::Auto);
 
-        let runtime = &self.runtime;
         let chain = &self.chain;
         let mut last_error: Option<ApiError> = None;
         for (index, entry) in chain.iter().enumerate() {
@@ -4106,7 +4396,10 @@ impl ApiClient for ProviderRuntimeClient {
                 ..Default::default()
             };
 
-            let attempt = runtime.block_on(stream_with_provider(&entry.client, &message_request));
+            let attempt = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(stream_with_provider(&entry.client, &message_request))
+            });
             match attempt {
                 Ok(events) => return Ok(events),
                 Err(error) if error.is_retryable() && index + 1 < chain.len() => {
@@ -4115,6 +4408,20 @@ impl ApiClient for ProviderRuntimeClient {
                         entry.model
                     );
                     last_error = Some(error);
+                }
+                Err(ApiError::RetriesExhausted {
+                    attempts,
+                    last_error: boxed_error,
+                }) if index + 1 < chain.len() => {
+                    let err_string = boxed_error.to_string();
+                    eprintln!(
+                        "provider {} retries exhausted ({err_string}), falling back to secondary",
+                        entry.model
+                    );
+                    last_error = Some(ApiError::RetriesExhausted {
+                        attempts,
+                        last_error: boxed_error,
+                    });
                 }
                 Err(error) => return Err(RuntimeError::new(error.to_string())),
             }
@@ -8746,6 +9053,12 @@ printf 'pwsh:%s' "$1"
             commit_policy: "single commit".to_string(),
             reporting_contract: "print build/test result and sha".to_string(),
             escalation_policy: "manual escalation".to_string(),
+            context: String::new(),
+            goal: String::new(),
+            expected_schema: serde_json::Value::Null,
+            reasoning_effort: None,
+            job_id: None,
+            worker_id: None,
         })
         .expect("task packet should create a task");
 
@@ -8859,4 +9172,97 @@ printf 'pwsh:%s' "$1"
             .into_bytes()
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct AuditFinancialMetricsInput {
+    timeframe: String,
+}
+
+fn run_audit_financial_metrics(input: &AuditFinancialMetricsInput) -> Result<String, String> {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(crate::financial_ops::audit_financial_metrics(
+            &input.timeframe,
+        ))
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Deserialize)]
+struct SpawnSubAgentInput {
+    role: String,
+    task: String,
+    parent_worker_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CheckSwarmStatusInput {
+    parent_job_id: String,
+}
+
+fn run_spawn_sub_agent(input: &SpawnSubAgentInput) -> Result<String, String> {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(crate::swarm_ops::spawn_sub_agent(
+            &input.role,
+            &input.task,
+            &input.parent_worker_id,
+        ))
+    })
+    .map_err(|e| e.to_string())
+}
+
+fn run_check_swarm_status(input: &CheckSwarmStatusInput) -> Result<String, String> {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current()
+            .block_on(crate::swarm_ops::check_swarm_status(&input.parent_job_id))
+    })
+    .map(|res| serde_json::to_string(&res).unwrap_or_default())
+    .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Deserialize)]
+struct IngestToKnowledgeBaseInput {
+    source_type: String,
+    uri: String,
+    #[serde(default)]
+    metadata: Value,
+}
+
+fn run_ingest_to_knowledge_base(input: &IngestToKnowledgeBaseInput) -> Result<String, String> {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(crate::ingest_ops::ingest_to_knowledge_base(
+            &input.source_type,
+            &input.uri,
+            input.metadata.clone(),
+        ))
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Deserialize)]
+struct ExecuteRemoteCommandInput {
+    target_server: String,
+    command: String,
+}
+
+fn run_execute_remote_command(input: &ExecuteRemoteCommandInput) -> Result<String, String> {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async {
+            // First fetch the token from vault
+            let ssh_token = match crate::axim_vault::fetch_temporal_credential("teleport_ssh").await
+            {
+                Ok(token) => token,
+                Err(e) => return Err(e.to_string()),
+            };
+
+            // Then pass it down to remote execution wrapper
+            runtime::remote::execute_remote_command(
+                &input.target_server,
+                &input.command,
+                &ssh_token,
+            )
+            .await
+            .map_err(|e| e.to_string())
+        })
+    })
 }

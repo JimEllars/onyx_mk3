@@ -89,9 +89,30 @@ fn global_task_registry() -> &'static TaskRegistry {
 
 pub fn register_daily_sync_handler() {
     use runtime::team_cron_registry::DAILY_SYNC_HANDLER;
+    use runtime::team_cron_registry::PREDICTIVE_ANALYSIS_HANDLER;
     let _ = DAILY_SYNC_HANDLER.set(Box::new(|update: &str| {
         let update = update.to_string();
         Box::pin(async move { crate::executive_sync::run_daily_department_sync(&update).await })
+    }));
+
+    let _ = PREDICTIVE_ANALYSIS_HANDLER.set(Box::new(|| {
+        Box::pin(async move {
+            match crate::predictive_ops::analyze_fleet_degradation().await {
+                Ok(degraded_apps) => {
+                    for app in degraded_apps {
+                        let _ = crate::support_ops::create_preventative_maintenance_ticket(
+                            &app.app_id,
+                            &format!("Preemptive Warning: Latency: {}ms, Errors: {}", app.latency_ms, app.error_count)
+                        ).await;
+                    }
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("Predictive analysis failed: {e}");
+                    Err(format!("Predictive analysis failed: {e}"))
+                }
+            }
+        })
     }));
 }
 
