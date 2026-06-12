@@ -74,6 +74,7 @@ pub struct AutoDraftWhisper {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SupportTriageResponse {
+    pub resolution_state: String,
     pub incident_id: Option<String>,
     pub confidence_score: f64,
     pub investigation_panel: OnyxInvestigationPanel,
@@ -295,7 +296,10 @@ impl MicroProgram for SupportTriage {
             None
         };
 
+        let resolution_state = if confidence_score >= 0.85 { "Deterministic Auto-Heal Staged".to_string() } else { "Tier 4 Action Handoff Routing".to_string() };
+
         let response = SupportTriageResponse {
+            resolution_state,
             incident_id: diagnostic_log.incident_id,
             confidence_score,
             investigation_panel,
