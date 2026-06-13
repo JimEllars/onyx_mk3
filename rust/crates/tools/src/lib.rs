@@ -102,8 +102,12 @@ pub fn register_daily_sync_handler() {
                     for app in degraded_apps {
                         let _ = crate::support_ops::create_preventative_maintenance_ticket(
                             &app.app_id,
-                            &format!("Preemptive Warning: Latency: {}ms, Errors: {}", app.latency_ms, app.error_count)
-                        ).await;
+                            &format!(
+                                "Preemptive Warning: Latency: {}ms, Errors: {}",
+                                app.latency_ms, app.error_count
+                            ),
+                        )
+                        .await;
                     }
                     Ok(())
                 }

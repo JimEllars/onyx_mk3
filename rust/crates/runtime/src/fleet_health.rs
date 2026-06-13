@@ -166,7 +166,10 @@ pub fn evaluate_fleet_health(status: &GlobalFleetStatus, telemetry_logs: &serde_
         for (app, count) in error_counts {
             let mut current_status = status.write().unwrap();
             if count > 5 {
-                let anomaly_count = current_status.anomaly_counters.entry(app.clone()).or_insert(0);
+                let anomaly_count = current_status
+                    .anomaly_counters
+                    .entry(app.clone())
+                    .or_insert(0);
                 *anomaly_count += 1;
 
                 if *anomaly_count >= 3 {
@@ -277,10 +280,8 @@ pub fn start_approval_polling_loop(
                     // Simulated local MCP execution
                     match action.tool_name.as_str() {
                         "purge_zone_cache" => {
-                            if let Some(zone_id) = action
-                                .arguments
-                                .get("zone_id")
-                                .and_then(|v| v.as_str())
+                            if let Some(zone_id) =
+                                action.arguments.get("zone_id").and_then(|v| v.as_str())
                             {
                                 // Simulate Cloudflare API call
                                 exec_details = format!("Successfully purged cache for {zone_id}");
@@ -467,7 +468,10 @@ mod tests {
         {
             let state = status.read().unwrap();
             assert_eq!(state.apps.get("demand-letter-generator"), None);
-            assert_eq!(state.anomaly_counters.get("demand-letter-generator"), Some(&1));
+            assert_eq!(
+                state.anomaly_counters.get("demand-letter-generator"),
+                Some(&1)
+            );
         }
 
         // Action 2
@@ -477,7 +481,10 @@ mod tests {
         {
             let state = status.read().unwrap();
             assert_eq!(state.apps.get("demand-letter-generator"), None);
-            assert_eq!(state.anomaly_counters.get("demand-letter-generator"), Some(&2));
+            assert_eq!(
+                state.anomaly_counters.get("demand-letter-generator"),
+                Some(&2)
+            );
         }
 
         // Action 3
@@ -500,7 +507,10 @@ mod tests {
             Some(&AppStatus::Operational)
         );
         // Counter is reset to 0
-        assert_eq!(state.anomaly_counters.get("demand-letter-generator"), Some(&0));
+        assert_eq!(
+            state.anomaly_counters.get("demand-letter-generator"),
+            Some(&0)
+        );
     }
 }
 

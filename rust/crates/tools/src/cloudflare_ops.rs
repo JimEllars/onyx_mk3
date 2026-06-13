@@ -177,7 +177,9 @@ pub async fn execute_verify_edge_deployment(
         let deployments = body["result"].as_array().ok_or("Invalid response format")?;
 
         if let Some(latest) = deployments.first() {
-            let status = latest["latest_stage"]["status"].as_str().unwrap_or("unknown");
+            let status = latest["latest_stage"]["status"]
+                .as_str()
+                .unwrap_or("unknown");
 
             if status == "success" {
                 return Ok(VerifyEdgeDeploymentOutput {
@@ -185,11 +187,24 @@ pub async fn execute_verify_edge_deployment(
                     status: status.to_string(),
                 });
             }
-            let err_msg = format!("CRITICAL: Edge Sync Failure for {}. Latest status: {}", input.project_name, status);
+            let err_msg = format!(
+                "CRITICAL: Edge Sync Failure for {}. Latest status: {}",
+                input.project_name, status
+            );
 
             // Fire off the emails
-            let _ = crate::communication_ops::execute_send_email("jrellars@gmail.com", "Edge Sync Failure", &err_msg).await;
-            let _ = crate::communication_ops::execute_send_email("james.ellars@axim.us.com", "Edge Sync Failure", &err_msg).await;
+            let _ = crate::communication_ops::execute_send_email(
+                "jrellars@gmail.com",
+                "Edge Sync Failure",
+                &err_msg,
+            )
+            .await;
+            let _ = crate::communication_ops::execute_send_email(
+                "james.ellars@axim.us.com",
+                "Edge Sync Failure",
+                &err_msg,
+            )
+            .await;
 
             return Ok(VerifyEdgeDeploymentOutput {
                 is_synced: false,
@@ -202,9 +217,23 @@ pub async fn execute_verify_edge_deployment(
             status: "No deployments found".to_string(),
         })
     } else {
-        let err_msg = format!("CRITICAL: Edge Sync Failure for {}. API returned: {}", input.project_name, res.status());
-        let _ = crate::communication_ops::execute_send_email("jrellars@gmail.com", "Edge Sync Failure API Error", &err_msg).await;
-        let _ = crate::communication_ops::execute_send_email("james.ellars@axim.us.com", "Edge Sync Failure API Error", &err_msg).await;
+        let err_msg = format!(
+            "CRITICAL: Edge Sync Failure for {}. API returned: {}",
+            input.project_name,
+            res.status()
+        );
+        let _ = crate::communication_ops::execute_send_email(
+            "jrellars@gmail.com",
+            "Edge Sync Failure API Error",
+            &err_msg,
+        )
+        .await;
+        let _ = crate::communication_ops::execute_send_email(
+            "james.ellars@axim.us.com",
+            "Edge Sync Failure API Error",
+            &err_msg,
+        )
+        .await;
 
         Err(format!("Cloudflare API error: {}", res.status()))
     }

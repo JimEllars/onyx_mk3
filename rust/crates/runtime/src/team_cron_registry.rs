@@ -27,7 +27,8 @@ pub static DAILY_SYNC_HANDLER: std::sync::OnceLock<DailySyncCallback> = std::syn
 pub type PredictiveAnalysisCallback =
     Box<dyn Fn() -> Pin<Box<dyn Future<Output = Result<(), String>> + Send>> + Send + Sync>;
 
-pub static PREDICTIVE_ANALYSIS_HANDLER: std::sync::OnceLock<PredictiveAnalysisCallback> = std::sync::OnceLock::new();
+pub static PREDICTIVE_ANALYSIS_HANDLER: std::sync::OnceLock<PredictiveAnalysisCallback> =
+    std::sync::OnceLock::new();
 
 /// The Background "Tick" Architecture for Onyx Overwatch Tasks
 ///
