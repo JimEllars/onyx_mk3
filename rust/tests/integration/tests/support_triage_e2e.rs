@@ -29,8 +29,7 @@ async fn test_support_triage_hitl_handoff() {
     });
 
     assert_eq!(
-        handoff_payload["resolution_state"],
-        "Tier 4 Action Handoff",
+        handoff_payload["resolution_state"], "Tier 4 Action Handoff",
         "Must flag as Tier 4 Action Handoff when similarity is low"
     );
 
@@ -50,8 +49,7 @@ async fn test_support_triage_deterministic_heal() {
     });
 
     assert_eq!(
-        handoff_payload["resolution_state"],
-        "Deterministic Auto-Heal",
+        handoff_payload["resolution_state"], "Deterministic Auto-Heal",
         "Must flag as Deterministic Auto-Heal when similarity is high"
     );
 }

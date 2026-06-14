@@ -17,8 +17,8 @@ fn test_github_webhook_signature_verification() {
 
     let payload_str = payload.to_string();
 
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .expect("HMAC can take key of any size");
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take key of any size");
 
     mac.update(payload_str.as_bytes());
     let result = mac.finalize();
@@ -52,7 +52,8 @@ async fn test_customer_leads_decryption_simulation() {
         "timestamp": "2026-06-02T21:05:14Z"
     });
 
-    let is_valid_envelope = payload.get("encrypted_payload")
+    let is_valid_envelope = payload
+        .get("encrypted_payload")
         .and_then(|p| p.get("iv"))
         .is_some();
 
