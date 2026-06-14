@@ -102,8 +102,12 @@ pub fn register_daily_sync_handler() {
                     for app in degraded_apps {
                         let _ = crate::support_ops::create_preventative_maintenance_ticket(
                             &app.app_id,
-                            &format!("Preemptive Warning: Latency: {}ms, Errors: {}", app.latency_ms, app.error_count)
-                        ).await;
+                            &format!(
+                                "Preemptive Warning: Latency: {}ms, Errors: {}",
+                                app.latency_ms, app.error_count
+                            ),
+                        )
+                        .await;
                     }
                     Ok(())
                 }
@@ -1697,6 +1701,15 @@ fn execute_tool_with_enforcer(
             from_value::<cloudflare_ops::TriggerPagesDeploymentInput>(input).and_then(|i| {
                 tokio::runtime::Handle::current()
                     .block_on(cloudflare_ops::execute_trigger_pages_deployment(i))
+                    .map_err(|e| e.to_string())
+                    .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
+            })
+        }
+        "verify_edge_deployment" => {
+            maybe_enforce_permission_check(enforcer, name, input)?;
+            from_value::<cloudflare_ops::VerifyEdgeDeploymentInput>(input).and_then(|i| {
+                tokio::runtime::Handle::current()
+                    .block_on(cloudflare_ops::execute_verify_edge_deployment(i))
                     .map_err(|e| e.to_string())
                     .and_then(|o| serde_json::to_string(&o).map_err(|e| e.to_string()))
             })

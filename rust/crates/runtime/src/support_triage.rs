@@ -66,8 +66,12 @@ pub fn mask_secrets(payload_json: &mut serde_json::Value) {
         for (key, value) in obj.iter_mut() {
             if value.is_string() {
                 let v_str = value.as_str().unwrap();
-                if key == "STRIPE_SECRET_KEY" || v_str.contains("sk_test_") || v_str.contains("sk_live_") {
-                    *value = serde_json::Value::String("sk_test_mock_axim_cowork_string".to_string());
+                if key == "STRIPE_SECRET_KEY"
+                    || v_str.contains("sk_test_")
+                    || v_str.contains("sk_live_")
+                {
+                    *value =
+                        serde_json::Value::String("sk_test_mock_axim_cowork_string".to_string());
                 } else if key == "SUPABASE_SERVICE_ROLE_KEY" || v_str.starts_with("eyJ") {
                     *value = serde_json::Value::String("sb_mock_service_role".to_string());
                 }
@@ -89,9 +93,18 @@ mod tests {
 
     #[test]
     fn test_similarity_evaluation() {
-        assert_eq!(evaluate_similarity(0.90), IncidentRoute::DeterministicAutoHeal);
-        assert_eq!(evaluate_similarity(0.85), IncidentRoute::DeterministicAutoHeal);
-        assert_eq!(evaluate_similarity(0.84), IncidentRoute::Tier4ActionLayerStaging);
+        assert_eq!(
+            evaluate_similarity(0.90),
+            IncidentRoute::DeterministicAutoHeal
+        );
+        assert_eq!(
+            evaluate_similarity(0.85),
+            IncidentRoute::DeterministicAutoHeal
+        );
+        assert_eq!(
+            evaluate_similarity(0.84),
+            IncidentRoute::Tier4ActionLayerStaging
+        );
     }
 
     #[test]
@@ -108,8 +121,14 @@ mod tests {
         mask_secrets(&mut payload);
 
         let keys = payload["keys"].as_object().unwrap();
-        assert_eq!(keys["STRIPE_SECRET_KEY"].as_str().unwrap(), "sk_test_mock_axim_cowork_string");
-        assert_eq!(keys["SUPABASE_SERVICE_ROLE_KEY"].as_str().unwrap(), "sb_mock_service_role");
+        assert_eq!(
+            keys["STRIPE_SECRET_KEY"].as_str().unwrap(),
+            "sk_test_mock_axim_cowork_string"
+        );
+        assert_eq!(
+            keys["SUPABASE_SERVICE_ROLE_KEY"].as_str().unwrap(),
+            "sb_mock_service_role"
+        );
         assert_eq!(keys["other"].as_str().unwrap(), "normal value");
     }
 }

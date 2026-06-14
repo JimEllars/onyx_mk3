@@ -296,7 +296,11 @@ impl MicroProgram for SupportTriage {
             None
         };
 
-        let resolution_state = if confidence_score >= 0.85 { "Deterministic Auto-Heal Staged".to_string() } else { "Tier 4 Action Handoff Routing".to_string() };
+        let resolution_state = if confidence_score >= 0.85 {
+            "Deterministic Auto-Heal Staged".to_string()
+        } else {
+            "Tier 4 Action Handoff Routing".to_string()
+        };
 
         let response = SupportTriageResponse {
             resolution_state,

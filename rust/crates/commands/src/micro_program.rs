@@ -59,10 +59,15 @@ pub trait MicroProgramAsync: MicroProgram {
                 println!("Successfully registered INIT state for job {job_id}");
             }
             Ok(res) => {
-                return Err(format!("Failed to register INIT state for job {job_id}: HTTP {}", res.status()));
+                return Err(format!(
+                    "Failed to register INIT state for job {job_id}: HTTP {}",
+                    res.status()
+                ));
             }
             Err(e) => {
-                return Err(format!("Failed to register INIT state for job {job_id}: {e}"));
+                return Err(format!(
+                    "Failed to register INIT state for job {job_id}: {e}"
+                ));
             }
         }
 
