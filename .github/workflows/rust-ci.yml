@@ -106,3 +106,17 @@ jobs:
           workspaces: rust -> target
       - name: Run workspace clippy
         run: cargo clippy --workspace
+
+  test-integration:
+    name: cargo test --test '*' --features integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+      - name: Run integration tests
+        run: cargo test --package integration_tests --features integration
