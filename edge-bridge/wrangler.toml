@@ -5,8 +5,3 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 CORE_INGEST_URL = "https://api.axim.us.com/v1/functions/telemetry-ingest"
-
-
-[[kv_namespaces]]
-binding = "ONYX_STATE"
-id = "dummy_id_for_local_dev"
