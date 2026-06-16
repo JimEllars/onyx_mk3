@@ -13,6 +13,8 @@ hex = "0.4"
 serde = { version = "1", features = ["derive"] }
 onyx = { path = "../../crates/onyx" }
 runtime = { path = "../../crates/runtime" }
+axum = "0.7"
+tower = "0.5"
 
 [features]
 integration = []

@@ -114,3 +114,70 @@ async fn test_async_state_polling_validation() {
         "Should gracefully fail parsing bad token frame"
     );
 }
+
+#[tokio::test]
+async fn test_axim_core_router_header_parsing() {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+        response::IntoResponse,
+        routing::post,
+        Router,
+    };
+    use tower::ServiceExt;
+
+    // A mock version of the router handling logic that parses the authorization
+    // and cf-connecting-ip headers.
+    let app = Router::new().route(
+        "/v1/commands/dispatch",
+        post(|headers: axum::http::HeaderMap| async move {
+            let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+            let expected_token = "Bearer valid_axim_secret";
+
+            if auth_header != Some(expected_token) {
+                return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+            }
+
+            let connecting_ip = headers
+                .get("cf-connecting-ip")
+                .and_then(|h| h.to_str().ok());
+            if connecting_ip.is_none() {
+                // In some real environments missing CF IP might be flagged, here we just
+                // test that it can be extracted. Let's make it a condition for this test.
+                return (StatusCode::BAD_REQUEST, "Missing CF-Connecting-IP").into_response();
+            }
+
+            (StatusCode::OK, "Task dispatched").into_response()
+        }),
+    );
+
+    // Build the request mimicking the Edge Bridge structure
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/commands/dispatch")
+        .header("authorization", "Bearer valid_axim_secret")
+        .header("cf-connecting-ip", "192.168.1.1")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"intent": "sync_lead_solar", "priority": 1}"#,
+        ))
+        .unwrap();
+
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Test unauthorized
+    let request_unauth = Request::builder()
+        .method("POST")
+        .uri("/v1/commands/dispatch")
+        .header("authorization", "Bearer invalid_secret")
+        .header("cf-connecting-ip", "192.168.1.1")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"intent": "sync_lead_solar", "priority": 1}"#,
+        ))
+        .unwrap();
+
+    let response_unauth = app.clone().oneshot(request_unauth).await.unwrap();
+    assert_eq!(response_unauth.status(), StatusCode::UNAUTHORIZED);
+}

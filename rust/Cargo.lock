@@ -1053,6 +1053,7 @@ dependencies = [
 name = "integration_tests"
 version = "0.1.0"
 dependencies = [
+ "axum 0.7.9",
  "hex",
  "hmac",
  "onyx",
@@ -1062,6 +1063,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tokio",
+ "tower",
 ]
 
 [[package]]
