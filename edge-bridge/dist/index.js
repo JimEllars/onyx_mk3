@@ -113,7 +113,8 @@ Context: ${typeof context === "object" ? JSON.stringify(context) : context || "N
             model: chatModel,
             max_tokens: 1024,
             system: onyxSystemPrompt,
-            messages: [{ role: "user", content: command }]
+            messages: [{ role: "user", content: command }],
+            stream: true
           })
         });
         if (!claudeResponse.ok) {
@@ -124,31 +125,8 @@ Context: ${typeof context === "object" ? JSON.stringify(context) : context || "N
             headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
           });
         }
-        const llmData = await claudeResponse.json();
-        if (!llmData.content || llmData.content.length === 0) {
-          return new Response(JSON.stringify({ error: "Empty response from LLM" }), {
-            status: 502,
-            headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
-          });
-        }
-        const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
-        ctx.waitUntil(fetchWithRetry(ingestUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "telemetry_interaction",
-            provider: "anthropic",
-            model: chatModel,
-            tokens: llmData.usage || {},
-            timestamp: (/* @__PURE__ */ new Date()).toISOString()
-          })
-        }).catch((e) => console.error("Failed to emit chat telemetry", e)));
-        return new Response(JSON.stringify({
-          status: "success",
-          response: llmData.content[0].text,
-          timestamp: (/* @__PURE__ */ new Date()).toISOString()
-        }), {
-          headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+        return new Response(claudeResponse.body, {
+          headers: { ...getCorsHeaders(request), "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" }
         });
       } else if (request.method === "POST" && url.pathname === "/api/v1/telemetry") {
         const authError = checkAuth(request, env);
@@ -207,7 +185,6 @@ Context: ${typeof context === "object" ? JSON.stringify(context) : context || "N
             headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
           });
         }
-        console.log(`[Playbook Trigger] High-priority alert received for service: ${payload.service} (${payload.metric})`);
         const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
         ctx.waitUntil(fetchWithRetry(ingestUrl, {
           method: "POST",
@@ -270,8 +247,26 @@ Context: ${typeof context === "object" ? JSON.stringify(context) : context || "N
             return new Response("Invalid GitHub signature", { status: 401, headers: getCorsHeaders(request) });
           }
         } else if (wpSignature) {
-          if (wpSignature !== env.WP_WEBHOOK_SECRET) {
-            return new Response("Invalid signature", { status: 401, headers: getCorsHeaders(request) });
+          if (!env.WP_WEBHOOK_SECRET) {
+            return new Response("Webhook secret not configured", { status: 500, headers: getCorsHeaders(request) });
+          }
+          const encoder = new TextEncoder();
+          const key = await crypto.subtle.importKey(
+            "raw",
+            encoder.encode(env.WP_WEBHOOK_SECRET),
+            { name: "HMAC", hash: "SHA-256" },
+            false,
+            ["sign", "verify"]
+          );
+          const signatureBuffer = await crypto.subtle.sign(
+            "HMAC",
+            key,
+            encoder.encode(rawBody)
+          );
+          const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+          const signatureHex = signatureArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+          if (wpSignature !== signatureHex && wpSignature !== `sha256=\${signatureHex}`) {
+            return new Response("Invalid WP signature", { status: 401, headers: getCorsHeaders(request) });
           }
         } else {
           return new Response("Missing signature", { status: 401, headers: getCorsHeaders(request) });

@@ -117,9 +117,10 @@ async fn test_async_state_polling_validation() {
 
 #[tokio::test]
 async fn test_axim_core_router_header_parsing() {
-    use axum::{response::IntoResponse,
+    use axum::{
         body::Body,
         http::{Request, StatusCode},
+        response::IntoResponse,
         routing::post,
         Router,
     };
@@ -137,7 +138,9 @@ async fn test_axim_core_router_header_parsing() {
                 return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
             }
 
-            let connecting_ip = headers.get("cf-connecting-ip").and_then(|h| h.to_str().ok());
+            let connecting_ip = headers
+                .get("cf-connecting-ip")
+                .and_then(|h| h.to_str().ok());
             if connecting_ip.is_none() {
                 // In some real environments missing CF IP might be flagged, here we just
                 // test that it can be extracted. Let's make it a condition for this test.
@@ -155,7 +158,9 @@ async fn test_axim_core_router_header_parsing() {
         .header("authorization", "Bearer valid_axim_secret")
         .header("cf-connecting-ip", "192.168.1.1")
         .header("content-type", "application/json")
-        .body(Body::from(r#"{"intent": "sync_lead_solar", "priority": 1}"#))
+        .body(Body::from(
+            r#"{"intent": "sync_lead_solar", "priority": 1}"#,
+        ))
         .unwrap();
 
     let response = app.clone().oneshot(request).await.unwrap();
@@ -168,7 +173,9 @@ async fn test_axim_core_router_header_parsing() {
         .header("authorization", "Bearer invalid_secret")
         .header("cf-connecting-ip", "192.168.1.1")
         .header("content-type", "application/json")
-        .body(Body::from(r#"{"intent": "sync_lead_solar", "priority": 1}"#))
+        .body(Body::from(
+            r#"{"intent": "sync_lead_solar", "priority": 1}"#,
+        ))
         .unwrap();
 
     let response_unauth = app.clone().oneshot(request_unauth).await.unwrap();
