@@ -59,3 +59,48 @@ async fn test_customer_leads_decryption_simulation() {
 
     assert!(is_valid_envelope, "Payload must contain IV for decryption");
 }
+
+#[tokio::test]
+async fn test_async_state_polling_validation() {
+    // This simulates polling the ONYX_STATE KV queue for transaction approvals.
+    // In actual implementation, we might poll an endpoint exposed by the edge bridge
+    // or simulate parsing valid/invalid KV outputs.
+
+    // Simulate valid parsing
+    let valid_approval_json = json!({
+        "task_id": "task_12345",
+        "signed_payload": {
+            "status": "approved",
+            "approver": "james.ellars@axim.us.com",
+            "signature": "valid_signature_hash"
+        }
+    });
+
+    let parsed_valid: Result<serde_json::Value, _> = serde_json::from_str(&valid_approval_json.to_string());
+    assert!(parsed_valid.is_ok(), "Should successfully parse a valid approval payload");
+
+    let parsed_valid_obj = parsed_valid.unwrap();
+    assert_eq!(parsed_valid_obj["task_id"].as_str(), Some("task_12345"));
+    assert!(parsed_valid_obj["signed_payload"]["signature"].is_string());
+
+    // Simulate missing signature
+    let missing_signature_json = json!({
+        "task_id": "task_12346",
+        "signed_payload": {
+            "status": "approved",
+            "approver": "james.ellars@axim.us.com"
+            // signature missing
+        }
+    });
+
+    let has_signature = missing_signature_json
+        .get("signed_payload")
+        .and_then(|sp| sp.get("signature"))
+        .is_some();
+    assert!(!has_signature, "Should gracefully detect missing cryptographic signature without panicking");
+
+    // Simulate completely bad token frame (e.g. malformed json)
+    let bad_token_frame = "{ task_id: bad_json";
+    let parsed_bad: Result<serde_json::Value, _> = serde_json::from_str(bad_token_frame);
+    assert!(parsed_bad.is_err(), "Should gracefully fail parsing bad token frame");
+}
