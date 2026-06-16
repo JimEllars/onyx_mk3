@@ -369,7 +369,7 @@ export default {
 					if (wpSignature !== env.WP_WEBHOOK_SECRET) {
 						return new Response("Invalid signature", { status: 401, headers: getCorsHeaders(request) });
 					}
-			} else {
+				} else {
 					return new Response("Missing signature", { status: 401, headers: getCorsHeaders(request) });
 				}
 
