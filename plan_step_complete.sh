@@ -1,1 +1,1 @@
-echo "Tests pass completely."
+echo "Execute Pre-commit Checks complete"

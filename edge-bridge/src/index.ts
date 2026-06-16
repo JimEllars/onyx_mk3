@@ -46,6 +46,8 @@ function getCorsHeaders(request: Request) {
 async function fetchWithRetry(url: string, options: any, maxRetries = 3) {
 	let lastErr;
 	for (let i = 0; i < maxRetries; i++) {
+
+
 		try {
 			const res = await fetch(url, options);
 			if (res.ok) return res;
@@ -57,6 +59,16 @@ async function fetchWithRetry(url: string, options: any, maxRetries = 3) {
 	}
 	throw lastErr;
 }
+
+
+// Authentication Check Function
+const checkAuth = (req: Request, env: Env) => {
+	const authHeader = req.headers.get("Authorization");
+	if (!authHeader || authHeader !== `Bearer ${env.AXIM_ONYX_SECRET}`) {
+		return new Response("Unauthorized", { status: 401, headers: getCorsHeaders(req) });
+	}
+	return null;
+};
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -120,8 +132,9 @@ export default {
 				}), {
 					headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
 				});
-			} else
-			if (request.method === "POST" && url.pathname === "/api/v1/chat") {
+			} else if (request.method === "POST" && url.pathname === "/api/v1/chat") {
+				const authError = checkAuth(request, env);
+				if (authError) return authError;
 				// 3. Parse command and context
 				const { command, context } = await request.json() as { command?: string, context?: any };
 
@@ -133,9 +146,7 @@ export default {
 				}
 
 				// 4. Inject System Prompt
-				const onyxSystemPrompt = `You are Onyx mk3, the advanced AI orchestrator for AXiM Core.
-Analyze the following command and available system context. Execute the task efficiently.
-Context: ${typeof context === 'object' ? JSON.stringify(context) : context || 'None'}`;
+				const onyxSystemPrompt = `You are Onyx mk3, the advanced AI orchestrator for AXiM Core.\nAnalyze the following command and available system context. Execute the task efficiently.\nContext: ${typeof context === 'object' ? JSON.stringify(context) : context || 'None'}`;
 
 				// 5. Call Anthropic API
 				const chatModel = env.CHAT_MODEL || "claude-3-5-sonnet-20241022";
@@ -174,7 +185,7 @@ Context: ${typeof context === 'object' ? JSON.stringify(context) : context || 'N
 
 				// Emit telemetry on chat completion
 				const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
-				ctx.waitUntil(fetch(ingestUrl, {
+				ctx.waitUntil(fetchWithRetry(ingestUrl, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
@@ -196,6 +207,8 @@ Context: ${typeof context === 'object' ? JSON.stringify(context) : context || 'N
 				});
 
 			} else if (request.method === "POST" && url.pathname === "/api/v1/telemetry") {
+				const authError = checkAuth(request, env);
+				if (authError) return authError;
 				// Type definitions for Telemetry
 				interface TelemetryPayload {
 					brandId: string;
@@ -218,7 +231,7 @@ Context: ${typeof context === 'object' ? JSON.stringify(context) : context || 'N
 
 				// Forward to AXiM Core Telemetry via ctx.waitUntil
 				const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
-				ctx.waitUntil(fetch(ingestUrl, {
+				ctx.waitUntil(fetchWithRetry(ingestUrl, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ type: "telemetry", payload, timestamp: new Date().toISOString() })
@@ -232,6 +245,8 @@ Context: ${typeof context === 'object' ? JSON.stringify(context) : context || 'N
 				});
 
 			} else if (request.method === "POST" && url.pathname === "/api/approve") {
+				const authError = checkAuth(request, env);
+				if (authError) return authError;
 				// POST /api/approve endpoint to receive HITL signals from Core
 				const payload = await request.json() as { task_id?: string; signed_payload?: any };
 
@@ -249,7 +264,7 @@ Context: ${typeof context === 'object' ? JSON.stringify(context) : context || 'N
 
 				// Relay to Rust core (fire and forget)
 				const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
-				ctx.waitUntil(fetch(ingestUrl, {
+				ctx.waitUntil(fetchWithRetry(ingestUrl, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ type: "approval_relay", payload })
@@ -262,6 +277,8 @@ Context: ${typeof context === 'object' ? JSON.stringify(context) : context || 'N
 					headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
 				});
 			} else if (request.method === "POST" && url.pathname === "/api/v1/playbook/trigger") {
+				const authError = checkAuth(request, env);
+				if (authError) return authError;
 					// POST /api/v1/playbook/trigger endpoint for push-based playbook triggers from AXiM Core
 					const payload = await request.json() as { severity?: string; service?: string; metric?: string; details?: any };
 
@@ -295,6 +312,8 @@ Context: ${typeof context === 'object' ? JSON.stringify(context) : context || 'N
 						headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
 					});
 				} else if (url.pathname === "/api/approvals" && request.method === "GET") {
+				const authError = checkAuth(request, env);
+				if (authError) return authError;
 				// Read approvals from KV store
 				const approvals: any[] = [];
 				if (env.ONYX_STATE) {
