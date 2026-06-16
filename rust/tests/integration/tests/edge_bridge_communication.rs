@@ -76,8 +76,12 @@ async fn test_async_state_polling_validation() {
         }
     });
 
-    let parsed_valid: Result<serde_json::Value, _> = serde_json::from_str(&valid_approval_json.to_string());
-    assert!(parsed_valid.is_ok(), "Should successfully parse a valid approval payload");
+    let parsed_valid: Result<serde_json::Value, _> =
+        serde_json::from_str(&valid_approval_json.to_string());
+    assert!(
+        parsed_valid.is_ok(),
+        "Should successfully parse a valid approval payload"
+    );
 
     let parsed_valid_obj = parsed_valid.unwrap();
     assert_eq!(parsed_valid_obj["task_id"].as_str(), Some("task_12345"));
@@ -97,10 +101,16 @@ async fn test_async_state_polling_validation() {
         .get("signed_payload")
         .and_then(|sp| sp.get("signature"))
         .is_some();
-    assert!(!has_signature, "Should gracefully detect missing cryptographic signature without panicking");
+    assert!(
+        !has_signature,
+        "Should gracefully detect missing cryptographic signature without panicking"
+    );
 
     // Simulate completely bad token frame (e.g. malformed json)
     let bad_token_frame = "{ task_id: bad_json";
     let parsed_bad: Result<serde_json::Value, _> = serde_json::from_str(bad_token_frame);
-    assert!(parsed_bad.is_err(), "Should gracefully fail parsing bad token frame");
+    assert!(
+        parsed_bad.is_err(),
+        "Should gracefully fail parsing bad token frame"
+    );
 }
