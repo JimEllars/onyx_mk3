@@ -14,3 +14,7 @@
 - Implemented human alerting fail-safes via `execute_send_email` using `jrellars@gmail.com` and `james.ellars@axim.us.com` to notify administrators of verification failures or edge API desyncs.
 - Tested and verified async KV polling behavior simulating missing cryptographic signatures and invalid JSON using integration tests.
 - Audited the CI/CD deployment workflows in `.github/workflows/edge-bridge-sync.yml` to confirm successful paths and environment settings.
+
+## Edge Bridge Cloudflare Worker
+- When streaming Server-Sent Events (SSE) via Cloudflare Workers, do not parse the response into JSON. Pass `response.body` directly to the `Response` object with headers: `"Content-Type": "text/event-stream"`, `"Cache-Control": "no-cache"`, and `"Connection": "keep-alive"`.
+- Cloudflare Workers native `crypto.subtle` should be leveraged for `HMAC SHA-256` payload verification directly at the edge to reject invalid webhooks before they consume downstream resources or block internal queues.

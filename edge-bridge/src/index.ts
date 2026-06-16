@@ -161,7 +161,8 @@ export default {
 						model: chatModel,
 						max_tokens: 1024,
 						system: onyxSystemPrompt,
-						messages: [{ role: "user", content: command }]
+						messages: [{ role: "user", content: command }],
+						stream: true
 					})
 				});
 
@@ -174,37 +175,10 @@ export default {
 					});
 				}
 
-				const llmData = await claudeResponse.json() as any;
-
-				if (!llmData.content || llmData.content.length === 0) {
-					return new Response(JSON.stringify({ error: "Empty response from LLM" }), {
-						status: 502,
-						headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
-					});
-				}
-
-				// Emit telemetry on chat completion
-				const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
-				ctx.waitUntil(fetchWithRetry(ingestUrl, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						type: "telemetry_interaction",
-						provider: "anthropic",
-						model: chatModel,
-						tokens: llmData.usage || {},
-						timestamp: new Date().toISOString()
-					})
-				}).catch(e => console.error("Failed to emit chat telemetry", e)));
-
-				// 6. Return response in standard format
-				return new Response(JSON.stringify({
-					status: "success",
-					response: llmData.content[0].text,
-					timestamp: new Date().toISOString()
-				}), {
-					headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+				return new Response(claudeResponse.body, {
+					headers: { ...getCorsHeaders(request), "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" }
 				});
+
 
 			} else if (request.method === "POST" && url.pathname === "/api/v1/telemetry") {
 				const authError = checkAuth(request, env);
@@ -289,7 +263,6 @@ export default {
 						});
 					}
 
-					console.log(`[Playbook Trigger] High-priority alert received for service: ${payload.service} (${payload.metric})`);
 
 					const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
 
@@ -366,8 +339,30 @@ export default {
 					}
 				} else if (wpSignature) {
 					// Webhook verification for WP
-					if (wpSignature !== env.WP_WEBHOOK_SECRET) {
-						return new Response("Invalid signature", { status: 401, headers: getCorsHeaders(request) });
+					if (!env.WP_WEBHOOK_SECRET) {
+						return new Response("Webhook secret not configured", { status: 500, headers: getCorsHeaders(request) });
+					}
+
+					const encoder = new TextEncoder();
+					const key = await crypto.subtle.importKey(
+						"raw",
+						encoder.encode(env.WP_WEBHOOK_SECRET),
+						{ name: "HMAC", hash: "SHA-256" },
+						false,
+						["sign", "verify"]
+					);
+
+					const signatureBuffer = await crypto.subtle.sign(
+						"HMAC",
+						key,
+						encoder.encode(rawBody)
+					);
+
+					const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+					const signatureHex = signatureArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+					if (wpSignature !== signatureHex && wpSignature !== `sha256=\${signatureHex}`) {
+						return new Response("Invalid WP signature", { status: 401, headers: getCorsHeaders(request) });
 					}
 				} else {
 					return new Response("Missing signature", { status: 401, headers: getCorsHeaders(request) });
