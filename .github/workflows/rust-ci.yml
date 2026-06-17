@@ -89,6 +89,9 @@ jobs:
         with:
           workspaces: rust -> target
       - name: Run workspace tests
+        env:
+          CLOUDFLARE_API_TOKEN: "dummy"
+          CLOUDFLARE_ACCOUNT_ID: "dummy"
         run: cargo test --workspace
 
   clippy-workspace:
@@ -119,4 +122,7 @@ jobs:
         with:
           workspaces: rust -> target
       - name: Run integration tests
+        env:
+          CLOUDFLARE_API_TOKEN: "dummy"
+          CLOUDFLARE_ACCOUNT_ID: "dummy"
         run: cargo test --package integration_tests --features integration

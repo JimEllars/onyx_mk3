@@ -25,6 +25,8 @@ export interface Env {
 
 	AXIM_ONYX_SECRET: string;
 	ANTHROPIC_API_KEY: string;
+	CLOUDFLARE_API_TOKEN?: string;
+	CLOUDFLARE_ACCOUNT_ID?: string;
 	CORE_INGEST_URL: string;
 	GITHUB_WEBHOOK_SECRET: string;
 	WP_WEBHOOK_SECRET: string;
