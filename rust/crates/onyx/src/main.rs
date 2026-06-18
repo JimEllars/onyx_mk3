@@ -2292,6 +2292,7 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
             .route("/tasks", post(ingest_task_packet))
             .route("/events", get(stream_events))
             .route("/health", get(health_check))
+            .fallback_service(tower_http::services::ServeDir::new("static"))
             .with_state(app_state);
 
         let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;

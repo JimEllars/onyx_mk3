@@ -555,3 +555,20 @@ mod tests {
     }
 }
 pub mod sync;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FleetHealthMetrics {
+    pub active_nodes: u32,
+    pub degraded_nodes: u32,
+    pub offline_nodes: u32,
+    pub global_error_rate: f32,
+    pub avg_latency_ms: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EdgeBridgeStatus {
+    pub is_connected: bool,
+    pub last_heartbeat: u64,
+    pub sync_status: String,
+    pub pending_webhooks: u32,
+}
