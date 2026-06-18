@@ -1430,6 +1430,7 @@ fn provider_label(kind: ProviderKind) -> &'static str {
         ProviderKind::Xai => "xai",
         ProviderKind::OpenAi => "openai",
         ProviderKind::Gemini => "gemini",
+        ProviderKind::Cloudflare => "cloudflare",
     }
 }
 
@@ -7484,7 +7485,10 @@ impl AnthropicRuntimeClient {
                     .with_prompt_cache(PromptCache::new(session_id));
                 ApiProviderClient::Anthropic(inner)
             }
-            ProviderKind::Xai | ProviderKind::OpenAi | ProviderKind::Gemini => {
+            ProviderKind::Xai
+            | ProviderKind::OpenAi
+            | ProviderKind::Gemini
+            | ProviderKind::Cloudflare => {
                 // The api crate's `ProviderClient::from_model_with_anthropic_auth`
                 // with `None` for the anthropic auth routes via
                 // `detect_provider_kind` and builds an

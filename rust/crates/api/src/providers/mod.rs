@@ -8,6 +8,7 @@ use crate::error::ApiError;
 use crate::types::{MessageRequest, MessageResponse};
 
 pub mod anthropic;
+pub mod cloudflare;
 pub mod gemini;
 pub mod openai_compat;
 
@@ -35,6 +36,7 @@ pub enum ProviderKind {
     Xai,
     OpenAi,
     Gemini,
+    Cloudflare,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,7 +149,7 @@ pub fn resolve_model_alias(model: &str) -> String {
                     "grok-2" => "grok-2",
                     _ => trimmed,
                 },
-                ProviderKind::OpenAi | ProviderKind::Gemini => trimmed,
+                ProviderKind::OpenAi | ProviderKind::Gemini | ProviderKind::Cloudflare => trimmed,
             })
         })
         .map_or_else(|| trimmed.to_string(), ToOwned::to_owned)
