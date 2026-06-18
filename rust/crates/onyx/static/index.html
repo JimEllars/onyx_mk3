@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AXiM Onyx Mk3 Dashboard</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --text: #f8fafc;
+            --primary: #3b82f6;
+            --panel-bg: #1e293b;
+            --border: #334155;
+            --accent: #10b981;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            height: 100vh;
+            box-sizing: border-box;
+            gap: 20px;
+        }
+        .dashboard-container {
+            display: flex;
+            width: 100%;
+            gap: 20px;
+        }
+        .chat-panel {
+            flex: 2;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .telemetry-panel {
+            flex: 1;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .header {
+            padding: 15px;
+            border-bottom: 1px solid var(--border);
+            font-weight: bold;
+            font-size: 1.2em;
+            background: rgba(0,0,0,0.2);
+        }
+        .chat-history {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .message {
+            padding: 10px 15px;
+            border-radius: 6px;
+            max-width: 80%;
+        }
+        .user-message {
+            background: var(--primary);
+            align-self: flex-end;
+        }
+        .ai-message {
+            background: var(--border);
+            align-self: flex-start;
+        }
+        .chat-input-area {
+            display: flex;
+            padding: 15px;
+            border-top: 1px solid var(--border);
+            gap: 10px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            outline: none;
+        }
+        button {
+            padding: 10px 20px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .metric-card {
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+        }
+        .metric-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: var(--accent);
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="chat-panel">
+            <div class="header">Onyx Mk3 Terminal</div>
+            <div class="chat-history" id="chatHistory">
+                <div class="message ai-message">Onyx Mk3 Online. Ready for prompt.</div>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="Enter command..." />
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+        <div class="telemetry-panel">
+            <div class="header">Fleet Telemetry</div>
+            <div class="metric-card">
+                <div>Active Nodes</div>
+                <div class="metric-value" id="activeNodes">--</div>
+            </div>
+            <div class="metric-card">
+                <div>Global Error Rate</div>
+                <div class="metric-value" id="errorRate">--%</div>
+            </div>
+            <div class="metric-card">
+                <div>Edge Bridge Status</div>
+                <div class="metric-value" id="bridgeStatus" style="color: #3b82f6;">Connected</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ws = new WebSocket(`ws://${window.location.host}/ws/chat`);
+        const chatHistory = document.getElementById('chatHistory');
+        const input = document.getElementById('chatInput');
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'text') {
+                appendMessage('ai-message', data.content);
+            } else if (data.type === 'telemetry') {
+                document.getElementById('activeNodes').innerText = data.activeNodes || '12';
+                document.getElementById('errorRate').innerText = (data.errorRate || '0.00') + '%';
+            }
+        };
+
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        function sendMessage() {
+            const text = input.value.trim();
+            if (!text) return;
+            appendMessage('user-message', text);
+            ws.send(JSON.stringify({ message: text }));
+            input.value = '';
+        }
+
+        function appendMessage(className, text) {
+            const div = document.createElement('div');
+            div.className = `message ${className}`;
+            div.innerText = text;
+            chatHistory.appendChild(div);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+    </script>
+</body>
+</html>

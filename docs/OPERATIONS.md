@@ -96,3 +96,7 @@ Source: NEXT_STEPS_PLAN.md
 
 ## Conclusion
 The backend is stable. The edge infrastructure is scaffolded. We must shift focus towards consuming these services safely in a multi-tenant frontend architecture.
+
+## Technical Debt: Circuit Breaker Integration
+- **Immediate Priority:** The `circuit_breaker.rs` logic has been successfully scaffolded inside the API crate to provide exponential backoff and graceful degradation for external LLM requests. However, wiring this logic into the individual provider clients (`Anthropic`, `OpenAI`, `Gemini`, `Cloudflare`) was delayed to prevent compiler conflicts caused by regex-based replacements during Phase 25.
+- **Next Steps:** In the next execution thread, we must surgically integrate the `CircuitBreaker` instances into each provider's `send_with_retry` and message streaming loops utilizing AST-aware edits rather than aggressive text replacements to avoid duplicate field definition conflicts.
