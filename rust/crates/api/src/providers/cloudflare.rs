@@ -4,9 +4,7 @@ use serde_json::{json, Value};
 
 use crate::error::ApiError;
 use crate::http_client::build_http_client_or_default;
-use crate::types::{
-    MessageRequest, MessageResponse, Usage,
-};
+use crate::types::{MessageRequest, MessageResponse, Usage};
 use crate::MessageStream;
 
 use super::{Provider, ProviderFuture};
@@ -39,15 +37,11 @@ impl CloudflareProvider {
 
     #[allow(dead_code)]
     pub fn from_env() -> Result<Self, ApiError> {
-        let api_key = std::env::var("CLOUDFLARE_API_TOKEN").map_err(|_| ApiError::missing_credentials(
-            "Cloudflare",
-            &["CLOUDFLARE_API_TOKEN"],
-        ))?;
+        let api_key = std::env::var("CLOUDFLARE_API_TOKEN")
+            .map_err(|_| ApiError::missing_credentials("Cloudflare", &["CLOUDFLARE_API_TOKEN"]))?;
 
-        let account_id = std::env::var("CLOUDFLARE_ACCOUNT_ID").map_err(|_| ApiError::missing_credentials(
-            "Cloudflare",
-            &["CLOUDFLARE_ACCOUNT_ID"],
-        ))?;
+        let account_id = std::env::var("CLOUDFLARE_ACCOUNT_ID")
+            .map_err(|_| ApiError::missing_credentials("Cloudflare", &["CLOUDFLARE_ACCOUNT_ID"]))?;
 
         Ok(Self::new(api_key, account_id))
     }
@@ -123,21 +117,35 @@ impl Provider for CloudflareProvider {
                 .map_err(|e| ApiError::json_deserialize("Cloudflare", &model, &body_text, e))?;
 
             // Expected format: { "result": { "response": "..." }, "success": true }
-            let response_text = data.get("result")
+            let response_text = data
+                .get("result")
                 .and_then(|r| r.get("response"))
                 .and_then(|r| r.as_str())
                 .unwrap_or("")
                 .to_string();
 
             Ok(MessageResponse {
-                id: format!("msg_{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis()),
+                id: format!(
+                    "msg_{}",
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis()
+                ),
                 kind: "message".to_string(),
                 role: "assistant".to_string(),
-                content: vec![crate::types::OutputContentBlock::Text { text: response_text }],
+                content: vec![crate::types::OutputContentBlock::Text {
+                    text: response_text,
+                }],
                 model: model.clone(),
                 stop_reason: Some("stop".to_string()),
                 stop_sequence: None,
-                usage: Usage { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+                usage: Usage {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                },
                 request_id: None,
             })
         })
