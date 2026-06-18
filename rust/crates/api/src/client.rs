@@ -2,6 +2,8 @@ use crate::error::ApiError;
 use crate::prompt_cache::{PromptCache, PromptCacheRecord, PromptCacheStats};
 use crate::providers::anthropic::{self, AnthropicClient, AuthSource};
 use crate::providers::gemini::{self, GeminiClient};
+use crate::providers::cloudflare::CloudflareProvider;
+use crate::providers::Provider;
 use crate::providers::openai_compat::{self, OpenAiCompatClient, OpenAiCompatConfig};
 use crate::providers::{self, ProviderKind};
 use crate::types::{MessageRequest, MessageResponse, StreamEvent};
@@ -13,6 +15,7 @@ pub enum ProviderClient {
     Xai(OpenAiCompatClient),
     OpenAi(OpenAiCompatClient),
     Gemini(GeminiClient),
+    Cloudflare(CloudflareProvider),
 }
 
 impl ProviderClient {
@@ -52,6 +55,7 @@ impl ProviderClient {
                 Ok(Self::OpenAi(OpenAiCompatClient::from_env(config)?))
             }
             ProviderKind::Gemini => Ok(Self::Gemini(GeminiClient::from_env()?)),
+            ProviderKind::Cloudflare => Ok(Self::Cloudflare(CloudflareProvider::from_env()?)),
         }
     }
 
@@ -62,6 +66,7 @@ impl ProviderClient {
             Self::Xai(_) => ProviderKind::Xai,
             Self::OpenAi(_) => ProviderKind::OpenAi,
             Self::Gemini(_) => ProviderKind::Gemini,
+            Self::Cloudflare(_) => ProviderKind::Cloudflare,
         }
     }
 
@@ -77,7 +82,7 @@ impl ProviderClient {
     pub fn prompt_cache_stats(&self) -> Option<PromptCacheStats> {
         match self {
             Self::Anthropic(client) => client.prompt_cache_stats(),
-            Self::Xai(_) | Self::OpenAi(_) | Self::Gemini(_) => None,
+            Self::Xai(_) | Self::OpenAi(_) | Self::Gemini(_) | Self::Cloudflare(_) => None,
         }
     }
 
@@ -85,7 +90,7 @@ impl ProviderClient {
     pub fn take_last_prompt_cache_record(&self) -> Option<PromptCacheRecord> {
         match self {
             Self::Anthropic(client) => client.take_last_prompt_cache_record(),
-            Self::Xai(_) | Self::OpenAi(_) | Self::Gemini(_) => None,
+            Self::Xai(_) | Self::OpenAi(_) | Self::Gemini(_) | Self::Cloudflare(_) => None,
         }
     }
 
@@ -97,6 +102,7 @@ impl ProviderClient {
             Self::Anthropic(client) => client.send_message(request).await,
             Self::Xai(client) | Self::OpenAi(client) => client.send_message(request).await,
             Self::Gemini(client) => client.send_message(request).await,
+            Self::Cloudflare(client) => client.send_message(request).await,
         }
     }
 
@@ -117,6 +123,10 @@ impl ProviderClient {
                 .stream_message(request)
                 .await
                 .map(MessageStream::Gemini),
+            Self::Cloudflare(client) => client
+                .stream_message(request)
+                .await
+                .map(|s| MessageStream::Cloudflare(Box::new(s))),
         }
     }
 }
@@ -126,6 +136,7 @@ pub enum MessageStream {
     Anthropic(Box<anthropic::MessageStream>),
     OpenAiCompat(Box<openai_compat::MessageStream>),
     Gemini(gemini::MessageStream),
+    Cloudflare(Box<crate::MessageStream>),
 }
 
 impl MessageStream {
@@ -135,6 +146,7 @@ impl MessageStream {
             Self::Anthropic(stream) => stream.request_id(),
             Self::OpenAiCompat(stream) => stream.request_id(),
             Self::Gemini(stream) => stream.request_id(),
+            Self::Cloudflare(_) => None,
         }
     }
 
@@ -143,6 +155,7 @@ impl MessageStream {
             Self::Anthropic(stream) => stream.next_event().await,
             Self::OpenAiCompat(stream) => stream.next_event().await,
             Self::Gemini(stream) => stream.next_event().await,
+            Self::Cloudflare(_) => Ok(None),
         }
     }
 }

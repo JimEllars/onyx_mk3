@@ -10,6 +10,7 @@ use crate::types::{MessageRequest, MessageResponse};
 pub mod anthropic;
 pub mod gemini;
 pub mod openai_compat;
+pub mod cloudflare;
 
 #[allow(dead_code)]
 pub type ProviderFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, ApiError>> + Send + 'a>>;
@@ -35,6 +36,7 @@ pub enum ProviderKind {
     Xai,
     OpenAi,
     Gemini,
+    Cloudflare,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,7 +149,7 @@ pub fn resolve_model_alias(model: &str) -> String {
                     "grok-2" => "grok-2",
                     _ => trimmed,
                 },
-                ProviderKind::OpenAi | ProviderKind::Gemini => trimmed,
+                ProviderKind::OpenAi | ProviderKind::Gemini | ProviderKind::Cloudflare => trimmed,
             })
         })
         .map_or_else(|| trimmed.to_string(), ToOwned::to_owned)
