@@ -98,12 +98,24 @@ impl ProviderClient {
         &self,
         request: &MessageRequest,
     ) -> Result<MessageResponse, ApiError> {
-        match self {
+        let provider_name = match self {
+            Self::Anthropic(_) => "anthropic",
+            Self::Xai(_) => "xai",
+            Self::OpenAi(_) => "openai",
+            Self::Gemini(_) => "gemini",
+            Self::Cloudflare(_) => "cloudflare",
+        };
+        let result = match self {
             Self::Anthropic(client) => client.send_message(request).await,
             Self::Xai(client) | Self::OpenAi(client) => client.send_message(request).await,
             Self::Gemini(client) => client.send_message(request).await,
             Self::Cloudflare(client) => client.send_message(request).await,
-        }
+        };
+        let status = if result.is_ok() { "success" } else { "error" };
+        telemetry::metrics::LLM_API_CALLS
+            .with_label_values(&[provider_name, &request.model, status])
+            .inc();
+        result
     }
 
     pub async fn stream_message(

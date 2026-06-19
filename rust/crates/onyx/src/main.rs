@@ -6,7 +6,9 @@
     clippy::unnecessary_wraps,
     clippy::unused_self
 )]
+pub(crate) mod app;
 mod init;
+use crate::app::{run_repl, LiveCli, PromptHistoryEntry, RuntimePluginState};
 mod input;
 mod render;
 mod tui;
@@ -61,7 +63,7 @@ use tools::{
 };
 
 const DEFAULT_MODEL: &str = "axim-default";
-fn max_tokens_for_model(model: &str) -> u32 {
+pub(crate) fn max_tokens_for_model(model: &str) -> u32 {
     if model.contains("opus") {
         32_000
     } else {
@@ -552,7 +554,7 @@ Run `onyx --help` for usage."
 /// Returns `None` when stdin is attached to a terminal (interactive REPL use),
 /// when reading fails, or when the piped content is empty after trimming.
 /// Returns `Some(raw_content)` when a pipe delivered non-empty content.
-fn read_piped_stdin() -> Option<String> {
+pub(crate) fn read_piped_stdin() -> Option<String> {
     if io::stdin().is_terminal() {
         return None;
     }
@@ -572,7 +574,7 @@ fn read_piped_stdin() -> Option<String> {
 /// returned unchanged. Otherwise the trimmed stdin content is appended to the
 /// prompt separated by a blank line so the model sees the prompt first and the
 /// piped context immediately after it.
-fn merge_prompt_with_stdin(prompt: &str, stdin_content: Option<&str>) -> String {
+pub(crate) fn merge_prompt_with_stdin(prompt: &str, stdin_content: Option<&str>) -> String {
     let Some(raw) = stdin_content else {
         return prompt.to_string();
     };
@@ -586,7 +588,7 @@ fn merge_prompt_with_stdin(prompt: &str, stdin_content: Option<&str>) -> String 
     format!("{prompt}\n\n{trimmed}")
 }
 
-fn run() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
     match parse_args(&args)? {
         CliAction::DumpManifests { output_format } => dump_manifests(output_format)?,
@@ -676,7 +678,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum CliAction {
+pub(crate) enum CliAction {
     ServeHeadless {
         port: u16,
     },
@@ -767,14 +769,14 @@ enum CliAction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LocalHelpTopic {
+pub(crate) enum LocalHelpTopic {
     Status,
     Sandbox,
     Doctor,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CliOutputFormat {
+pub(crate) enum CliOutputFormat {
     Text,
     Json,
 }
@@ -792,7 +794,7 @@ impl CliOutputFormat {
 }
 
 #[allow(clippy::too_many_lines)]
-fn parse_args(args: &[String]) -> Result<CliAction, String> {
+pub(crate) fn parse_args(args: &[String]) -> Result<CliAction, String> {
     let mut model = DEFAULT_MODEL.to_string();
     let mut output_format = CliOutputFormat::Text;
     let mut permission_mode_override = None;
@@ -1038,7 +1040,7 @@ fn parse_args(args: &[String]) -> Result<CliAction, String> {
     }
 }
 
-fn parse_local_help_action(rest: &[String]) -> Option<Result<CliAction, String>> {
+pub(crate) fn parse_local_help_action(rest: &[String]) -> Option<Result<CliAction, String>> {
     if rest.len() != 2 || !is_help_flag(&rest[1]) {
         return None;
     }
@@ -1052,11 +1054,11 @@ fn parse_local_help_action(rest: &[String]) -> Option<Result<CliAction, String>>
     Some(Ok(CliAction::HelpTopic(topic)))
 }
 
-fn is_help_flag(value: &str) -> bool {
+pub(crate) fn is_help_flag(value: &str) -> bool {
     matches!(value, "--help" | "-h")
 }
 
-fn parse_single_word_command_alias(
+pub(crate) fn parse_single_word_command_alias(
     rest: &[String],
     model: &str,
     permission_mode_override: Option<PermissionMode>,
@@ -1081,7 +1083,7 @@ fn parse_single_word_command_alias(
     }
 }
 
-fn bare_slash_command_guidance(command_name: &str) -> Option<String> {
+pub(crate) fn bare_slash_command_guidance(command_name: &str) -> Option<String> {
     if matches!(
         command_name,
         "dump-manifests"
@@ -1113,13 +1115,13 @@ fn bare_slash_command_guidance(command_name: &str) -> Option<String> {
     Some(guidance)
 }
 
-fn join_optional_args(args: &[String]) -> Option<String> {
+pub(crate) fn join_optional_args(args: &[String]) -> Option<String> {
     let joined = args.join(" ");
     let trimmed = joined.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-fn parse_direct_slash_cli_action(
+pub(crate) fn parse_direct_slash_cli_action(
     rest: &[String],
     model: String,
     output_format: CliOutputFormat,
@@ -1175,7 +1177,7 @@ fn parse_direct_slash_cli_action(
     }
 }
 
-fn format_unknown_option(option: &str) -> String {
+pub(crate) fn format_unknown_option(option: &str) -> String {
     let mut message = format!("unknown option: {option}");
     if let Some(suggestion) = suggest_closest_term(option, CLI_OPTION_SUGGESTIONS) {
         message.push_str("\nDid you mean ");
@@ -1186,7 +1188,7 @@ fn format_unknown_option(option: &str) -> String {
     message
 }
 
-fn format_unknown_direct_slash_command(name: &str) -> String {
+pub(crate) fn format_unknown_direct_slash_command(name: &str) -> String {
     let mut message = format!("unknown slash command outside the REPL: /{name}");
     if let Some(suggestions) = render_suggestion_line("Did you mean", &suggest_slash_commands(name))
     {
@@ -1201,7 +1203,7 @@ fn format_unknown_direct_slash_command(name: &str) -> String {
     message
 }
 
-fn format_unknown_slash_command(name: &str) -> String {
+pub(crate) fn format_unknown_slash_command(name: &str) -> String {
     let mut message = format!("Unknown slash command: /{name}");
     if let Some(suggestions) = render_suggestion_line("Did you mean", &suggest_slash_commands(name))
     {
@@ -1216,18 +1218,18 @@ fn format_unknown_slash_command(name: &str) -> String {
     message
 }
 
-fn omc_compatibility_note_for_unknown_slash_command(name: &str) -> Option<&'static str> {
+pub(crate) fn omc_compatibility_note_for_unknown_slash_command(name: &str) -> Option<&'static str> {
     name.starts_with("oh-my-claudecode:")
         .then_some(
             "Compatibility note: `/oh-my-claudecode:*` is a Claude Code/OMC plugin command. `onyx` does not yet load plugin slash commands, Claude statusline stdin, or OMC session hooks.",
         )
 }
 
-fn render_suggestion_line(label: &str, suggestions: &[String]) -> Option<String> {
+pub(crate) fn render_suggestion_line(label: &str, suggestions: &[String]) -> Option<String> {
     (!suggestions.is_empty()).then(|| format!("  {label:<16} {}", suggestions.join(", "),))
 }
 
-fn suggest_slash_commands(input: &str) -> Vec<String> {
+pub(crate) fn suggest_slash_commands(input: &str) -> Vec<String> {
     let mut candidates = slash_command_specs()
         .iter()
         .flat_map(|spec| {
@@ -1246,11 +1248,11 @@ fn suggest_slash_commands(input: &str) -> Vec<String> {
         .collect()
 }
 
-fn suggest_closest_term<'a>(input: &str, candidates: &'a [&'a str]) -> Option<&'a str> {
+pub(crate) fn suggest_closest_term<'a>(input: &str, candidates: &'a [&'a str]) -> Option<&'a str> {
     ranked_suggestions(input, candidates).into_iter().next()
 }
 
-fn ranked_suggestions<'a>(input: &str, candidates: &'a [&'a str]) -> Vec<&'a str> {
+pub(crate) fn ranked_suggestions<'a>(input: &str, candidates: &'a [&'a str]) -> Vec<&'a str> {
     let normalized_input = input.trim_start_matches('/').to_ascii_lowercase();
     let mut ranked = candidates
         .iter()
@@ -1273,7 +1275,7 @@ fn ranked_suggestions<'a>(input: &str, candidates: &'a [&'a str]) -> Vec<&'a str
         .collect()
 }
 
-fn levenshtein_distance(left: &str, right: &str) -> usize {
+pub(crate) fn levenshtein_distance(left: &str, right: &str) -> usize {
     if left.is_empty() {
         return right.chars().count();
     }
@@ -1299,7 +1301,7 @@ fn levenshtein_distance(left: &str, right: &str) -> usize {
     previous[right_chars.len()]
 }
 
-fn resolve_model_alias(model: &str) -> &str {
+pub(crate) fn resolve_model_alias(model: &str) -> &str {
     match model {
         "opus" => "claude-opus-4-6",
         "sonnet" => "claude-sonnet-4-6",
@@ -1312,7 +1314,7 @@ fn resolve_model_alias(model: &str) -> &str {
 /// Resolve a model name through user-defined config aliases first, then fall
 /// back to the built-in alias table. This is the entry point used wherever a
 /// user-supplied model string is about to be dispatched to a provider.
-fn resolve_model_alias_with_config(model: &str) -> String {
+pub(crate) fn resolve_model_alias_with_config(model: &str) -> String {
     let trimmed = model.trim();
     if let Some(resolved) = config_alias_for_current_dir(trimmed) {
         return resolve_model_alias(&resolved).to_string();
@@ -1320,7 +1322,7 @@ fn resolve_model_alias_with_config(model: &str) -> String {
     resolve_model_alias(trimmed).to_string()
 }
 
-fn config_alias_for_current_dir(alias: &str) -> Option<String> {
+pub(crate) fn config_alias_for_current_dir(alias: &str) -> Option<String> {
     if alias.is_empty() {
         return None;
     }
@@ -1330,14 +1332,14 @@ fn config_alias_for_current_dir(alias: &str) -> Option<String> {
     config.aliases().get(alias).cloned()
 }
 
-fn normalize_allowed_tools(values: &[String]) -> Result<Option<AllowedToolSet>, String> {
+pub(crate) fn normalize_allowed_tools(values: &[String]) -> Result<Option<AllowedToolSet>, String> {
     if values.is_empty() {
         return Ok(None);
     }
     current_tool_registry()?.normalize_allowed_tools(values)
 }
 
-fn current_tool_registry() -> Result<GlobalToolRegistry, String> {
+pub(crate) fn current_tool_registry() -> Result<GlobalToolRegistry, String> {
     let cwd = env::current_dir().map_err(|error| error.to_string())?;
     let loader = ConfigLoader::default_for(&cwd);
     let runtime_config = loader.load().map_err(|error| error.to_string())?;
@@ -1354,7 +1356,7 @@ fn current_tool_registry() -> Result<GlobalToolRegistry, String> {
     Ok(registry)
 }
 
-fn parse_permission_mode_arg(value: &str) -> Result<PermissionMode, String> {
+pub(crate) fn parse_permission_mode_arg(value: &str) -> Result<PermissionMode, String> {
     normalize_permission_mode(value)
         .ok_or_else(|| {
             format!(
@@ -1364,7 +1366,7 @@ fn parse_permission_mode_arg(value: &str) -> Result<PermissionMode, String> {
         .map(permission_mode_from_label)
 }
 
-fn permission_mode_from_label(mode: &str) -> PermissionMode {
+pub(crate) fn permission_mode_from_label(mode: &str) -> PermissionMode {
     match mode {
         "read-only" => PermissionMode::ReadOnly,
         "workspace-write" => PermissionMode::WorkspaceWrite,
@@ -1373,7 +1375,7 @@ fn permission_mode_from_label(mode: &str) -> PermissionMode {
     }
 }
 
-fn permission_mode_from_resolved(mode: ResolvedPermissionMode) -> PermissionMode {
+pub(crate) fn permission_mode_from_resolved(mode: ResolvedPermissionMode) -> PermissionMode {
     match mode {
         ResolvedPermissionMode::ReadOnly => PermissionMode::ReadOnly,
         ResolvedPermissionMode::WorkspaceWrite => PermissionMode::WorkspaceWrite,
@@ -1381,7 +1383,7 @@ fn permission_mode_from_resolved(mode: ResolvedPermissionMode) -> PermissionMode
     }
 }
 
-fn default_permission_mode() -> PermissionMode {
+pub(crate) fn default_permission_mode() -> PermissionMode {
     env::var("RUSTY_CLAUDE_PERMISSION_MODE")
         .ok()
         .as_deref()
@@ -1391,7 +1393,7 @@ fn default_permission_mode() -> PermissionMode {
         .unwrap_or(PermissionMode::DangerFullAccess)
 }
 
-fn config_permission_mode_for_current_dir() -> Option<PermissionMode> {
+pub(crate) fn config_permission_mode_for_current_dir() -> Option<PermissionMode> {
     let cwd = env::current_dir().ok()?;
     let loader = ConfigLoader::default_for(&cwd);
     loader
@@ -1401,13 +1403,13 @@ fn config_permission_mode_for_current_dir() -> Option<PermissionMode> {
         .map(permission_mode_from_resolved)
 }
 
-fn config_model_for_current_dir() -> Option<String> {
+pub(crate) fn config_model_for_current_dir() -> Option<String> {
     let cwd = env::current_dir().ok()?;
     let loader = ConfigLoader::default_for(&cwd);
     loader.load().ok()?.model().map(ToOwned::to_owned)
 }
 
-fn resolve_repl_model(cli_model: String) -> String {
+pub(crate) fn resolve_repl_model(cli_model: String) -> String {
     if cli_model != DEFAULT_MODEL {
         return cli_model;
     }
@@ -1424,7 +1426,7 @@ fn resolve_repl_model(cli_model: String) -> String {
     cli_model
 }
 
-fn provider_label(kind: ProviderKind) -> &'static str {
+pub(crate) fn provider_label(kind: ProviderKind) -> &'static str {
     match kind {
         ProviderKind::Anthropic => "anthropic",
         ProviderKind::Xai => "xai",
@@ -1434,19 +1436,19 @@ fn provider_label(kind: ProviderKind) -> &'static str {
     }
 }
 
-fn format_connected_line(model: &str) -> String {
+pub(crate) fn format_connected_line(model: &str) -> String {
     let provider = provider_label(detect_provider_kind(model));
     format!("Connected: {model} via {provider}")
 }
 
-fn filter_tool_specs(
+pub(crate) fn filter_tool_specs(
     tool_registry: &GlobalToolRegistry,
     allowed_tools: Option<&AllowedToolSet>,
 ) -> Vec<ToolDefinition> {
     tool_registry.definitions(allowed_tools)
 }
 
-fn parse_system_prompt_args(
+pub(crate) fn parse_system_prompt_args(
     args: &[String],
     output_format: CliOutputFormat,
 ) -> Result<CliAction, String> {
@@ -1481,7 +1483,10 @@ fn parse_system_prompt_args(
     })
 }
 
-fn parse_export_args(args: &[String], output_format: CliOutputFormat) -> Result<CliAction, String> {
+pub(crate) fn parse_export_args(
+    args: &[String],
+    output_format: CliOutputFormat,
+) -> Result<CliAction, String> {
     let mut session_reference = LATEST_SESSION_REFERENCE.to_string();
     let mut output_path: Option<PathBuf> = None;
     let mut index = 0;
@@ -1530,7 +1535,10 @@ fn parse_export_args(args: &[String], output_format: CliOutputFormat) -> Result<
     })
 }
 
-fn parse_resume_args(args: &[String], output_format: CliOutputFormat) -> Result<CliAction, String> {
+pub(crate) fn parse_resume_args(
+    args: &[String],
+    output_format: CliOutputFormat,
+) -> Result<CliAction, String> {
     let (session_path, command_tokens): (PathBuf, &[String]) = match args.first() {
         None => (PathBuf::from(LATEST_SESSION_REFERENCE), &[]),
         Some(first) if looks_like_slash_command_token(first) => {
@@ -1575,7 +1583,7 @@ fn parse_resume_args(args: &[String], output_format: CliOutputFormat) -> Result<
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DiagnosticLevel {
+pub(crate) enum DiagnosticLevel {
     Ok,
     Warn,
     Fail,
@@ -1596,7 +1604,7 @@ impl DiagnosticLevel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct DiagnosticCheck {
+pub(crate) struct DiagnosticCheck {
     name: &'static str,
     level: DiagnosticLevel,
     summary: String,
@@ -1653,7 +1661,7 @@ impl DiagnosticCheck {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct DoctorReport {
+pub(crate) struct DoctorReport {
     checks: Vec<DiagnosticCheck>,
 }
 
@@ -1714,7 +1722,7 @@ impl DoctorReport {
     }
 }
 
-fn render_diagnostic_check(check: &DiagnosticCheck) -> String {
+pub(crate) fn render_diagnostic_check(check: &DiagnosticCheck) -> String {
     let mut lines = vec![format!(
         "{}\n  Status           {}\n  Summary          {}",
         check.name,
@@ -1728,7 +1736,7 @@ fn render_diagnostic_check(check: &DiagnosticCheck) -> String {
     lines.join("\n")
 }
 
-fn render_doctor_report() -> Result<DoctorReport, Box<dyn std::error::Error>> {
+pub(crate) fn render_doctor_report() -> Result<DoctorReport, Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     let config_loader = ConfigLoader::default_for(&cwd);
     let config = config_loader.load();
@@ -1764,7 +1772,7 @@ fn render_doctor_report() -> Result<DoctorReport, Box<dyn std::error::Error>> {
     })
 }
 
-fn run_doctor(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn run_doctor(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
     let report = render_doctor_report()?;
     let message = report.render();
     match output_format {
@@ -1788,7 +1796,9 @@ fn run_doctor(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::
 /// This is the file-based worker observability surface: `push_event()` in `worker_boot.rs`
 /// atomically writes state transitions here so external observers (onyxhip, orchestrators)
 /// can poll current `WorkerStatus` without needing an HTTP route on the opencode binary.
-fn run_worker_state(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn run_worker_state(
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     let state_path = cwd.join(".claw").join("worker-state.json");
     if !state_path.exists() {
@@ -1826,7 +1836,7 @@ use axum::{
 
 use tokio::sync::mpsc as tokio_mpsc;
 
-struct AppState {
+pub(crate) struct AppState {
     task_queue: tokio_mpsc::Sender<TaskPacket>,
     workers: std::sync::RwLock<std::collections::HashMap<String, runtime::WorkerStatus>>,
 }
@@ -1928,7 +1938,7 @@ async fn metrics_handler() -> String {
 }
 
 #[allow(clippy::too_many_lines)]
-fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
@@ -2303,7 +2313,7 @@ fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     })
 }
 
-fn run_mcp_serve() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn run_mcp_serve() -> Result<(), Box<dyn std::error::Error>> {
     let tools = mvp_tool_specs()
         .into_iter()
         .map(|spec| McpTool {
@@ -2333,7 +2343,7 @@ fn run_mcp_serve() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[allow(clippy::too_many_lines)]
-fn check_auth_health() -> DiagnosticCheck {
+pub(crate) fn check_auth_health() -> DiagnosticCheck {
     let api_key_present = env::var("ANTHROPIC_API_KEY")
         .ok()
         .is_some_and(|value| !value.trim().is_empty());
@@ -2462,7 +2472,7 @@ fn check_auth_health() -> DiagnosticCheck {
     }
 }
 
-fn check_config_health(
+pub(crate) fn check_config_health(
     config_loader: &ConfigLoader,
     config: Result<&runtime::RuntimeConfig, &runtime::ConfigError>,
 ) -> DiagnosticCheck {
@@ -2554,7 +2564,7 @@ fn check_config_health(
     }
 }
 
-fn check_workspace_health(context: &StatusContext) -> DiagnosticCheck {
+pub(crate) fn check_workspace_health(context: &StatusContext) -> DiagnosticCheck {
     let in_repo = context.project_root.is_some();
     DiagnosticCheck::new(
         "Workspace",
@@ -2626,7 +2636,7 @@ fn check_workspace_health(context: &StatusContext) -> DiagnosticCheck {
     ]))
 }
 
-fn check_sandbox_health(status: &runtime::SandboxStatus) -> DiagnosticCheck {
+pub(crate) fn check_sandbox_health(status: &runtime::SandboxStatus) -> DiagnosticCheck {
     let degraded = status.enabled && !status.active;
     let mut details = vec![
         format!("Enabled          {}", status.enabled),
@@ -2689,7 +2699,10 @@ fn check_sandbox_health(status: &runtime::SandboxStatus) -> DiagnosticCheck {
     ]))
 }
 
-fn check_system_health(cwd: &Path, config: Option<&runtime::RuntimeConfig>) -> DiagnosticCheck {
+pub(crate) fn check_system_health(
+    cwd: &Path,
+    config: Option<&runtime::RuntimeConfig>,
+) -> DiagnosticCheck {
     let default_model = config.and_then(runtime::RuntimeConfig::model);
     let mut details = vec![
         format!("OS               {} {}", env::consts::OS, env::consts::ARCH),
@@ -2718,14 +2731,14 @@ fn check_system_health(cwd: &Path, config: Option<&runtime::RuntimeConfig>) -> D
     ]))
 }
 
-fn resume_command_can_absorb_token(current_command: &str, token: &str) -> bool {
+pub(crate) fn resume_command_can_absorb_token(current_command: &str, token: &str) -> bool {
     matches!(
         SlashCommand::parse(current_command),
         Ok(Some(SlashCommand::Export { path: None }))
     ) && !looks_like_slash_command_token(token)
 }
 
-fn looks_like_slash_command_token(token: &str) -> bool {
+pub(crate) fn looks_like_slash_command_token(token: &str) -> bool {
     let trimmed = token.trim_start();
     let Some(name) = trimmed.strip_prefix('/').and_then(|value| {
         value
@@ -2742,7 +2755,9 @@ fn looks_like_slash_command_token(token: &str) -> bool {
         .any(|spec| spec.name == name || spec.aliases.contains(&name))
 }
 
-fn dump_manifests(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn dump_manifests(
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
     let workspace_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let paths = UpstreamPaths::from_workspace_dir(&workspace_dir);
     match extract_manifest(&paths) {
@@ -2769,7 +2784,9 @@ fn dump_manifests(output_format: CliOutputFormat) -> Result<(), Box<dyn std::err
     }
 }
 
-fn print_bootstrap_plan(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn print_bootstrap_plan(
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
     let phases = runtime::BootstrapPlan::claude_code_default()
         .phases()
         .iter()
@@ -2792,7 +2809,7 @@ fn print_bootstrap_plan(output_format: CliOutputFormat) -> Result<(), Box<dyn st
     Ok(())
 }
 
-fn default_oauth_config() -> OAuthConfig {
+pub(crate) fn default_oauth_config() -> OAuthConfig {
     OAuthConfig {
         client_id: String::from("9d1c250a-e61b-44d9-88ed-5944d1962f5e"),
         authorize_url: String::from("https://platform.claude.com/oauth/authorize"),
@@ -2807,7 +2824,7 @@ fn default_oauth_config() -> OAuthConfig {
     }
 }
 
-fn run_login(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn run_login(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     let config = ConfigLoader::default_for(&cwd).load()?;
     let default_oauth = default_oauth_config();
@@ -2882,7 +2899,7 @@ fn run_login(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
-fn emit_login_browser_open_failure(
+pub(crate) fn emit_login_browser_open_failure(
     output_format: CliOutputFormat,
     authorize_url: &str,
     error: &io::Error,
@@ -2899,7 +2916,7 @@ fn emit_login_browser_open_failure(
     }
 }
 
-fn run_logout(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn run_logout(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
     clear_oauth_credentials()?;
     match output_format {
         CliOutputFormat::Text => println!("Claude OAuth credentials cleared."),
@@ -2914,7 +2931,7 @@ fn run_logout(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::
     Ok(())
 }
 
-fn open_browser(url: &str) -> io::Result<()> {
+pub(crate) fn open_browser(url: &str) -> io::Result<()> {
     let commands = if cfg!(target_os = "macos") {
         vec![("open", vec![url])]
     } else if cfg!(target_os = "windows") {
@@ -2935,7 +2952,7 @@ fn open_browser(url: &str) -> io::Result<()> {
     ))
 }
 
-fn wait_for_oauth_callback(
+pub(crate) fn wait_for_oauth_callback(
     port: u16,
 ) -> Result<runtime::OAuthCallbackParams, Box<dyn std::error::Error>> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
@@ -2968,7 +2985,7 @@ fn wait_for_oauth_callback(
     Ok(callback)
 }
 
-fn print_system_prompt(
+pub(crate) fn print_system_prompt(
     cwd: PathBuf,
     date: String,
     output_format: CliOutputFormat,
@@ -2993,7 +3010,9 @@ fn print_system_prompt(
     Ok(())
 }
 
-fn print_version(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn print_version(
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
     match output_format {
         CliOutputFormat::Text => println!("{}", render_version_report()),
         CliOutputFormat::Json => {
@@ -3003,7 +3022,7 @@ fn print_version(output_format: CliOutputFormat) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-fn version_json_value() -> serde_json::Value {
+pub(crate) fn version_json_value() -> serde_json::Value {
     json!({
         "kind": "version",
         "message": render_version_report(),
@@ -3014,7 +3033,11 @@ fn version_json_value() -> serde_json::Value {
 }
 
 #[allow(clippy::too_many_lines)]
-fn resume_session(session_path: &Path, commands: &[String], output_format: CliOutputFormat) {
+pub(crate) fn resume_session(
+    session_path: &Path,
+    commands: &[String],
+    output_format: CliOutputFormat,
+) {
     let resolved_path = if session_path.exists() {
         session_path.to_path_buf()
     } else {
@@ -3126,14 +3149,14 @@ fn resume_session(session_path: &Path, commands: &[String], output_format: CliOu
 }
 
 #[derive(Debug, Clone)]
-struct ResumeCommandOutcome {
+pub(crate) struct ResumeCommandOutcome {
     session: Session,
     message: Option<String>,
     json: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]
-struct StatusContext {
+pub(crate) struct StatusContext {
     cwd: PathBuf,
     session_path: Option<PathBuf>,
     loaded_config_files: usize,
@@ -3146,7 +3169,7 @@ struct StatusContext {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct StatusUsage {
+pub(crate) struct StatusUsage {
     message_count: usize,
     turns: u32,
     latest: TokenUsage,
@@ -3156,7 +3179,7 @@ struct StatusUsage {
 
 #[allow(clippy::struct_field_names)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct GitWorkspaceSummary {
+pub(crate) struct GitWorkspaceSummary {
     changed_files: usize,
     staged_files: usize,
     unstaged_files: usize,
@@ -3196,7 +3219,7 @@ impl GitWorkspaceSummary {
 }
 
 #[cfg(test)]
-fn format_unknown_slash_command_message(name: &str) -> String {
+pub(crate) fn format_unknown_slash_command_message(name: &str) -> String {
     let suggestions = suggest_slash_commands(name);
     let mut message = format!("unknown slash command: /{name}.");
     if !suggestions.is_empty() {
@@ -3212,7 +3235,7 @@ fn format_unknown_slash_command_message(name: &str) -> String {
     message
 }
 
-fn format_model_report(model: &str, message_count: usize, turns: u32) -> String {
+pub(crate) fn format_model_report(model: &str, message_count: usize, turns: u32) -> String {
     format!(
         "Model
   Current model    {model}
@@ -3225,7 +3248,11 @@ Usage
     )
 }
 
-fn format_model_switch_report(previous: &str, next: &str, message_count: usize) -> String {
+pub(crate) fn format_model_switch_report(
+    previous: &str,
+    next: &str,
+    message_count: usize,
+) -> String {
     format!(
         "Model updated
   Previous         {previous}
@@ -3234,7 +3261,7 @@ fn format_model_switch_report(previous: &str, next: &str, message_count: usize) 
     )
 }
 
-fn format_permissions_report(mode: &str) -> String {
+pub(crate) fn format_permissions_report(mode: &str) -> String {
     let modes = [
         ("read-only", "Read/search tools only", mode == "read-only"),
         (
@@ -3277,7 +3304,7 @@ Usage
     )
 }
 
-fn format_permissions_switch_report(previous: &str, next: &str) -> String {
+pub(crate) fn format_permissions_switch_report(previous: &str, next: &str) -> String {
     format!(
         "Permissions updated
   Result           mode switched
@@ -3288,7 +3315,7 @@ fn format_permissions_switch_report(previous: &str, next: &str) -> String {
     )
 }
 
-fn format_cost_report(usage: TokenUsage) -> String {
+pub(crate) fn format_cost_report(usage: TokenUsage) -> String {
     format!(
         "Cost
   Input tokens     {}
@@ -3304,7 +3331,7 @@ fn format_cost_report(usage: TokenUsage) -> String {
     )
 }
 
-fn format_resume_report(session_path: &str, message_count: usize, turns: u32) -> String {
+pub(crate) fn format_resume_report(session_path: &str, message_count: usize, turns: u32) -> String {
     format!(
         "Session resumed
   Session file     {session_path}
@@ -3313,7 +3340,7 @@ fn format_resume_report(session_path: &str, message_count: usize, turns: u32) ->
     )
 }
 
-fn render_resume_usage() -> String {
+pub(crate) fn render_resume_usage() -> String {
     format!(
         "Resume
   Usage            /resume <session-path|session-id|{LATEST_SESSION_REFERENCE}>
@@ -3322,7 +3349,11 @@ fn render_resume_usage() -> String {
     )
 }
 
-fn format_compact_report(removed: usize, resulting_messages: usize, skipped: bool) -> String {
+pub(crate) fn format_compact_report(
+    removed: usize,
+    resulting_messages: usize,
+    skipped: bool,
+) -> String {
     if skipped {
         format!(
             "Compact
@@ -3340,18 +3371,18 @@ fn format_compact_report(removed: usize, resulting_messages: usize, skipped: boo
     }
 }
 
-fn format_auto_compaction_notice(removed: usize) -> String {
+pub(crate) fn format_auto_compaction_notice(removed: usize) -> String {
     format!("[auto-compacted: removed {removed} messages]")
 }
 
-fn parse_git_status_metadata(status: Option<&str>) -> (Option<PathBuf>, Option<String>) {
+pub(crate) fn parse_git_status_metadata(status: Option<&str>) -> (Option<PathBuf>, Option<String>) {
     parse_git_status_metadata_for(
         &env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
         status,
     )
 }
 
-fn parse_git_status_branch(status: Option<&str>) -> Option<String> {
+pub(crate) fn parse_git_status_branch(status: Option<&str>) -> Option<String> {
     let status = status?;
     let first_line = status.lines().next()?;
     let line = first_line.strip_prefix("## ")?;
@@ -3366,7 +3397,7 @@ fn parse_git_status_branch(status: Option<&str>) -> Option<String> {
     }
 }
 
-fn parse_git_workspace_summary(status: Option<&str>) -> GitWorkspaceSummary {
+pub(crate) fn parse_git_workspace_summary(status: Option<&str>) -> GitWorkspaceSummary {
     let mut summary = GitWorkspaceSummary::default();
     let Some(status) = status else {
         return summary;
@@ -3404,7 +3435,7 @@ fn parse_git_workspace_summary(status: Option<&str>) -> GitWorkspaceSummary {
     summary
 }
 
-fn resolve_git_branch_for(cwd: &Path) -> Option<String> {
+pub(crate) fn resolve_git_branch_for(cwd: &Path) -> Option<String> {
     let branch = run_git_capture_in(cwd, &["branch", "--show-current"])?;
     let branch = branch.trim();
     if !branch.is_empty() {
@@ -3422,7 +3453,7 @@ fn resolve_git_branch_for(cwd: &Path) -> Option<String> {
     }
 }
 
-fn run_git_capture_in(cwd: &Path, args: &[&str]) -> Option<String> {
+pub(crate) fn run_git_capture_in(cwd: &Path, args: &[&str]) -> Option<String> {
     let output = std::process::Command::new("git")
         .args(args)
         .current_dir(cwd)
@@ -3434,7 +3465,7 @@ fn run_git_capture_in(cwd: &Path, args: &[&str]) -> Option<String> {
     String::from_utf8(output.stdout).ok()
 }
 
-fn find_git_root_in(cwd: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub(crate) fn find_git_root_in(cwd: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let output = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .current_dir(cwd)
@@ -3449,7 +3480,7 @@ fn find_git_root_in(cwd: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(PathBuf::from(path))
 }
 
-fn parse_git_status_metadata_for(
+pub(crate) fn parse_git_status_metadata_for(
     cwd: &Path,
     status: Option<&str>,
 ) -> (Option<PathBuf>, Option<String>) {
@@ -3459,7 +3490,7 @@ fn parse_git_status_metadata_for(
 }
 
 #[allow(clippy::too_many_lines)]
-fn run_resume_command(
+pub(crate) fn run_resume_command(
     session_path: &Path,
     session: &Session,
     command: &SlashCommand,
@@ -3721,7 +3752,7 @@ fn run_resume_command(
 /// Stale-base preflight: verify the worktree HEAD matches the expected base
 /// commit (from `--base-commit` flag or `.onyx-base` file). Emits a warning to
 /// stderr when the HEAD has diverged.
-fn run_stale_base_preflight(flag_value: Option<&str>) {
+pub(crate) fn run_stale_base_preflight(flag_value: Option<&str>) {
     let Ok(cwd) = env::current_dir() else {
         return;
     };
@@ -3732,97 +3763,14 @@ fn run_stale_base_preflight(flag_value: Option<&str>) {
     }
 }
 
-fn run_repl(
-    model: String,
-    allowed_tools: Option<AllowedToolSet>,
-    permission_mode: PermissionMode,
-    base_commit: Option<&String>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    run_stale_base_preflight(base_commit.map(String::as_str));
-    let resolved_model = resolve_repl_model(model);
-    let mut cli = LiveCli::new(resolved_model, true, allowed_tools, permission_mode)?;
-    let mut editor =
-        input::LineEditor::new("> ", cli.repl_completion_candidates().unwrap_or_default());
-    println!("{}", cli.startup_banner());
-    println!("{}", format_connected_line(&cli.model));
-
-    // Load initial worker status
-    let cwd = env::current_dir()?;
-    let state_path = cwd.join(".claw").join("worker-state.json");
-    let mut worker_status = None;
-    if state_path.exists() {
-        if let Ok(raw) = std::fs::read_to_string(&state_path) {
-            if let Ok(state) = serde_json::from_str::<serde_json::Value>(&raw) {
-                if let Some(status_str) = state.get("status").and_then(|s| s.as_str()) {
-                    if let Ok(parsed_status) = status_str.parse::<runtime::WorkerStatus>() {
-                        worker_status = Some(parsed_status);
-                    }
-                }
-            }
-        }
-    }
-
-    println!(
-        "{}",
-        tui::status_bar::render_status_bar(
-            &cli.model,
-            &cli.session.id,
-            &cli.runtime.usage().cumulative_usage(),
-            0.0,  // Cost is not yet calculated here
-            None, // Fleet status not yet wired in REPL
-            worker_status.as_ref(),
-            None
-        )
-    );
-
-    loop {
-        editor.set_completions(cli.repl_completion_candidates().unwrap_or_default());
-        match editor.read_line()? {
-            input::ReadOutcome::Submit(input) => {
-                let trimmed = input.trim().to_string();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                if matches!(trimmed.as_str(), "/exit" | "/quit") {
-                    cli.persist_session()?;
-                    break;
-                }
-                match SlashCommand::parse(&trimmed) {
-                    Ok(Some(command)) => {
-                        if cli.handle_repl_command(command)? {
-                            cli.persist_session()?;
-                        }
-                        continue;
-                    }
-                    Ok(None) => {}
-                    Err(error) => {
-                        eprintln!("{error}");
-                        continue;
-                    }
-                }
-                editor.push_history(input);
-                cli.record_prompt_history(&trimmed);
-                cli.run_turn(&trimmed)?;
-            }
-            input::ReadOutcome::Cancel => {}
-            input::ReadOutcome::Exit => {
-                cli.persist_session()?;
-                break;
-            }
-        }
-    }
-
-    Ok(())
-}
-
 #[derive(Debug, Clone)]
-struct SessionHandle {
+pub(crate) struct SessionHandle {
     id: String,
     path: PathBuf,
 }
 
 #[derive(Debug, Clone)]
-struct ManagedSessionSummary {
+pub(crate) struct ManagedSessionSummary {
     id: String,
     path: PathBuf,
     modified_epoch_millis: u128,
@@ -3831,37 +3779,14 @@ struct ManagedSessionSummary {
     branch_name: Option<String>,
 }
 
-struct LiveCli {
-    model: String,
-    allowed_tools: Option<AllowedToolSet>,
-    permission_mode: PermissionMode,
-    system_prompt: Vec<String>,
-    runtime: BuiltRuntime,
-    session: SessionHandle,
-    prompt_history: Vec<PromptHistoryEntry>,
-}
-
-#[derive(Debug, Clone)]
-struct PromptHistoryEntry {
-    timestamp_ms: u64,
-    text: String,
-}
-
-struct RuntimePluginState {
-    feature_config: runtime::RuntimeFeatureConfig,
-    tool_registry: GlobalToolRegistry,
-    plugin_registry: PluginRegistry,
-    mcp_state: Option<Arc<Mutex<RuntimeMcpState>>>,
-}
-
-struct RuntimeMcpState {
+pub(crate) struct RuntimeMcpState {
     runtime: tokio::runtime::Runtime,
     manager: McpServerManager,
     pending_servers: Vec<String>,
     degraded_report: Option<runtime::McpDegradedReport>,
 }
 
-struct BuiltRuntime {
+pub(crate) struct BuiltRuntime {
     runtime: Option<ConversationRuntime<AnthropicRuntimeClient, CliToolExecutor>>,
     plugin_registry: PluginRegistry,
     plugins_active: bool,
@@ -3941,13 +3866,13 @@ impl Drop for BuiltRuntime {
 }
 
 #[derive(Debug, Deserialize)]
-struct ToolSearchRequest {
+pub(crate) struct ToolSearchRequest {
     query: String,
     max_results: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
-struct McpToolRequest {
+pub(crate) struct McpToolRequest {
     #[serde(rename = "qualifiedName")]
     qualified_name: Option<String>,
     tool: Option<String>,
@@ -3955,12 +3880,12 @@ struct McpToolRequest {
 }
 
 #[derive(Debug, Deserialize)]
-struct ListMcpResourcesRequest {
+pub(crate) struct ListMcpResourcesRequest {
     server: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ReadMcpResourceRequest {
+pub(crate) struct ReadMcpResourceRequest {
     server: String,
     uri: String,
 }
@@ -4154,7 +4079,7 @@ impl RuntimeMcpState {
     }
 }
 
-fn build_runtime_mcp_state(
+pub(crate) fn build_runtime_mcp_state(
     runtime_config: &runtime::RuntimeConfig,
 ) -> Result<RuntimePluginStateBuildOutput, Box<dyn std::error::Error>> {
     let mut config_clone = runtime_config.clone();
@@ -4229,7 +4154,7 @@ fn build_runtime_mcp_state(
     Ok((Some(Arc::new(Mutex::new(mcp_state))), runtime_tools))
 }
 
-fn mcp_runtime_tool_definition(tool: &runtime::ManagedMcpTool) -> RuntimeToolDefinition {
+pub(crate) fn mcp_runtime_tool_definition(tool: &runtime::ManagedMcpTool) -> RuntimeToolDefinition {
     RuntimeToolDefinition {
         name: tool.qualified_name.clone(),
         description: Some(
@@ -4247,7 +4172,7 @@ fn mcp_runtime_tool_definition(tool: &runtime::ManagedMcpTool) -> RuntimeToolDef
     }
 }
 
-fn mcp_wrapper_tool_definitions() -> Vec<RuntimeToolDefinition> {
+pub(crate) fn mcp_wrapper_tool_definitions() -> Vec<RuntimeToolDefinition> {
     vec![
         RuntimeToolDefinition {
             name: "MCPTool".to_string(),
@@ -4297,7 +4222,7 @@ fn mcp_wrapper_tool_definitions() -> Vec<RuntimeToolDefinition> {
     ]
 }
 
-fn permission_mode_for_mcp_tool(tool: &McpTool) -> PermissionMode {
+pub(crate) fn permission_mode_for_mcp_tool(tool: &McpTool) -> PermissionMode {
     let read_only = mcp_annotation_flag(tool, "readOnlyHint");
     let destructive = mcp_annotation_flag(tool, "destructiveHint");
     let open_world = mcp_annotation_flag(tool, "openWorldHint");
@@ -4311,7 +4236,7 @@ fn permission_mode_for_mcp_tool(tool: &McpTool) -> PermissionMode {
     }
 }
 
-fn mcp_annotation_flag(tool: &McpTool, key: &str) -> bool {
+pub(crate) fn mcp_annotation_flag(tool: &McpTool, key: &str) -> bool {
     tool.annotations
         .as_ref()
         .and_then(|annotations| annotations.get(key))
@@ -4319,7 +4244,7 @@ fn mcp_annotation_flag(tool: &McpTool, key: &str) -> bool {
         .unwrap_or(false)
 }
 
-struct HookAbortMonitor {
+pub(crate) struct HookAbortMonitor {
     stop_tx: Option<Sender<()>>,
     join_handle: Option<JoinHandle<()>>,
 }
@@ -4374,1066 +4299,14 @@ impl HookAbortMonitor {
     }
 }
 
-impl LiveCli {
-    fn new(
-        model: String,
-        enable_tools: bool,
-        allowed_tools: Option<AllowedToolSet>,
-        permission_mode: PermissionMode,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let system_prompt = build_system_prompt()?;
-        let session_state = Session::new().with_workspace_root(env::current_dir()?);
-        let session = create_managed_session_handle(&session_state.session_id)?;
-        let runtime = build_runtime(
-            session_state.with_persistence_path(session.path.clone()),
-            &session.id,
-            model.clone(),
-            system_prompt.clone(),
-            enable_tools,
-            true,
-            allowed_tools.clone(),
-            permission_mode,
-            None,
-        )?;
-        let cli = Self {
-            model,
-            allowed_tools,
-            permission_mode,
-            system_prompt,
-            runtime,
-            session,
-            prompt_history: Vec::new(),
-        };
-        cli.persist_session()?;
-        Ok(cli)
-    }
-
-    fn startup_banner(&self) -> String {
-        let cwd = env::current_dir().map_or_else(
-            |_| "<unknown>".to_string(),
-            |path| path.display().to_string(),
-        );
-        let status = status_context(None).ok();
-        let git_branch = status
-            .as_ref()
-            .and_then(|context| context.git_branch.as_deref())
-            .unwrap_or("unknown");
-        let workspace = status.as_ref().map_or_else(
-            || "unknown".to_string(),
-            |context| context.git_summary.headline(),
-        );
-        let session_path = self.session.path.strip_prefix(Path::new(&cwd)).map_or_else(
-            |_| self.session.path.display().to_string(),
-            |path| path.display().to_string(),
-        );
-        format!(
-            "\x1b[38;5;196m\
- ██████╗██╗      █████╗ ██╗    ██╗\n\
-██╔════╝██║     ██╔══██╗██║    ██║\n\
-██║     ██║     ███████║██║ █╗ ██║\n\
-██║     ██║     ██╔══██║██║███╗██║\n\
-╚██████╗███████╗██║  ██║╚███╔███╔╝\n\
- ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝\x1b[0m \x1b[38;5;208mCode\x1b[0m 🦞\n\n\
-  \x1b[2mModel\x1b[0m            {}\n\
-  \x1b[2mPermissions\x1b[0m      {}\n\
-  \x1b[2mBranch\x1b[0m           {}\n\
-  \x1b[2mWorkspace\x1b[0m        {}\n\
-  \x1b[2mDirectory\x1b[0m        {}\n\
-  \x1b[2mSession\x1b[0m          {}\n\
-  \x1b[2mAuto-save\x1b[0m        {}\n\n\
-  Type \x1b[1m/help\x1b[0m for commands · \x1b[1m/status\x1b[0m for live context · \x1b[2m/resume latest\x1b[0m jumps back to the newest session · \x1b[1m/diff\x1b[0m then \x1b[1m/commit\x1b[0m to ship · \x1b[2mTab\x1b[0m for workflow completions · \x1b[2mShift+Enter\x1b[0m for newline",
-            self.model,
-            self.permission_mode.as_str(),
-            git_branch,
-            workspace,
-            cwd,
-            self.session.id,
-            session_path,
-        )
-    }
-
-    fn repl_completion_candidates(&self) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        Ok(slash_command_completion_candidates_with_sessions(
-            &self.model,
-            Some(&self.session.id),
-            list_managed_sessions()?
-                .into_iter()
-                .map(|session| session.id)
-                .collect(),
-        ))
-    }
-
-    fn prepare_turn_runtime(
-        &self,
-        emit_output: bool,
-    ) -> Result<(BuiltRuntime, HookAbortMonitor), Box<dyn std::error::Error>> {
-        let hook_abort_signal = runtime::HookAbortSignal::new();
-        let runtime = build_runtime(
-            self.runtime.session().clone(),
-            &self.session.id,
-            self.model.clone(),
-            self.system_prompt.clone(),
-            true,
-            emit_output,
-            self.allowed_tools.clone(),
-            self.permission_mode,
-            None,
-        )?
-        .with_hook_abort_signal(hook_abort_signal.clone());
-        let hook_abort_monitor = HookAbortMonitor::spawn(hook_abort_signal);
-
-        Ok((runtime, hook_abort_monitor))
-    }
-
-    fn replace_runtime(&mut self, runtime: BuiltRuntime) -> Result<(), Box<dyn std::error::Error>> {
-        self.runtime.shutdown_plugins()?;
-        self.runtime = runtime;
-        Ok(())
-    }
-
-    fn run_turn(&mut self, input: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let (mut runtime, hook_abort_monitor) = self.prepare_turn_runtime(true)?;
-        let mut spinner = Spinner::new();
-        let mut stdout = io::stdout();
-        spinner.tick(
-            "🦀 Thinking...",
-            TerminalRenderer::new().color_theme(),
-            &mut stdout,
-        )?;
-        let mut permission_prompter = CliPermissionPrompter::new(self.permission_mode);
-        let result = runtime.run_turn(input, Some(&mut permission_prompter));
-        hook_abort_monitor.stop();
-        match result {
-            Ok(summary) => {
-                self.replace_runtime(runtime)?;
-                spinner.finish(
-                    "✨ Done",
-                    TerminalRenderer::new().color_theme(),
-                    &mut stdout,
-                )?;
-                println!();
-                if let Some(event) = summary.auto_compaction {
-                    println!(
-                        "{}",
-                        format_auto_compaction_notice(event.removed_message_count)
-                    );
-                }
-                self.persist_session()?;
-                Ok(())
-            }
-            Err(error) => {
-                runtime.shutdown_plugins()?;
-                spinner.fail(
-                    "❌ Request failed",
-                    TerminalRenderer::new().color_theme(),
-                    &mut stdout,
-                )?;
-                Err(Box::new(error))
-            }
-        }
-    }
-
-    fn run_turn_with_output(
-        &mut self,
-        input: &str,
-        output_format: CliOutputFormat,
-        compact: bool,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        match output_format {
-            CliOutputFormat::Text if compact => self.run_prompt_compact(input),
-            CliOutputFormat::Text => self.run_turn(input),
-            CliOutputFormat::Json => self.run_prompt_json(input),
-        }
-    }
-
-    fn run_prompt_compact(&mut self, input: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let (mut runtime, hook_abort_monitor) = self.prepare_turn_runtime(false)?;
-        let mut permission_prompter = CliPermissionPrompter::new(self.permission_mode);
-        let result = runtime.run_turn(input, Some(&mut permission_prompter));
-        hook_abort_monitor.stop();
-        let summary = result?;
-        self.replace_runtime(runtime)?;
-        self.persist_session()?;
-        let final_text = final_assistant_text(&summary);
-        println!("{final_text}");
-        Ok(())
-    }
-
-    fn run_prompt_json(&mut self, input: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let (mut runtime, hook_abort_monitor) = self.prepare_turn_runtime(false)?;
-        let mut permission_prompter = CliPermissionPrompter::new(self.permission_mode);
-        let result = runtime.run_turn(input, Some(&mut permission_prompter));
-        hook_abort_monitor.stop();
-        let summary = result?;
-        self.replace_runtime(runtime)?;
-        self.persist_session()?;
-        println!(
-            "{}",
-            json!({
-                "message": final_assistant_text(&summary),
-                "model": self.model,
-                "iterations": summary.iterations,
-                "auto_compaction": summary.auto_compaction.map(|event| json!({
-                    "removed_messages": event.removed_message_count,
-                    "notice": format_auto_compaction_notice(event.removed_message_count),
-                })),
-                "tool_uses": collect_tool_uses(&summary),
-                "tool_results": collect_tool_results(&summary),
-                "prompt_cache_events": collect_prompt_cache_events(&summary),
-                "usage": {
-                    "input_tokens": summary.usage.input_tokens,
-                    "output_tokens": summary.usage.output_tokens,
-                    "cache_creation_input_tokens": summary.usage.cache_creation_input_tokens,
-                    "cache_read_input_tokens": summary.usage.cache_read_input_tokens,
-                },
-                "estimated_cost": format_usd(
-                    summary.usage.estimate_cost_usd_with_pricing(
-                        pricing_for_model(&self.model)
-                            .unwrap_or_else(runtime::ModelPricing::default_sonnet_tier)
-                    ).total_cost_usd()
-                )
-            })
-        );
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_lines)]
-    fn handle_repl_command(
-        &mut self,
-        command: SlashCommand,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        Ok(match command {
-            SlashCommand::Help => {
-                println!("{}", render_repl_help());
-                false
-            }
-            SlashCommand::Status => {
-                self.print_status();
-                false
-            }
-            SlashCommand::Bughunter { scope } => {
-                self.run_bughunter(scope.as_deref())?;
-                false
-            }
-            SlashCommand::Commit => {
-                self.run_commit(None)?;
-                false
-            }
-            SlashCommand::Pr { context } => {
-                self.run_pr(context.as_deref())?;
-                false
-            }
-            SlashCommand::Issue { context } => {
-                self.run_issue(context.as_deref())?;
-                false
-            }
-            SlashCommand::Ultraplan { task } => {
-                self.run_ultraplan(task.as_deref())?;
-                false
-            }
-            SlashCommand::Teleport { target } => {
-                Self::run_teleport(target.as_deref())?;
-                false
-            }
-            SlashCommand::DebugToolCall => {
-                self.run_debug_tool_call(None)?;
-                false
-            }
-            SlashCommand::Sandbox => {
-                Self::print_sandbox_status();
-                false
-            }
-            SlashCommand::Compact => {
-                self.compact()?;
-                false
-            }
-            SlashCommand::Model { model } => self.set_model(model)?,
-            SlashCommand::Permissions { mode } => self.set_permissions(mode)?,
-            SlashCommand::Clear { confirm } => self.clear_session(confirm)?,
-            SlashCommand::Cost => {
-                self.print_cost();
-                false
-            }
-            SlashCommand::Resume { session_path } => self.resume_session(session_path)?,
-            SlashCommand::Config { section } => {
-                Self::print_config(section.as_deref())?;
-                false
-            }
-            SlashCommand::Mcp { action, target } => {
-                let args = match (action.as_deref(), target.as_deref()) {
-                    (None, None) => None,
-                    (Some(action), None) => Some(action.to_string()),
-                    (Some(action), Some(target)) => Some(format!("{action} {target}")),
-                    (None, Some(target)) => Some(target.to_string()),
-                };
-                Self::print_mcp(args.as_deref(), CliOutputFormat::Text)?;
-                false
-            }
-            SlashCommand::Memory => {
-                Self::print_memory()?;
-                false
-            }
-            SlashCommand::Init => {
-                run_init(CliOutputFormat::Text)?;
-                false
-            }
-            SlashCommand::Diff => {
-                Self::print_diff()?;
-                false
-            }
-            SlashCommand::Version => {
-                Self::print_version(CliOutputFormat::Text);
-                false
-            }
-            SlashCommand::Export { path } => {
-                self.export_session(path.as_deref())?;
-                false
-            }
-            SlashCommand::Session { action, target } => {
-                self.handle_session_command(action.as_deref(), target.as_deref())?
-            }
-            SlashCommand::Plugins { action, target } => {
-                self.handle_plugins_command(action.as_deref(), target.as_deref())?
-            }
-            SlashCommand::Agents { args } => {
-                Self::print_agents(args.as_deref(), CliOutputFormat::Text)?;
-                false
-            }
-            SlashCommand::Skills { args } => {
-                match classify_skills_slash_command(args.as_deref()) {
-                    SkillSlashDispatch::Invoke(prompt) => self.run_turn(&prompt)?,
-                    SkillSlashDispatch::Local => {
-                        Self::print_skills(args.as_deref(), CliOutputFormat::Text)?;
-                    }
-                }
-                false
-            }
-            SlashCommand::Doctor => {
-                println!("{}", render_doctor_report()?.render());
-                false
-            }
-            SlashCommand::History { count } => {
-                self.print_prompt_history(count.as_deref());
-                false
-            }
-            SlashCommand::Login
-            | SlashCommand::Logout
-            | SlashCommand::Vim
-            | SlashCommand::Upgrade
-            | SlashCommand::Stats
-            | SlashCommand::Share
-            | SlashCommand::Feedback
-            | SlashCommand::Files
-            | SlashCommand::Fast
-            | SlashCommand::Exit
-            | SlashCommand::Summary
-            | SlashCommand::Desktop
-            | SlashCommand::Brief
-            | SlashCommand::Advisor
-            | SlashCommand::Stickers
-            | SlashCommand::Insights
-            | SlashCommand::Thinkback
-            | SlashCommand::ReleaseNotes
-            | SlashCommand::SecurityReview
-            | SlashCommand::Keybindings
-            | SlashCommand::PrivacySettings
-            | SlashCommand::Plan { .. }
-            | SlashCommand::Review { .. }
-            | SlashCommand::Tasks { .. }
-            | SlashCommand::Theme { .. }
-            | SlashCommand::Voice { .. }
-            | SlashCommand::Usage { .. }
-            | SlashCommand::Rename { .. }
-            | SlashCommand::Copy { .. }
-            | SlashCommand::Hooks { .. }
-            | SlashCommand::Context { .. }
-            | SlashCommand::Color { .. }
-            | SlashCommand::Effort { .. }
-            | SlashCommand::Branch { .. }
-            | SlashCommand::Rewind { .. }
-            | SlashCommand::Ide { .. }
-            | SlashCommand::Tag { .. }
-            | SlashCommand::OutputStyle { .. }
-            | SlashCommand::AddDir { .. } => {
-                eprintln!("Command registered but not yet implemented.");
-                false
-            }
-            SlashCommand::Fleet => {
-                let result = commands::handle_slash_command(
-                    "/fleet",
-                    self.runtime.session(),
-                    runtime::CompactionConfig::default(),
-                );
-                if let Some(r) = result {
-                    println!("{}", r.message);
-                }
-                false
-            }
-            SlashCommand::Unknown(name) => {
-                eprintln!("{}", format_unknown_slash_command(&name));
-                false
-            }
-            SlashCommand::Approve { .. } | SlashCommand::Reject { .. } => false,
-        })
-    }
-
-    fn persist_session(&self) -> Result<(), Box<dyn std::error::Error>> {
-        self.runtime.session().save_to_path(&self.session.path)?;
-        Ok(())
-    }
-
-    fn print_status(&self) {
-        let cumulative = self.runtime.usage().cumulative_usage();
-        let latest = self.runtime.usage().current_turn_usage();
-        println!(
-            "{}",
-            format_status_report(
-                &self.model,
-                StatusUsage {
-                    message_count: self.runtime.session().messages.len(),
-                    turns: self.runtime.usage().turns(),
-                    latest,
-                    cumulative,
-                    estimated_tokens: self.runtime.estimated_tokens(),
-                },
-                self.permission_mode.as_str(),
-                &status_context(Some(&self.session.path)).expect("status context should load"),
-            )
-        );
-    }
-
-    fn record_prompt_history(&mut self, prompt: &str) {
-        let timestamp_ms = std::time::SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .ok()
-            .map_or(self.runtime.session().updated_at_ms, |duration| {
-                u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
-            });
-        let entry = PromptHistoryEntry {
-            timestamp_ms,
-            text: prompt.to_string(),
-        };
-        self.prompt_history.push(entry);
-        if let Err(error) = self.runtime.session_mut().push_prompt_entry(prompt) {
-            eprintln!("warning: failed to persist prompt history: {error}");
-        }
-    }
-
-    fn print_prompt_history(&self, count: Option<&str>) {
-        let limit = match parse_history_count(count) {
-            Ok(limit) => limit,
-            Err(message) => {
-                eprintln!("{message}");
-                return;
-            }
-        };
-        let session_entries = &self.runtime.session().prompt_history;
-        let entries = if session_entries.is_empty() {
-            if self.prompt_history.is_empty() {
-                collect_session_prompt_history(self.runtime.session())
-            } else {
-                self.prompt_history
-                    .iter()
-                    .map(|entry| PromptHistoryEntry {
-                        timestamp_ms: entry.timestamp_ms,
-                        text: entry.text.clone(),
-                    })
-                    .collect()
-            }
-        } else {
-            session_entries
-                .iter()
-                .map(|entry| PromptHistoryEntry {
-                    timestamp_ms: entry.timestamp_ms,
-                    text: entry.text.clone(),
-                })
-                .collect()
-        };
-        println!("{}", render_prompt_history_report(&entries, limit));
-    }
-
-    fn print_sandbox_status() {
-        let cwd = env::current_dir().expect("current dir");
-        let loader = ConfigLoader::default_for(&cwd);
-        let runtime_config = loader
-            .load()
-            .unwrap_or_else(|_| runtime::RuntimeConfig::empty());
-        println!(
-            "{}",
-            format_sandbox_report(&resolve_sandbox_status(runtime_config.sandbox(), &cwd))
-        );
-    }
-
-    fn set_model(&mut self, model: Option<String>) -> Result<bool, Box<dyn std::error::Error>> {
-        let Some(model) = model else {
-            println!(
-                "{}",
-                format_model_report(
-                    &self.model,
-                    self.runtime.session().messages.len(),
-                    self.runtime.usage().turns(),
-                )
-            );
-            return Ok(false);
-        };
-
-        let model = resolve_model_alias_with_config(&model);
-
-        if model == self.model {
-            println!(
-                "{}",
-                format_model_report(
-                    &self.model,
-                    self.runtime.session().messages.len(),
-                    self.runtime.usage().turns(),
-                )
-            );
-            return Ok(false);
-        }
-
-        let previous = self.model.clone();
-        let session = self.runtime.session().clone();
-        let message_count = session.messages.len();
-        let runtime = build_runtime(
-            session,
-            &self.session.id,
-            model.clone(),
-            self.system_prompt.clone(),
-            true,
-            true,
-            self.allowed_tools.clone(),
-            self.permission_mode,
-            None,
-        )?;
-        self.replace_runtime(runtime)?;
-        self.model.clone_from(&model);
-        println!(
-            "{}",
-            format_model_switch_report(&previous, &model, message_count)
-        );
-        Ok(true)
-    }
-
-    fn set_permissions(
-        &mut self,
-        mode: Option<String>,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        let Some(mode) = mode else {
-            println!(
-                "{}",
-                format_permissions_report(self.permission_mode.as_str())
-            );
-            return Ok(false);
-        };
-
-        let normalized = normalize_permission_mode(&mode).ok_or_else(|| {
-            format!(
-                "unsupported permission mode '{mode}'. Use read-only, workspace-write, or danger-full-access."
-            )
-        })?;
-
-        if normalized == self.permission_mode.as_str() {
-            println!("{}", format_permissions_report(normalized));
-            return Ok(false);
-        }
-
-        let previous = self.permission_mode.as_str().to_string();
-        let session = self.runtime.session().clone();
-        self.permission_mode = permission_mode_from_label(normalized);
-        let runtime = build_runtime(
-            session,
-            &self.session.id,
-            self.model.clone(),
-            self.system_prompt.clone(),
-            true,
-            true,
-            self.allowed_tools.clone(),
-            self.permission_mode,
-            None,
-        )?;
-        self.replace_runtime(runtime)?;
-        println!(
-            "{}",
-            format_permissions_switch_report(&previous, normalized)
-        );
-        Ok(true)
-    }
-
-    fn clear_session(&mut self, confirm: bool) -> Result<bool, Box<dyn std::error::Error>> {
-        if !confirm {
-            println!(
-                "clear: confirmation required; run /clear --confirm to start a fresh session."
-            );
-            return Ok(false);
-        }
-
-        let previous_session = self.session.clone();
-        let session_state = Session::new().with_workspace_root(env::current_dir()?);
-        self.session = create_managed_session_handle(&session_state.session_id)?;
-        let runtime = build_runtime(
-            session_state.with_persistence_path(self.session.path.clone()),
-            &self.session.id,
-            self.model.clone(),
-            self.system_prompt.clone(),
-            true,
-            true,
-            self.allowed_tools.clone(),
-            self.permission_mode,
-            None,
-        )?;
-        self.replace_runtime(runtime)?;
-        println!(
-            "Session cleared\n  Mode             fresh session\n  Previous session {}\n  Resume previous  /resume {}\n  Preserved model  {}\n  Permission mode  {}\n  New session      {}\n  Session file     {}",
-            previous_session.id,
-            previous_session.id,
-            self.model,
-            self.permission_mode.as_str(),
-            self.session.id,
-            self.session.path.display(),
-        );
-        Ok(true)
-    }
-
-    fn print_cost(&self) {
-        let cumulative = self.runtime.usage().cumulative_usage();
-        println!("{}", format_cost_report(cumulative));
-    }
-
-    fn resume_session(
-        &mut self,
-        session_path: Option<String>,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        let Some(session_ref) = session_path else {
-            println!("{}", render_resume_usage());
-            return Ok(false);
-        };
-
-        let handle = resolve_session_reference(&session_ref)?;
-        let session = Session::load_from_path(&handle.path)?;
-        let message_count = session.messages.len();
-        let session_id = session.session_id.clone();
-        let runtime = build_runtime(
-            session,
-            &handle.id,
-            self.model.clone(),
-            self.system_prompt.clone(),
-            true,
-            true,
-            self.allowed_tools.clone(),
-            self.permission_mode,
-            None,
-        )?;
-        self.replace_runtime(runtime)?;
-        self.session = SessionHandle {
-            id: session_id,
-            path: handle.path,
-        };
-        println!(
-            "{}",
-            format_resume_report(
-                &self.session.path.display().to_string(),
-                message_count,
-                self.runtime.usage().turns(),
-            )
-        );
-        Ok(true)
-    }
-
-    fn print_config(section: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-        println!("{}", render_config_report(section)?);
-        Ok(())
-    }
-
-    fn print_memory() -> Result<(), Box<dyn std::error::Error>> {
-        println!("{}", render_memory_report()?);
-        Ok(())
-    }
-
-    fn print_agents(
-        args: Option<&str>,
-        output_format: CliOutputFormat,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let cwd = env::current_dir()?;
-        match output_format {
-            CliOutputFormat::Text => println!("{}", handle_agents_slash_command(args, &cwd)?),
-            CliOutputFormat::Json => println!(
-                "{}",
-                serde_json::to_string_pretty(&handle_agents_slash_command_json(args, &cwd)?)?
-            ),
-        }
-        Ok(())
-    }
-
-    fn print_mcp(
-        args: Option<&str>,
-        output_format: CliOutputFormat,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        // `onyx mcp serve` starts a stdio MCP server exposing onyx's built-in
-        // tools. All other `mcp` subcommands fall through to the existing
-        // configured-server reporter (`list`, `status`, ...).
-        if matches!(args.map(str::trim), Some("serve")) {
-            return run_mcp_serve();
-        }
-        let cwd = env::current_dir()?;
-        match output_format {
-            CliOutputFormat::Text => println!("{}", handle_mcp_slash_command(args, &cwd)?),
-            CliOutputFormat::Json => println!(
-                "{}",
-                serde_json::to_string_pretty(&handle_mcp_slash_command_json(args, &cwd)?)?
-            ),
-        }
-        Ok(())
-    }
-
-    fn print_skills(
-        args: Option<&str>,
-        output_format: CliOutputFormat,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let cwd = env::current_dir()?;
-        match output_format {
-            CliOutputFormat::Text => println!("{}", handle_skills_slash_command(args, &cwd)?),
-            CliOutputFormat::Json => println!(
-                "{}",
-                serde_json::to_string_pretty(&handle_skills_slash_command_json(args, &cwd)?)?
-            ),
-        }
-        Ok(())
-    }
-
-    fn print_plugins(
-        action: Option<&str>,
-        target: Option<&str>,
-        output_format: CliOutputFormat,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let cwd = env::current_dir()?;
-        let loader = ConfigLoader::default_for(&cwd);
-        let runtime_config = loader.load()?;
-        let mut manager = build_plugin_manager(&cwd, &loader, &runtime_config);
-        let result = handle_plugins_slash_command(action, target, &mut manager)?;
-        match output_format {
-            CliOutputFormat::Text => println!("{}", result.message),
-            CliOutputFormat::Json => println!(
-                "{}",
-                serde_json::to_string_pretty(&json!({
-                    "kind": "plugin",
-                    "action": action.unwrap_or("list"),
-                    "target": target,
-                    "message": result.message,
-                    "reload_runtime": result.reload_runtime,
-                }))?
-            ),
-        }
-        Ok(())
-    }
-
-    fn print_diff() -> Result<(), Box<dyn std::error::Error>> {
-        println!("{}", render_diff_report()?);
-        Ok(())
-    }
-
-    fn print_version(output_format: CliOutputFormat) {
-        let _ = crate::print_version(output_format);
-    }
-
-    fn export_session(
-        &self,
-        requested_path: Option<&str>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let export_path = resolve_export_path(requested_path, self.runtime.session())?;
-        fs::write(&export_path, render_export_text(self.runtime.session()))?;
-        println!(
-            "Export\n  Result           wrote transcript\n  File             {}\n  Messages         {}",
-            export_path.display(),
-            self.runtime.session().messages.len(),
-        );
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_lines)]
-    fn handle_session_command(
-        &mut self,
-        action: Option<&str>,
-        target: Option<&str>,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        match action {
-            None | Some("list") => {
-                println!("{}", render_session_list(&self.session.id)?);
-                Ok(false)
-            }
-            Some("switch") => {
-                let Some(target) = target else {
-                    println!("Usage: /session switch <session-id>");
-                    return Ok(false);
-                };
-                let handle = resolve_session_reference(target)?;
-                let session = Session::load_from_path(&handle.path)?;
-                let message_count = session.messages.len();
-                let session_id = session.session_id.clone();
-                let runtime = build_runtime(
-                    session,
-                    &handle.id,
-                    self.model.clone(),
-                    self.system_prompt.clone(),
-                    true,
-                    true,
-                    self.allowed_tools.clone(),
-                    self.permission_mode,
-                    None,
-                )?;
-                self.replace_runtime(runtime)?;
-                self.session = SessionHandle {
-                    id: session_id,
-                    path: handle.path,
-                };
-                println!(
-                    "Session switched\n  Active session   {}\n  File             {}\n  Messages         {}",
-                    self.session.id,
-                    self.session.path.display(),
-                    message_count,
-                );
-                Ok(true)
-            }
-            Some("fork") => {
-                let forked = self.runtime.fork_session(target.map(ToOwned::to_owned));
-                let parent_session_id = self.session.id.clone();
-                let handle = create_managed_session_handle(&forked.session_id)?;
-                let branch_name = forked
-                    .fork
-                    .as_ref()
-                    .and_then(|fork| fork.branch_name.clone());
-                let forked = forked.with_persistence_path(handle.path.clone());
-                let message_count = forked.messages.len();
-                forked.save_to_path(&handle.path)?;
-                let runtime = build_runtime(
-                    forked,
-                    &handle.id,
-                    self.model.clone(),
-                    self.system_prompt.clone(),
-                    true,
-                    true,
-                    self.allowed_tools.clone(),
-                    self.permission_mode,
-                    None,
-                )?;
-                self.replace_runtime(runtime)?;
-                self.session = handle;
-                println!(
-                    "Session forked\n  Parent session   {}\n  Active session   {}\n  Branch           {}\n  File             {}\n  Messages         {}",
-                    parent_session_id,
-                    self.session.id,
-                    branch_name.as_deref().unwrap_or("(unnamed)"),
-                    self.session.path.display(),
-                    message_count,
-                );
-                Ok(true)
-            }
-            Some("delete") => {
-                let Some(target) = target else {
-                    println!("Usage: /session delete <session-id> [--force]");
-                    return Ok(false);
-                };
-                let handle = resolve_session_reference(target)?;
-                if handle.id == self.session.id {
-                    println!(
-                        "delete: refusing to delete the active session '{}'.\nSwitch to another session first with /session switch <session-id>.",
-                        handle.id
-                    );
-                    return Ok(false);
-                }
-                if !confirm_session_deletion(&handle.id) {
-                    println!("delete: cancelled.");
-                    return Ok(false);
-                }
-                delete_managed_session(&handle.path)?;
-                println!(
-                    "Session deleted\n  Deleted session  {}\n  File             {}",
-                    handle.id,
-                    handle.path.display(),
-                );
-                Ok(false)
-            }
-            Some("delete-force") => {
-                let Some(target) = target else {
-                    println!("Usage: /session delete <session-id> [--force]");
-                    return Ok(false);
-                };
-                let handle = resolve_session_reference(target)?;
-                if handle.id == self.session.id {
-                    println!(
-                        "delete: refusing to delete the active session '{}'.\nSwitch to another session first with /session switch <session-id>.",
-                        handle.id
-                    );
-                    return Ok(false);
-                }
-                delete_managed_session(&handle.path)?;
-                println!(
-                    "Session deleted\n  Deleted session  {}\n  File             {}",
-                    handle.id,
-                    handle.path.display(),
-                );
-                Ok(false)
-            }
-            Some(other) => {
-                println!(
-                    "Unknown /session action '{other}'. Use /session list, /session switch <session-id>, /session fork [branch-name], or /session delete <session-id> [--force]."
-                );
-                Ok(false)
-            }
-        }
-    }
-
-    fn handle_plugins_command(
-        &mut self,
-        action: Option<&str>,
-        target: Option<&str>,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        let cwd = env::current_dir()?;
-        let loader = ConfigLoader::default_for(&cwd);
-        let runtime_config = loader.load()?;
-        let mut manager = build_plugin_manager(&cwd, &loader, &runtime_config);
-        let result = handle_plugins_slash_command(action, target, &mut manager)?;
-        println!("{}", result.message);
-        if result.reload_runtime {
-            self.reload_runtime_features()?;
-        }
-        Ok(false)
-    }
-
-    fn reload_runtime_features(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let runtime = build_runtime(
-            self.runtime.session().clone(),
-            &self.session.id,
-            self.model.clone(),
-            self.system_prompt.clone(),
-            true,
-            true,
-            self.allowed_tools.clone(),
-            self.permission_mode,
-            None,
-        )?;
-        self.replace_runtime(runtime)?;
-        self.persist_session()
-    }
-
-    fn compact(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let result = self.runtime.compact(CompactionConfig::default());
-        let removed = result.removed_message_count;
-        let kept = result.compacted_session.messages.len();
-        let skipped = removed == 0;
-        let runtime = build_runtime(
-            result.compacted_session,
-            &self.session.id,
-            self.model.clone(),
-            self.system_prompt.clone(),
-            true,
-            true,
-            self.allowed_tools.clone(),
-            self.permission_mode,
-            None,
-        )?;
-        self.replace_runtime(runtime)?;
-        self.persist_session()?;
-        println!("{}", format_compact_report(removed, kept, skipped));
-        Ok(())
-    }
-
-    fn run_internal_prompt_text_with_progress(
-        &self,
-        prompt: &str,
-        enable_tools: bool,
-        progress: Option<InternalPromptProgressReporter>,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let session = self.runtime.session().clone();
-        let mut runtime = build_runtime(
-            session,
-            &self.session.id,
-            self.model.clone(),
-            self.system_prompt.clone(),
-            enable_tools,
-            false,
-            self.allowed_tools.clone(),
-            self.permission_mode,
-            progress,
-        )?;
-        let mut permission_prompter = CliPermissionPrompter::new(self.permission_mode);
-        let summary = runtime.run_turn(prompt, Some(&mut permission_prompter))?;
-        let text = final_assistant_text(&summary).trim().to_string();
-        runtime.shutdown_plugins()?;
-        Ok(text)
-    }
-
-    fn run_internal_prompt_text(
-        &self,
-        prompt: &str,
-        enable_tools: bool,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        self.run_internal_prompt_text_with_progress(prompt, enable_tools, None)
-    }
-
-    fn run_bughunter(&self, scope: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-        println!("{}", format_bughunter_report(scope));
-        Ok(())
-    }
-
-    fn run_ultraplan(&self, task: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-        println!("{}", format_ultraplan_report(task));
-        Ok(())
-    }
-
-    fn run_teleport(target: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-        let Some(target) = target.map(str::trim).filter(|value| !value.is_empty()) else {
-            println!("Usage: /teleport <symbol-or-path>");
-            return Ok(());
-        };
-
-        println!("{}", render_teleport_report(target)?);
-        Ok(())
-    }
-
-    fn run_debug_tool_call(&self, args: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-        validate_no_args("/debug-tool-call", args)?;
-        println!("{}", render_last_tool_debug_report(self.runtime.session())?);
-        Ok(())
-    }
-
-    fn run_commit(&mut self, args: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-        validate_no_args("/commit", args)?;
-        let status = git_output(&["status", "--short", "--branch"])?;
-        let summary = parse_git_workspace_summary(Some(&status));
-        let branch = parse_git_status_branch(Some(&status));
-        if summary.is_clean() {
-            println!("{}", format_commit_skipped_report());
-            return Ok(());
-        }
-
-        println!(
-            "{}",
-            format_commit_preflight_report(branch.as_deref(), summary)
-        );
-        Ok(())
-    }
-
-    fn run_pr(&self, context: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-        let branch =
-            resolve_git_branch_for(&env::current_dir()?).unwrap_or_else(|| "unknown".to_string());
-        println!("{}", format_pr_report(&branch, context));
-        Ok(())
-    }
-
-    fn run_issue(&self, context: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-        println!("{}", format_issue_report(context));
-        Ok(())
-    }
-}
-
-fn sessions_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub(crate) fn sessions_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     let store = runtime::SessionStore::from_cwd(&cwd)
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     Ok(store.sessions_dir().to_path_buf())
 }
 
-fn create_managed_session_handle(
+pub(crate) fn create_managed_session_handle(
     session_id: &str,
 ) -> Result<SessionHandle, Box<dyn std::error::Error>> {
     let id = session_id.to_string();
@@ -5441,7 +4314,9 @@ fn create_managed_session_handle(
     Ok(SessionHandle { id, path })
 }
 
-fn resolve_session_reference(reference: &str) -> Result<SessionHandle, Box<dyn std::error::Error>> {
+pub(crate) fn resolve_session_reference(
+    reference: &str,
+) -> Result<SessionHandle, Box<dyn std::error::Error>> {
     if SESSION_REFERENCE_ALIASES
         .iter()
         .any(|alias| reference.eq_ignore_ascii_case(alias))
@@ -5474,7 +4349,9 @@ fn resolve_session_reference(reference: &str) -> Result<SessionHandle, Box<dyn s
     Ok(SessionHandle { id, path })
 }
 
-fn resolve_managed_session_path(session_id: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub(crate) fn resolve_managed_session_path(
+    session_id: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let directory = sessions_dir()?;
     for extension in [PRIMARY_SESSION_EXTENSION, LEGACY_SESSION_EXTENSION] {
         let path = directory.join(format!("{session_id}.{extension}"));
@@ -5501,7 +4378,7 @@ fn resolve_managed_session_path(session_id: &str) -> Result<PathBuf, Box<dyn std
     Err(format_missing_session_reference(session_id).into())
 }
 
-fn is_managed_session_file(path: &Path) -> bool {
+pub(crate) fn is_managed_session_file(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .is_some_and(|extension| {
@@ -5509,7 +4386,7 @@ fn is_managed_session_file(path: &Path) -> bool {
         })
 }
 
-fn collect_sessions_from_dir(
+pub(crate) fn collect_sessions_from_dir(
     directory: &Path,
     sessions: &mut Vec<ManagedSessionSummary>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -5569,7 +4446,8 @@ fn collect_sessions_from_dir(
     Ok(())
 }
 
-fn list_managed_sessions() -> Result<Vec<ManagedSessionSummary>, Box<dyn std::error::Error>> {
+pub(crate) fn list_managed_sessions(
+) -> Result<Vec<ManagedSessionSummary>, Box<dyn std::error::Error>> {
     let mut sessions = Vec::new();
     let primary_dir = sessions_dir()?;
     collect_sessions_from_dir(&primary_dir, &mut sessions)?;
@@ -5593,14 +4471,15 @@ fn list_managed_sessions() -> Result<Vec<ManagedSessionSummary>, Box<dyn std::er
     Ok(sessions)
 }
 
-fn latest_managed_session() -> Result<ManagedSessionSummary, Box<dyn std::error::Error>> {
+pub(crate) fn latest_managed_session() -> Result<ManagedSessionSummary, Box<dyn std::error::Error>>
+{
     list_managed_sessions()?
         .into_iter()
         .next()
         .ok_or_else(|| format_no_managed_sessions().into())
 }
 
-fn delete_managed_session(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn delete_managed_session(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if !path.exists() {
         return Err(format!("session file does not exist: {}", path.display()).into());
     }
@@ -5608,7 +4487,7 @@ fn delete_managed_session(path: &Path) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
-fn confirm_session_deletion(session_id: &str) -> bool {
+pub(crate) fn confirm_session_deletion(session_id: &str) -> bool {
     print!("Delete session '{session_id}'? This cannot be undone. [y/N]: ");
     io::stdout().flush().unwrap_or(());
     let mut answer = String::new();
@@ -5618,19 +4497,21 @@ fn confirm_session_deletion(session_id: &str) -> bool {
     matches!(answer.trim(), "y" | "Y" | "yes" | "Yes" | "YES")
 }
 
-fn format_missing_session_reference(reference: &str) -> String {
+pub(crate) fn format_missing_session_reference(reference: &str) -> String {
     format!(
         "session not found: {reference}\nHint: managed sessions live in .claw/sessions/. Try `{LATEST_SESSION_REFERENCE}` for the most recent session or `/session list` in the REPL."
     )
 }
 
-fn format_no_managed_sessions() -> String {
+pub(crate) fn format_no_managed_sessions() -> String {
     format!(
         "no managed sessions found in .claw/sessions/\nStart `onyx` to create a session, then rerun with `--resume {LATEST_SESSION_REFERENCE}`."
     )
 }
 
-fn render_session_list(active_session_id: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_session_list(
+    active_session_id: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
     let sessions = list_managed_sessions()?;
     let mut lines = vec![
         "Sessions".to_string(),
@@ -5669,7 +4550,7 @@ fn render_session_list(active_session_id: &str) -> Result<String, Box<dyn std::e
     Ok(lines.join("\n"))
 }
 
-fn format_session_modified_age(modified_epoch_millis: u128) -> String {
+pub(crate) fn format_session_modified_age(modified_epoch_millis: u128) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()
@@ -5687,7 +4568,7 @@ fn format_session_modified_age(modified_epoch_millis: u128) -> String {
     }
 }
 
-fn write_session_clear_backup(
+pub(crate) fn write_session_clear_backup(
     session: &Session,
     session_path: &Path,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -5696,7 +4577,7 @@ fn write_session_clear_backup(
     Ok(backup_path)
 }
 
-fn session_clear_backup_path(session_path: &Path) -> PathBuf {
+pub(crate) fn session_clear_backup_path(session_path: &Path) -> PathBuf {
     let timestamp = std::time::SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()
@@ -5708,7 +4589,7 @@ fn session_clear_backup_path(session_path: &Path) -> PathBuf {
     session_path.with_file_name(format!("{file_name}.before-clear-{timestamp}.bak"))
 }
 
-fn render_repl_help() -> String {
+pub(crate) fn render_repl_help() -> String {
     [
         "REPL".to_string(),
         "  /exit                Quit the REPL".to_string(),
@@ -5731,7 +4612,7 @@ fn render_repl_help() -> String {
     )
 }
 
-fn print_status_snapshot(
+pub(crate) fn print_status_snapshot(
     model: &str,
     permission_mode: PermissionMode,
     output_format: CliOutputFormat,
@@ -5762,7 +4643,7 @@ fn print_status_snapshot(
     Ok(())
 }
 
-fn status_json_value(
+pub(crate) fn status_json_value(
     model: &str,
     usage: StatusUsage,
     permission_mode: &str,
@@ -5813,7 +4694,7 @@ fn status_json_value(
     })
 }
 
-fn status_context(
+pub(crate) fn status_context(
     session_path: Option<&Path>,
 ) -> Result<StatusContext, Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
@@ -5838,7 +4719,7 @@ fn status_context(
     })
 }
 
-fn format_status_report(
+pub(crate) fn format_status_report(
     model: &str,
     usage: StatusUsage,
     permission_mode: &str,
@@ -5907,7 +4788,7 @@ fn format_status_report(
     )
 }
 
-fn format_sandbox_report(status: &runtime::SandboxStatus) -> String {
+pub(crate) fn format_sandbox_report(status: &runtime::SandboxStatus) -> String {
     format!(
         "Sandbox
   Enabled           {}
@@ -5950,7 +4831,10 @@ fn format_sandbox_report(status: &runtime::SandboxStatus) -> String {
     )
 }
 
-fn format_commit_preflight_report(branch: Option<&str>, summary: GitWorkspaceSummary) -> String {
+pub(crate) fn format_commit_preflight_report(
+    branch: Option<&str>,
+    summary: GitWorkspaceSummary,
+) -> String {
     format!(
         "Commit
   Result           ready
@@ -5964,7 +4848,7 @@ fn format_commit_preflight_report(branch: Option<&str>, summary: GitWorkspaceSum
     )
 }
 
-fn format_commit_skipped_report() -> String {
+pub(crate) fn format_commit_skipped_report() -> String {
     "Commit
   Result           skipped
   Reason           no workspace changes
@@ -5973,7 +4857,7 @@ fn format_commit_skipped_report() -> String {
         .to_string()
 }
 
-fn print_sandbox_status_snapshot(
+pub(crate) fn print_sandbox_status_snapshot(
     output_format: CliOutputFormat,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
@@ -5992,7 +4876,7 @@ fn print_sandbox_status_snapshot(
     Ok(())
 }
 
-fn sandbox_json_value(status: &runtime::SandboxStatus) -> serde_json::Value {
+pub(crate) fn sandbox_json_value(status: &runtime::SandboxStatus) -> serde_json::Value {
     json!({
         "kind": "sandbox",
         "enabled": status.enabled,
@@ -6011,7 +4895,7 @@ fn sandbox_json_value(status: &runtime::SandboxStatus) -> serde_json::Value {
     })
 }
 
-fn render_help_topic(topic: LocalHelpTopic) -> String {
+pub(crate) fn render_help_topic(topic: LocalHelpTopic) -> String {
     match topic {
         LocalHelpTopic::Status => "Status
   Usage            onyx status
@@ -6034,11 +4918,13 @@ fn render_help_topic(topic: LocalHelpTopic) -> String {
     }
 }
 
-fn print_help_topic(topic: LocalHelpTopic) {
+pub(crate) fn print_help_topic(topic: LocalHelpTopic) {
     println!("{}", render_help_topic(topic));
 }
 
-fn render_config_report(section: Option<&str>) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_config_report(
+    section: Option<&str>,
+) -> Result<String, Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     let loader = ConfigLoader::default_for(&cwd);
     let discovered = loader.discover();
@@ -6117,7 +5003,7 @@ fn render_config_report(section: Option<&str>) -> Result<String, Box<dyn std::er
     ))
 }
 
-fn render_memory_report() -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_memory_report() -> Result<String, Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     let project_context = ProjectContext::discover(&cwd, DEFAULT_DATE)?;
     let mut lines = vec![format!(
@@ -6156,12 +5042,12 @@ fn render_memory_report() -> Result<String, Box<dyn std::error::Error>> {
     ))
 }
 
-fn init_claude_md() -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn init_claude_md() -> Result<String, Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     Ok(initialize_repo(&cwd)?.render())
 }
 
-fn run_init(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn run_init(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
     let message = init_claude_md()?;
     match output_format {
         CliOutputFormat::Text => println!("{message}"),
@@ -6173,14 +5059,14 @@ fn run_init(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-fn init_json_value(message: &str) -> serde_json::Value {
+pub(crate) fn init_json_value(message: &str) -> serde_json::Value {
     json!({
         "kind": "init",
         "message": message,
     })
 }
 
-fn normalize_permission_mode(mode: &str) -> Option<&'static str> {
+pub(crate) fn normalize_permission_mode(mode: &str) -> Option<&'static str> {
     match mode.trim() {
         "read-only" => Some("read-only"),
         "workspace-write" => Some("workspace-write"),
@@ -6189,11 +5075,11 @@ fn normalize_permission_mode(mode: &str) -> Option<&'static str> {
     }
 }
 
-fn render_diff_report() -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_diff_report() -> Result<String, Box<dyn std::error::Error>> {
     render_diff_report_for(&env::current_dir()?)
 }
 
-fn render_diff_report_for(cwd: &Path) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_diff_report_for(cwd: &Path) -> Result<String, Box<dyn std::error::Error>> {
     let staged = run_git_diff_command_in(cwd, &["diff", "--cached"])?;
     let unstaged = run_git_diff_command_in(cwd, &["diff"])?;
     if staged.trim().is_empty() && unstaged.trim().is_empty() {
@@ -6214,7 +5100,7 @@ fn render_diff_report_for(cwd: &Path) -> Result<String, Box<dyn std::error::Erro
     Ok(format!("Diff\n\n{}", sections.join("\n\n")))
 }
 
-fn run_git_diff_command_in(
+pub(crate) fn run_git_diff_command_in(
     cwd: &Path,
     args: &[&str],
 ) -> Result<String, Box<dyn std::error::Error>> {
@@ -6229,7 +5115,7 @@ fn run_git_diff_command_in(
     Ok(String::from_utf8(output.stdout)?)
 }
 
-fn render_teleport_report(target: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_teleport_report(target: &str) -> Result<String, Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
 
     let file_list = Command::new("rg")
@@ -6279,7 +5165,9 @@ fn render_teleport_report(target: &str) -> Result<String, Box<dyn std::error::Er
     Ok(lines.join("\n"))
 }
 
-fn render_last_tool_debug_report(session: &Session) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_last_tool_debug_report(
+    session: &Session,
+) -> Result<String, Box<dyn std::error::Error>> {
     let last_tool_use = session
         .messages
         .iter()
@@ -6333,7 +5221,7 @@ fn render_last_tool_debug_report(session: &Session) -> Result<String, Box<dyn st
     Ok(lines.join("\n"))
 }
 
-fn indent_block(value: &str, spaces: usize) -> String {
+pub(crate) fn indent_block(value: &str, spaces: usize) -> String {
     let indent = " ".repeat(spaces);
     value
         .lines()
@@ -6342,7 +5230,7 @@ fn indent_block(value: &str, spaces: usize) -> String {
         .join("\n")
 }
 
-fn validate_no_args(
+pub(crate) fn validate_no_args(
     command_name: &str,
     args: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -6355,7 +5243,7 @@ fn validate_no_args(
     Ok(())
 }
 
-fn format_bughunter_report(scope: Option<&str>) -> String {
+pub(crate) fn format_bughunter_report(scope: Option<&str>) -> String {
     format!(
         "Bughunter
   Scope            {}
@@ -6365,7 +5253,7 @@ fn format_bughunter_report(scope: Option<&str>) -> String {
     )
 }
 
-fn format_ultraplan_report(task: Option<&str>) -> String {
+pub(crate) fn format_ultraplan_report(task: Option<&str>) -> String {
     format!(
         "Ultraplan
   Task             {}
@@ -6375,7 +5263,7 @@ fn format_ultraplan_report(task: Option<&str>) -> String {
     )
 }
 
-fn format_pr_report(branch: &str, context: Option<&str>) -> String {
+pub(crate) fn format_pr_report(branch: &str, context: Option<&str>) -> String {
     format!(
         "PR
   Branch           {branch}
@@ -6386,7 +5274,7 @@ fn format_pr_report(branch: &str, context: Option<&str>) -> String {
     )
 }
 
-fn format_issue_report(context: Option<&str>) -> String {
+pub(crate) fn format_issue_report(context: Option<&str>) -> String {
     format!(
         "Issue
   Context          {}
@@ -6396,7 +5284,7 @@ fn format_issue_report(context: Option<&str>) -> String {
     )
 }
 
-fn git_output(args: &[&str]) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn git_output(args: &[&str]) -> Result<String, Box<dyn std::error::Error>> {
     let output = Command::new("git")
         .args(args)
         .current_dir(env::current_dir()?)
@@ -6408,7 +5296,7 @@ fn git_output(args: &[&str]) -> Result<String, Box<dyn std::error::Error>> {
     Ok(String::from_utf8(output.stdout)?)
 }
 
-fn git_status_ok(args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn git_status_ok(args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
     let output = Command::new("git")
         .args(args)
         .current_dir(env::current_dir()?)
@@ -6420,7 +5308,7 @@ fn git_status_ok(args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn command_exists(name: &str) -> bool {
+pub(crate) fn command_exists(name: &str) -> bool {
     Command::new("which")
         .arg(name)
         .output()
@@ -6428,7 +5316,7 @@ fn command_exists(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn write_temp_text_file(
+pub(crate) fn write_temp_text_file(
     filename: &str,
     contents: &str,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -6439,7 +5327,7 @@ fn write_temp_text_file(
 
 const DEFAULT_HISTORY_LIMIT: usize = 20;
 
-fn parse_history_count(raw: Option<&str>) -> Result<usize, String> {
+pub(crate) fn parse_history_count(raw: Option<&str>) -> Result<usize, String> {
     let Some(raw) = raw else {
         return Ok(DEFAULT_HISTORY_LIMIT);
     };
@@ -6452,7 +5340,7 @@ fn parse_history_count(raw: Option<&str>) -> Result<usize, String> {
     Ok(parsed)
 }
 
-fn format_history_timestamp(timestamp_ms: u64) -> String {
+pub(crate) fn format_history_timestamp(timestamp_ms: u64) -> String {
     let secs = timestamp_ms / 1_000;
     let subsec_ms = timestamp_ms % 1_000;
     let days_since_epoch = secs / 86_400;
@@ -6467,7 +5355,7 @@ fn format_history_timestamp(timestamp_ms: u64) -> String {
 
 // Computes civil (Gregorian) year/month/day from days since the Unix epoch
 // (1970-01-01) using Howard Hinnant's `civil_from_days` algorithm.
-fn civil_from_days(days: i64) -> (i32, u32, u32) {
+pub(crate) fn civil_from_days(days: i64) -> (i32, u32, u32) {
     let z = days + 719_468;
     let era = if z >= 0 {
         z / 146_097
@@ -6488,7 +5376,7 @@ fn civil_from_days(days: i64) -> (i32, u32, u32) {
     (y as i32, m as u32, d as u32)
 }
 
-fn render_prompt_history_report(entries: &[PromptHistoryEntry], limit: usize) -> String {
+pub(crate) fn render_prompt_history_report(entries: &[PromptHistoryEntry], limit: usize) -> String {
     if entries.is_empty() {
         return "Prompt history\n  Result           no prompts recorded yet".to_string();
     }
@@ -6518,7 +5406,7 @@ fn render_prompt_history_report(entries: &[PromptHistoryEntry], limit: usize) ->
     lines.join("\n")
 }
 
-fn collect_session_prompt_history(session: &Session) -> Vec<PromptHistoryEntry> {
+pub(crate) fn collect_session_prompt_history(session: &Session) -> Vec<PromptHistoryEntry> {
     if !session.prompt_history.is_empty() {
         return session
             .prompt_history
@@ -6546,7 +5434,7 @@ fn collect_session_prompt_history(session: &Session) -> Vec<PromptHistoryEntry> 
         .collect()
 }
 
-fn recent_user_context(session: &Session, limit: usize) -> String {
+pub(crate) fn recent_user_context(session: &Session, limit: usize) -> String {
     let requests = session
         .messages
         .iter()
@@ -6574,7 +5462,7 @@ fn recent_user_context(session: &Session, limit: usize) -> String {
     }
 }
 
-fn truncate_for_prompt(value: &str, limit: usize) -> String {
+pub(crate) fn truncate_for_prompt(value: &str, limit: usize) -> String {
     if value.chars().count() <= limit {
         value.trim().to_string()
     } else {
@@ -6583,11 +5471,11 @@ fn truncate_for_prompt(value: &str, limit: usize) -> String {
     }
 }
 
-fn sanitize_generated_message(value: &str) -> String {
+pub(crate) fn sanitize_generated_message(value: &str) -> String {
     value.trim().trim_matches('`').trim().replace("\r\n", "\n")
 }
 
-fn parse_titled_body(value: &str) -> Option<(String, String)> {
+pub(crate) fn parse_titled_body(value: &str) -> Option<(String, String)> {
     let normalized = sanitize_generated_message(value);
     let title = normalized
         .lines()
@@ -6597,7 +5485,7 @@ fn parse_titled_body(value: &str) -> Option<(String, String)> {
     Some((title.to_string(), body.to_string()))
 }
 
-fn render_version_report() -> String {
+pub(crate) fn render_version_report() -> String {
     let git_sha = GIT_SHA.unwrap_or("unknown");
     let target = BUILD_TARGET.unwrap_or("unknown");
     format!(
@@ -6605,7 +5493,7 @@ fn render_version_report() -> String {
     )
 }
 
-fn render_export_text(session: &Session) -> String {
+pub(crate) fn render_export_text(session: &Session) -> String {
     let mut lines = vec!["# Conversation Export".to_string(), String::new()];
     for (index, message) in session.messages.iter().enumerate() {
         let role = match message.role {
@@ -6638,7 +5526,7 @@ fn render_export_text(session: &Session) -> String {
     lines.join("\n")
 }
 
-fn default_export_filename(session: &Session) -> String {
+pub(crate) fn default_export_filename(session: &Session) -> String {
     let stem = session
         .messages
         .iter()
@@ -6674,7 +5562,7 @@ fn default_export_filename(session: &Session) -> String {
     format!("{fallback}.txt")
 }
 
-fn resolve_export_path(
+pub(crate) fn resolve_export_path(
     requested_path: Option<&str>,
     session: &Session,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -6694,7 +5582,7 @@ fn resolve_export_path(
 
 const SESSION_MARKDOWN_TOOL_SUMMARY_LIMIT: usize = 280;
 
-fn summarize_tool_payload_for_markdown(payload: &str) -> String {
+pub(crate) fn summarize_tool_payload_for_markdown(payload: &str) -> String {
     let compact = match serde_json::from_str::<serde_json::Value>(payload) {
         Ok(value) => value.to_string(),
         Err(_) => payload.split_whitespace().collect::<Vec<_>>().join(" "),
@@ -6705,7 +5593,7 @@ fn summarize_tool_payload_for_markdown(payload: &str) -> String {
     truncate_for_summary(&compact, SESSION_MARKDOWN_TOOL_SUMMARY_LIMIT)
 }
 
-fn run_export(
+pub(crate) fn run_export(
     session_reference: &str,
     output_path: Option<&Path>,
     output_format: CliOutputFormat,
@@ -6759,7 +5647,11 @@ fn run_export(
     Ok(())
 }
 
-fn render_session_markdown(session: &Session, session_id: &str, session_path: &Path) -> String {
+pub(crate) fn render_session_markdown(
+    session: &Session,
+    session_id: &str,
+    session_path: &Path,
+) -> String {
     let mut lines = vec![
         "# Conversation Export".to_string(),
         String::new(),
@@ -6849,7 +5741,7 @@ fn render_session_markdown(session: &Session, session_id: &str, session_path: &P
     lines.join("\n")
 }
 
-fn short_tool_id(id: &str) -> String {
+pub(crate) fn short_tool_id(id: &str) -> String {
     let char_count = id.chars().count();
     if char_count <= 12 {
         return id.to_string();
@@ -6858,7 +5750,7 @@ fn short_tool_id(id: &str) -> String {
     format!("{prefix}…")
 }
 
-fn build_system_prompt() -> Result<Vec<String>, Box<dyn std::error::Error>> {
+pub(crate) fn build_system_prompt() -> Result<Vec<String>, Box<dyn std::error::Error>> {
     Ok(load_system_prompt(
         env::current_dir()?,
         DEFAULT_DATE,
@@ -6867,14 +5759,15 @@ fn build_system_prompt() -> Result<Vec<String>, Box<dyn std::error::Error>> {
     )?)
 }
 
-fn build_runtime_plugin_state() -> Result<RuntimePluginState, Box<dyn std::error::Error>> {
+pub(crate) fn build_runtime_plugin_state() -> Result<RuntimePluginState, Box<dyn std::error::Error>>
+{
     let cwd = env::current_dir()?;
     let loader = ConfigLoader::default_for(&cwd);
     let runtime_config = loader.load()?;
     build_runtime_plugin_state_with_loader(&cwd, &loader, &runtime_config)
 }
 
-fn build_runtime_plugin_state_with_loader(
+pub(crate) fn build_runtime_plugin_state_with_loader(
     cwd: &Path,
     loader: &ConfigLoader,
     runtime_config: &runtime::RuntimeConfig,
@@ -6898,7 +5791,7 @@ fn build_runtime_plugin_state_with_loader(
     })
 }
 
-fn build_plugin_manager(
+pub(crate) fn build_plugin_manager(
     cwd: &Path,
     loader: &ConfigLoader,
     runtime_config: &runtime::RuntimeConfig,
@@ -6923,7 +5816,7 @@ fn build_plugin_manager(
     PluginManager::new(plugin_config)
 }
 
-fn resolve_plugin_path(cwd: &Path, config_home: &Path, value: &str) -> PathBuf {
+pub(crate) fn resolve_plugin_path(cwd: &Path, config_home: &Path, value: &str) -> PathBuf {
     let path = PathBuf::from(value);
     if path.is_absolute() {
         path
@@ -6934,7 +5827,9 @@ fn resolve_plugin_path(cwd: &Path, config_home: &Path, value: &str) -> PathBuf {
     }
 }
 
-fn runtime_hook_config_from_plugin_hooks(hooks: PluginHooks) -> runtime::RuntimeHookConfig {
+pub(crate) fn runtime_hook_config_from_plugin_hooks(
+    hooks: PluginHooks,
+) -> runtime::RuntimeHookConfig {
     runtime::RuntimeHookConfig::new(
         hooks.pre_tool_use,
         hooks.post_tool_use,
@@ -6943,7 +5838,7 @@ fn runtime_hook_config_from_plugin_hooks(hooks: PluginHooks) -> runtime::Runtime
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct InternalPromptProgressState {
+pub(crate) struct InternalPromptProgressState {
     command_label: &'static str,
     task_label: String,
     step: usize,
@@ -6953,7 +5848,7 @@ struct InternalPromptProgressState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InternalPromptProgressEvent {
+pub(crate) enum InternalPromptProgressEvent {
     Started,
     Update,
     Heartbeat,
@@ -6962,19 +5857,19 @@ enum InternalPromptProgressEvent {
 }
 
 #[derive(Debug)]
-struct InternalPromptProgressShared {
+pub(crate) struct InternalPromptProgressShared {
     state: Mutex<InternalPromptProgressState>,
     output_lock: Mutex<()>,
     started_at: Instant,
 }
 
 #[derive(Debug, Clone)]
-struct InternalPromptProgressReporter {
+pub(crate) struct InternalPromptProgressReporter {
     shared: Arc<InternalPromptProgressShared>,
 }
 
 #[derive(Debug)]
-struct InternalPromptProgressRun {
+pub(crate) struct InternalPromptProgressRun {
     reporter: InternalPromptProgressReporter,
     heartbeat_stop: Option<mpsc::Sender<()>>,
     heartbeat_handle: Option<thread::JoinHandle<()>>,
@@ -7165,7 +6060,7 @@ impl Drop for InternalPromptProgressRun {
     }
 }
 
-fn format_internal_prompt_progress_line(
+pub(crate) fn format_internal_prompt_progress_line(
     event: InternalPromptProgressEvent,
     snapshot: &InternalPromptProgressState,
     elapsed: Duration,
@@ -7212,7 +6107,7 @@ fn format_internal_prompt_progress_line(
     }
 }
 
-fn describe_tool_progress(name: &str, input: &str) -> String {
+pub(crate) fn describe_tool_progress(name: &str, input: &str) -> String {
     let parsed: serde_json::Value =
         serde_json::from_str(input).unwrap_or(serde_json::Value::String(input.to_string()));
     match name {
@@ -7272,7 +6167,7 @@ fn describe_tool_progress(name: &str, input: &str) -> String {
 
 #[allow(clippy::needless_pass_by_value)]
 #[allow(clippy::too_many_arguments)]
-fn build_runtime(
+pub(crate) fn build_runtime(
     session: Session,
     session_id: &str,
     model: String,
@@ -7300,7 +6195,7 @@ fn build_runtime(
 
 #[allow(clippy::needless_pass_by_value)]
 #[allow(clippy::too_many_arguments)]
-fn build_runtime_with_plugin_state(
+pub(crate) fn build_runtime_with_plugin_state(
     session: Session,
     session_id: &str,
     model: String,
@@ -7348,7 +6243,7 @@ fn build_runtime_with_plugin_state(
     Ok(BuiltRuntime::new(runtime, plugin_registry, mcp_state))
 }
 
-struct CliHookProgressReporter;
+pub(crate) struct CliHookProgressReporter;
 
 impl runtime::HookProgressReporter for CliHookProgressReporter {
     fn on_event(&mut self, event: &runtime::HookProgressEvent) {
@@ -7381,7 +6276,7 @@ impl runtime::HookProgressReporter for CliHookProgressReporter {
     }
 }
 
-struct CliPermissionPrompter {
+pub(crate) struct CliPermissionPrompter {
     current_mode: PermissionMode,
 }
 
@@ -7436,7 +6331,7 @@ impl runtime::PermissionPrompter for CliPermissionPrompter {
 // `detect_provider_kind(&model)`. The struct name is kept to avoid
 // churning `BuiltRuntime` and every Deref/DerefMut site that references
 // it. See ROADMAP #29 for the provider-dispatch routing fix.
-struct AnthropicRuntimeClient {
+pub(crate) struct AnthropicRuntimeClient {
     runtime: tokio::runtime::Runtime,
     client: ApiProviderClient,
     session_id: String,
@@ -7517,12 +6412,12 @@ impl AnthropicRuntimeClient {
     }
 }
 
-fn resolve_cli_auth_source() -> Result<AuthSource, Box<dyn std::error::Error>> {
+pub(crate) fn resolve_cli_auth_source() -> Result<AuthSource, Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     Ok(resolve_cli_auth_source_for_cwd(&cwd, default_oauth_config)?)
 }
 
-fn resolve_cli_auth_source_for_cwd<F>(
+pub(crate) fn resolve_cli_auth_source_for_cwd<F>(
     cwd: &Path,
     default_oauth: F,
 ) -> Result<AuthSource, api::ApiError>
@@ -7536,7 +6431,9 @@ where
     })
 }
 
-fn load_runtime_oauth_config_for(cwd: &Path) -> Result<Option<OAuthConfig>, api::ApiError> {
+pub(crate) fn load_runtime_oauth_config_for(
+    cwd: &Path,
+) -> Result<Option<OAuthConfig>, api::ApiError> {
     let config = ConfigLoader::default_for(cwd).load().map_err(|error| {
         api::ApiError::Auth(format!("failed to load runtime OAuth config: {error}"))
     })?;
@@ -7768,14 +6665,14 @@ impl AnthropicRuntimeClient {
 
 /// Returns `true` when the conversation ends with a tool-result message,
 /// meaning the model is expected to continue after tool execution.
-fn request_ends_with_tool_result(request: &ApiRequest) -> bool {
+pub(crate) fn request_ends_with_tool_result(request: &ApiRequest) -> bool {
     request
         .messages
         .last()
         .is_some_and(|message| message.role == MessageRole::Tool)
 }
 
-fn format_user_visible_api_error(session_id: &str, error: &api::ApiError) -> String {
+pub(crate) fn format_user_visible_api_error(session_id: &str, error: &api::ApiError) -> String {
     if error.is_context_window_failure() {
         format_context_window_blocked_error(session_id, error)
     } else if error.is_generic_fatal_wrapper() {
@@ -7794,7 +6691,10 @@ fn format_user_visible_api_error(session_id: &str, error: &api::ApiError) -> Str
     }
 }
 
-fn format_context_window_blocked_error(session_id: &str, error: &api::ApiError) -> String {
+pub(crate) fn format_context_window_blocked_error(
+    session_id: &str,
+    error: &api::ApiError,
+) -> String {
     let mut lines = vec![
         "Context window blocked".to_string(),
         "  Failure class    context_window_blocked".to_string(),
@@ -7866,7 +6766,7 @@ fn format_context_window_blocked_error(session_id: &str, error: &api::ApiError) 
     lines.join("\n")
 }
 
-fn final_assistant_text(summary: &runtime::TurnSummary) -> String {
+pub(crate) fn final_assistant_text(summary: &runtime::TurnSummary) -> String {
     summary
         .assistant_messages
         .last()
@@ -7884,7 +6784,7 @@ fn final_assistant_text(summary: &runtime::TurnSummary) -> String {
         .unwrap_or_default()
 }
 
-fn collect_tool_uses(summary: &runtime::TurnSummary) -> Vec<serde_json::Value> {
+pub(crate) fn collect_tool_uses(summary: &runtime::TurnSummary) -> Vec<serde_json::Value> {
     summary
         .assistant_messages
         .iter()
@@ -7900,7 +6800,7 @@ fn collect_tool_uses(summary: &runtime::TurnSummary) -> Vec<serde_json::Value> {
         .collect()
 }
 
-fn collect_tool_results(summary: &runtime::TurnSummary) -> Vec<serde_json::Value> {
+pub(crate) fn collect_tool_results(summary: &runtime::TurnSummary) -> Vec<serde_json::Value> {
     summary
         .tool_results
         .iter()
@@ -7922,7 +6822,9 @@ fn collect_tool_results(summary: &runtime::TurnSummary) -> Vec<serde_json::Value
         .collect()
 }
 
-fn collect_prompt_cache_events(summary: &runtime::TurnSummary) -> Vec<serde_json::Value> {
+pub(crate) fn collect_prompt_cache_events(
+    summary: &runtime::TurnSummary,
+) -> Vec<serde_json::Value> {
     summary
         .prompt_cache_events
         .iter()
@@ -7938,7 +6840,7 @@ fn collect_prompt_cache_events(summary: &runtime::TurnSummary) -> Vec<serde_json
         .collect()
 }
 
-fn slash_command_completion_candidates_with_sessions(
+pub(crate) fn slash_command_completion_candidates_with_sessions(
     model: &str,
     active_session_id: Option<&str>,
     recent_session_ids: Vec<String>,
@@ -8016,7 +6918,7 @@ fn slash_command_completion_candidates_with_sessions(
     completions.into_iter().collect()
 }
 
-fn format_tool_call_start(name: &str, input: &str) -> String {
+pub(crate) fn format_tool_call_start(name: &str, input: &str) -> String {
     let parsed: serde_json::Value =
         serde_json::from_str(input).unwrap_or(serde_json::Value::String(input.to_string()));
 
@@ -8069,7 +6971,7 @@ fn format_tool_call_start(name: &str, input: &str) -> String {
     )
 }
 
-fn format_tool_result(name: &str, output: &str, is_error: bool) -> String {
+pub(crate) fn format_tool_result(name: &str, output: &str, is_error: bool) -> String {
     let icon = if is_error {
         "\x1b[1;31m✗\x1b[0m"
     } else {
@@ -8104,7 +7006,7 @@ const READ_DISPLAY_MAX_CHARS: usize = 6_000;
 const TOOL_OUTPUT_DISPLAY_MAX_LINES: usize = 60;
 const TOOL_OUTPUT_DISPLAY_MAX_CHARS: usize = 4_000;
 
-fn extract_tool_path(parsed: &serde_json::Value) -> String {
+pub(crate) fn extract_tool_path(parsed: &serde_json::Value) -> String {
     parsed
         .get("file_path")
         .or_else(|| parsed.get("filePath"))
@@ -8114,7 +7016,7 @@ fn extract_tool_path(parsed: &serde_json::Value) -> String {
         .to_string()
 }
 
-fn format_search_start(label: &str, parsed: &serde_json::Value) -> String {
+pub(crate) fn format_search_start(label: &str, parsed: &serde_json::Value) -> String {
     let pattern = parsed
         .get("pattern")
         .and_then(|value| value.as_str())
@@ -8126,7 +7028,7 @@ fn format_search_start(label: &str, parsed: &serde_json::Value) -> String {
     format!("{label} {pattern}\n\x1b[2min {scope}\x1b[0m")
 }
 
-fn format_patch_preview(old_value: &str, new_value: &str) -> Option<String> {
+pub(crate) fn format_patch_preview(old_value: &str, new_value: &str) -> Option<String> {
     if old_value.is_empty() && new_value.is_empty() {
         return None;
     }
@@ -8137,7 +7039,7 @@ fn format_patch_preview(old_value: &str, new_value: &str) -> Option<String> {
     ))
 }
 
-fn format_bash_call(parsed: &serde_json::Value) -> String {
+pub(crate) fn format_bash_call(parsed: &serde_json::Value) -> String {
     let command = parsed
         .get("command")
         .and_then(|value| value.as_str())
@@ -8152,13 +7054,13 @@ fn format_bash_call(parsed: &serde_json::Value) -> String {
     }
 }
 
-fn first_visible_line(text: &str) -> &str {
+pub(crate) fn first_visible_line(text: &str) -> &str {
     text.lines()
         .find(|line| !line.trim().is_empty())
         .unwrap_or(text)
 }
 
-fn format_bash_result(icon: &str, parsed: &serde_json::Value) -> String {
+pub(crate) fn format_bash_result(icon: &str, parsed: &serde_json::Value) -> String {
     use std::fmt::Write as _;
 
     let mut lines = vec![format!("{icon} \x1b[38;5;245mbash\x1b[0m")];
@@ -8200,7 +7102,7 @@ fn format_bash_result(icon: &str, parsed: &serde_json::Value) -> String {
     lines.join("\n\n")
 }
 
-fn format_read_result(icon: &str, parsed: &serde_json::Value) -> String {
+pub(crate) fn format_read_result(icon: &str, parsed: &serde_json::Value) -> String {
     let file = parsed.get("file").unwrap_or(parsed);
     let path = extract_tool_path(file);
     let start_line = file
@@ -8230,7 +7132,7 @@ fn format_read_result(icon: &str, parsed: &serde_json::Value) -> String {
     )
 }
 
-fn format_write_result(icon: &str, parsed: &serde_json::Value) -> String {
+pub(crate) fn format_write_result(icon: &str, parsed: &serde_json::Value) -> String {
     let path = extract_tool_path(parsed);
     let kind = parsed
         .get("type")
@@ -8246,7 +7148,7 @@ fn format_write_result(icon: &str, parsed: &serde_json::Value) -> String {
     )
 }
 
-fn format_structured_patch_preview(parsed: &serde_json::Value) -> Option<String> {
+pub(crate) fn format_structured_patch_preview(parsed: &serde_json::Value) -> Option<String> {
     let hunks = parsed.get("structuredPatch")?.as_array()?;
     let mut preview = Vec::new();
     for hunk in hunks.iter().take(2) {
@@ -8266,7 +7168,7 @@ fn format_structured_patch_preview(parsed: &serde_json::Value) -> Option<String>
     }
 }
 
-fn format_edit_result(icon: &str, parsed: &serde_json::Value) -> String {
+pub(crate) fn format_edit_result(icon: &str, parsed: &serde_json::Value) -> String {
     let path = extract_tool_path(parsed);
     let suffix = if parsed
         .get("replaceAll")
@@ -8295,7 +7197,7 @@ fn format_edit_result(icon: &str, parsed: &serde_json::Value) -> String {
     }
 }
 
-fn format_glob_result(icon: &str, parsed: &serde_json::Value) -> String {
+pub(crate) fn format_glob_result(icon: &str, parsed: &serde_json::Value) -> String {
     let num_files = parsed
         .get("numFiles")
         .and_then(serde_json::Value::as_u64)
@@ -8319,7 +7221,7 @@ fn format_glob_result(icon: &str, parsed: &serde_json::Value) -> String {
     }
 }
 
-fn format_grep_result(icon: &str, parsed: &serde_json::Value) -> String {
+pub(crate) fn format_grep_result(icon: &str, parsed: &serde_json::Value) -> String {
     let num_matches = parsed
         .get("numMatches")
         .and_then(serde_json::Value::as_u64)
@@ -8363,7 +7265,11 @@ fn format_grep_result(icon: &str, parsed: &serde_json::Value) -> String {
     }
 }
 
-fn format_generic_tool_result(icon: &str, name: &str, parsed: &serde_json::Value) -> String {
+pub(crate) fn format_generic_tool_result(
+    icon: &str,
+    name: &str,
+    parsed: &serde_json::Value,
+) -> String {
     let rendered_output = match parsed {
         serde_json::Value::String(text) => text.clone(),
         serde_json::Value::Null => String::new(),
@@ -8387,7 +7293,7 @@ fn format_generic_tool_result(icon: &str, name: &str, parsed: &serde_json::Value
     }
 }
 
-fn summarize_tool_payload(payload: &str) -> String {
+pub(crate) fn summarize_tool_payload(payload: &str) -> String {
     let compact = match serde_json::from_str::<serde_json::Value>(payload) {
         Ok(value) => value.to_string(),
         Err(_) => payload.trim().to_string(),
@@ -8395,7 +7301,7 @@ fn summarize_tool_payload(payload: &str) -> String {
     truncate_for_summary(&compact, 96)
 }
 
-fn truncate_for_summary(value: &str, limit: usize) -> String {
+pub(crate) fn truncate_for_summary(value: &str, limit: usize) -> String {
     let mut chars = value.chars();
     let truncated = chars.by_ref().take(limit).collect::<String>();
     if chars.next().is_some() {
@@ -8405,7 +7311,11 @@ fn truncate_for_summary(value: &str, limit: usize) -> String {
     }
 }
 
-fn truncate_output_for_display(content: &str, max_lines: usize, max_chars: usize) -> String {
+pub(crate) fn truncate_output_for_display(
+    content: &str,
+    max_lines: usize,
+    max_chars: usize,
+) -> String {
     let original = content.trim_end_matches('\n');
     if original.is_empty() {
         return String::new();
@@ -8449,7 +7359,7 @@ fn truncate_output_for_display(content: &str, max_lines: usize, max_chars: usize
     preview
 }
 
-fn render_thinking_block_summary(
+pub(crate) fn render_thinking_block_summary(
     out: &mut (impl Write + ?Sized),
     char_count: Option<usize>,
     redacted: bool,
@@ -8466,7 +7376,7 @@ fn render_thinking_block_summary(
         .map_err(|error| RuntimeError::new(error.to_string()))
 }
 
-fn push_output_block(
+pub(crate) fn push_output_block(
     block: OutputContentBlock,
     out: &mut (impl Write + ?Sized),
     events: &mut Vec<AssistantEvent>,
@@ -8510,7 +7420,7 @@ fn push_output_block(
     Ok(())
 }
 
-fn response_to_events(
+pub(crate) fn response_to_events(
     response: MessageResponse,
     out: &mut (impl Write + ?Sized),
 ) -> Result<Vec<AssistantEvent>, RuntimeError> {
@@ -8537,7 +7447,10 @@ fn response_to_events(
     Ok(events)
 }
 
-fn push_prompt_cache_record(client: &ApiProviderClient, events: &mut Vec<AssistantEvent>) {
+pub(crate) fn push_prompt_cache_record(
+    client: &ApiProviderClient,
+    events: &mut Vec<AssistantEvent>,
+) {
     // `ApiProviderClient::take_last_prompt_cache_record` is a pass-through
     // to the Anthropic variant and returns `None` for OpenAI-compat /
     // xAI variants, which do not have a prompt cache. So this helper
@@ -8550,7 +7463,7 @@ fn push_prompt_cache_record(client: &ApiProviderClient, events: &mut Vec<Assista
     }
 }
 
-fn prompt_cache_record_to_runtime_event(
+pub(crate) fn prompt_cache_record_to_runtime_event(
     record: api::PromptCacheRecord,
 ) -> Option<PromptCacheEvent> {
     let cache_break = record.cache_break?;
@@ -8563,7 +7476,7 @@ fn prompt_cache_record_to_runtime_event(
     })
 }
 
-struct CliToolExecutor {
+pub(crate) struct CliToolExecutor {
     renderer: TerminalRenderer,
     emit_output: bool,
     allowed_tools: Option<AllowedToolSet>,
@@ -8693,7 +7606,7 @@ impl ToolExecutor for CliToolExecutor {
     }
 }
 
-fn permission_policy(
+pub(crate) fn permission_policy(
     mode: PermissionMode,
     feature_config: &runtime::RuntimeFeatureConfig,
     tool_registry: &GlobalToolRegistry,
@@ -8706,7 +7619,7 @@ fn permission_policy(
     ))
 }
 
-fn convert_messages(messages: &[ConversationMessage]) -> Vec<InputMessage> {
+pub(crate) fn convert_messages(messages: &[ConversationMessage]) -> Vec<InputMessage> {
     messages
         .iter()
         .filter_map(|message| {
@@ -8748,7 +7661,7 @@ fn convert_messages(messages: &[ConversationMessage]) -> Vec<InputMessage> {
 }
 
 #[allow(clippy::too_many_lines)]
-fn print_help_to(out: &mut impl Write) -> io::Result<()> {
+pub(crate) fn print_help_to(out: &mut impl Write) -> io::Result<()> {
     writeln!(out, "onyx v{VERSION}")?;
     writeln!(out)?;
     writeln!(out, "Usage:")?;
@@ -8889,7 +7802,7 @@ fn print_help_to(out: &mut impl Write) -> io::Result<()> {
     Ok(())
 }
 
-fn print_help(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn print_help(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
     let mut buffer = Vec::new();
     print_help_to(&mut buffer)?;
     let message = String::from_utf8(buffer)?;
@@ -12091,7 +11004,7 @@ UU conflicted.rs",
     }
 }
 
-fn write_mcp_server_fixture(script_path: &Path) {
+pub(crate) fn write_mcp_server_fixture(script_path: &Path) {
     let script = [
             "#!/usr/bin/env python3",
             "import json, sys",
