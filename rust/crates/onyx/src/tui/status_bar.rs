@@ -1,9 +1,15 @@
 use runtime::fleet_health::{ActionStatus, GlobalFleetStatus};
 use runtime::TokenUsage;
 use std::fmt::Write as _;
-use std::io::Write;
+use std::io::{stdout, Write};
+use crossterm::{
+    cursor::{MoveTo, RestorePosition, SavePosition},
+    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
+    terminal::{size, Clear, ClearType},
+    QueueableCommand,
+};
 
-pub fn render_status_bar(
+pub fn render_status_bar_text(
     model: &str,
     session_id: &str,
     usage: &TokenUsage,
@@ -40,22 +46,23 @@ pub fn render_status_bar(
     let mut playbook_str = String::new();
     if let Some(tasks) = playbook_status {
         if !tasks.is_empty() {
-            playbook_str.push_str("\n[Playbook Running]\n");
+            playbook_str.push_str(" | [Playbook: ");
             for (id, name, status) in tasks {
                 let icon = match status.as_str() {
-                    "completed" => "[✓]",
-                    "running" => "[⠼]",
-                    _ => "[ ]",
+                    "completed" => "✓",
+                    "running" => "⠼",
+                    _ => " ",
                 };
-                let _ = writeln!(playbook_str, "{icon} {name} ({id})");
+                let _ = write!(playbook_str, "{icon} {name} ");
             }
+            playbook_str.push(']');
         }
     }
 
     if has_executing {
-        text = format!("{text} | \x1b[38;5;46;5m[EXECUTING_REMOTE_TASK]\x1b[0m");
+        text = format!("{text} | [EXECUTING_REMOTE_TASK]");
     } else if has_pending {
-        text = format!("{text} | \x1b[38;5;214;5m[ACTION_REQUIRED]\x1b[0m");
+        text = format!("{text} | [ACTION_REQUIRED]");
     }
 
     let delegated = runtime::fleet_health::DELEGATED_NODE_ID
@@ -63,9 +70,41 @@ pub fn render_status_bar(
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone();
     if let Some(node_id) = delegated {
-        text = format!("{text} | ⠼ Onyx is delegating to peer node [{node_id}]...");
+        text = format!("{text} | ⠼ Onyx delegating to [{node_id}]");
     }
     text = format!("{text}{playbook_str}");
 
     text
+}
+
+pub fn draw_status_bar(
+    model: &str,
+    session_id: &str,
+    usage: &TokenUsage,
+    cost: f64,
+    fleet_status: Option<&GlobalFleetStatus>,
+    worker_status: Option<&runtime::WorkerStatus>,
+    playbook_status: Option<&Vec<(String, String, String)>>,
+) {
+    let text = render_status_bar_text(model, session_id, usage, cost, fleet_status, worker_status, playbook_status);
+
+    if let Ok((cols, rows)) = size() {
+        let mut out = stdout();
+
+        let truncated_text = if text.len() > cols as usize {
+            &text[0..cols as usize]
+        } else {
+            &text
+        };
+
+        // Draw at the bottom line
+        let _ = out.queue(SavePosition);
+        let _ = out.queue(MoveTo(0, rows - 1));
+        let _ = out.queue(SetBackgroundColor(Color::DarkGrey));
+        let _ = out.queue(SetForegroundColor(Color::White));
+        let _ = out.queue(Print(format!("{:<width$}", truncated_text, width = cols as usize)));
+        let _ = out.queue(ResetColor);
+        let _ = out.queue(RestorePosition);
+        let _ = out.flush();
+    }
 }

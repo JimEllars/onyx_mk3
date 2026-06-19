@@ -62,6 +62,7 @@ pub async fn fetch_vault_secret(secret_name: &str) -> Result<String, String> {
         .map_err(|e| format!("Request failed: {e}"))?;
 
     if !res.status().is_success() {
+        telemetry::metrics::VAULT_FETCHES_TOTAL.with_label_values(&[secret_name, "error"]).inc();
         return Err(format!("API returned error: {}", res.status()));
     }
 
@@ -74,6 +75,7 @@ pub async fn fetch_vault_secret(secret_name: &str) -> Result<String, String> {
         .as_str()
         .ok_or_else(|| "secret_value not found or not a string".to_string())?;
 
+    telemetry::metrics::VAULT_FETCHES_TOTAL.with_label_values(&[secret_name, "success"]).inc();
     Ok(secret_value.to_string())
 }
 
@@ -111,5 +113,6 @@ pub async fn fetch_temporal_credential(service_name: &str) -> Result<String, Too
         .as_str()
         .ok_or_else(|| ToolError::new("credential not found or not a string".to_string()))?;
 
+    telemetry::metrics::VAULT_FETCHES_TOTAL.with_label_values(&[service_name, "success"]).inc();
     Ok(credential.to_string())
 }

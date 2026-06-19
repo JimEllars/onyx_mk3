@@ -184,7 +184,13 @@ pub fn build_http_client_with(config: &ProxyConfig) -> Result<reqwest::Client, A
 
 #[allow(dead_code)]
 pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Response, String> {
+    let endpoint = request.try_clone()
+        .and_then(|r| r.build().ok())
+        .and_then(|req| req.url().host_str().map(ToString::to_string))
+        .unwrap_or_else(|| "unknown".to_string());
+
     let state = GLOBAL_CIRCUIT_BREAKER.state();
+
     if state == CircuitBreakerState::Open {
         return Ok(reqwest::Response::from(
             http::response::Builder::new()
@@ -201,10 +207,16 @@ pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Respon
             .try_clone()
             .ok_or("Cannot clone request for retry")?;
 
-        let result = timeout(Duration::from_secs(10), request_clone.send()).await;
+        let start_time = std::time::Instant::now();
+        let result = timeout(std::time::Duration::from_secs(10), request_clone.send()).await;
+        let duration = start_time.elapsed().as_secs_f64();
+        telemetry::metrics::HTTP_REQUEST_DURATION.with_label_values(&[&endpoint]).observe(duration);
+
 
         match result {
             Ok(Ok(res)) => {
+                let status = res.status().as_u16().to_string();
+                telemetry::metrics::HTTP_REQUESTS_TOTAL.with_label_values(&[&endpoint, &status]).inc();
                 if res.status().is_server_error() {
                     if attempt < 3 {
                         let backoff = 2_u64.pow(attempt - 1);
@@ -218,6 +230,7 @@ pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Respon
                 return Ok(res);
             }
             Ok(Err(e)) => {
+                telemetry::metrics::HTTP_REQUESTS_TOTAL.with_label_values(&[&endpoint, "error"]).inc();
                 if attempt < 3 {
                     tokio::time::sleep(Duration::from_secs(2_u64.pow(attempt - 1))).await;
                     continue;
@@ -226,6 +239,7 @@ pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Respon
                 return Err(format!("Request failed after 3 attempts: {e}"));
             }
             Err(_) => {
+                telemetry::metrics::HTTP_REQUESTS_TOTAL.with_label_values(&[&endpoint, "timeout"]).inc();
                 if attempt < 3 {
                     tokio::time::sleep(Duration::from_secs(2_u64.pow(attempt - 1))).await;
                     continue;
