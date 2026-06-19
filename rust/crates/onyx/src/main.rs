@@ -6,9 +6,9 @@
     clippy::unnecessary_wraps,
     clippy::unused_self
 )]
-mod init;
 pub(crate) mod app;
-use crate::app::{LiveCli, PromptHistoryEntry, RuntimePluginState, run_repl};
+mod init;
+use crate::app::{run_repl, LiveCli, PromptHistoryEntry, RuntimePluginState};
 mod input;
 mod render;
 mod tui;
@@ -1483,7 +1483,10 @@ pub(crate) fn parse_system_prompt_args(
     })
 }
 
-pub(crate) fn parse_export_args(args: &[String], output_format: CliOutputFormat) -> Result<CliAction, String> {
+pub(crate) fn parse_export_args(
+    args: &[String],
+    output_format: CliOutputFormat,
+) -> Result<CliAction, String> {
     let mut session_reference = LATEST_SESSION_REFERENCE.to_string();
     let mut output_path: Option<PathBuf> = None;
     let mut index = 0;
@@ -1532,7 +1535,10 @@ pub(crate) fn parse_export_args(args: &[String], output_format: CliOutputFormat)
     })
 }
 
-pub(crate) fn parse_resume_args(args: &[String], output_format: CliOutputFormat) -> Result<CliAction, String> {
+pub(crate) fn parse_resume_args(
+    args: &[String],
+    output_format: CliOutputFormat,
+) -> Result<CliAction, String> {
     let (session_path, command_tokens): (PathBuf, &[String]) = match args.first() {
         None => (PathBuf::from(LATEST_SESSION_REFERENCE), &[]),
         Some(first) if looks_like_slash_command_token(first) => {
@@ -1790,7 +1796,9 @@ pub(crate) fn run_doctor(output_format: CliOutputFormat) -> Result<(), Box<dyn s
 /// This is the file-based worker observability surface: `push_event()` in `worker_boot.rs`
 /// atomically writes state transitions here so external observers (onyxhip, orchestrators)
 /// can poll current `WorkerStatus` without needing an HTTP route on the opencode binary.
-pub(crate) fn run_worker_state(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn run_worker_state(
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     let state_path = cwd.join(".claw").join("worker-state.json");
     if !state_path.exists() {
@@ -2691,7 +2699,10 @@ pub(crate) fn check_sandbox_health(status: &runtime::SandboxStatus) -> Diagnosti
     ]))
 }
 
-pub(crate) fn check_system_health(cwd: &Path, config: Option<&runtime::RuntimeConfig>) -> DiagnosticCheck {
+pub(crate) fn check_system_health(
+    cwd: &Path,
+    config: Option<&runtime::RuntimeConfig>,
+) -> DiagnosticCheck {
     let default_model = config.and_then(runtime::RuntimeConfig::model);
     let mut details = vec![
         format!("OS               {} {}", env::consts::OS, env::consts::ARCH),
@@ -2744,7 +2755,9 @@ pub(crate) fn looks_like_slash_command_token(token: &str) -> bool {
         .any(|spec| spec.name == name || spec.aliases.contains(&name))
 }
 
-pub(crate) fn dump_manifests(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn dump_manifests(
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
     let workspace_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let paths = UpstreamPaths::from_workspace_dir(&workspace_dir);
     match extract_manifest(&paths) {
@@ -2771,7 +2784,9 @@ pub(crate) fn dump_manifests(output_format: CliOutputFormat) -> Result<(), Box<d
     }
 }
 
-pub(crate) fn print_bootstrap_plan(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn print_bootstrap_plan(
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
     let phases = runtime::BootstrapPlan::claude_code_default()
         .phases()
         .iter()
@@ -2995,7 +3010,9 @@ pub(crate) fn print_system_prompt(
     Ok(())
 }
 
-pub(crate) fn print_version(output_format: CliOutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn print_version(
+    output_format: CliOutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
     match output_format {
         CliOutputFormat::Text => println!("{}", render_version_report()),
         CliOutputFormat::Json => {
@@ -3016,7 +3033,11 @@ pub(crate) fn version_json_value() -> serde_json::Value {
 }
 
 #[allow(clippy::too_many_lines)]
-pub(crate) fn resume_session(session_path: &Path, commands: &[String], output_format: CliOutputFormat) {
+pub(crate) fn resume_session(
+    session_path: &Path,
+    commands: &[String],
+    output_format: CliOutputFormat,
+) {
     let resolved_path = if session_path.exists() {
         session_path.to_path_buf()
     } else {
@@ -3227,7 +3248,11 @@ Usage
     )
 }
 
-pub(crate) fn format_model_switch_report(previous: &str, next: &str, message_count: usize) -> String {
+pub(crate) fn format_model_switch_report(
+    previous: &str,
+    next: &str,
+    message_count: usize,
+) -> String {
     format!(
         "Model updated
   Previous         {previous}
@@ -3324,7 +3349,11 @@ pub(crate) fn render_resume_usage() -> String {
     )
 }
 
-pub(crate) fn format_compact_report(removed: usize, resulting_messages: usize, skipped: bool) -> String {
+pub(crate) fn format_compact_report(
+    removed: usize,
+    resulting_messages: usize,
+    skipped: bool,
+) -> String {
     if skipped {
         format!(
             "Compact
@@ -3734,7 +3763,6 @@ pub(crate) fn run_stale_base_preflight(flag_value: Option<&str>) {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub(crate) struct SessionHandle {
     id: String,
@@ -3750,9 +3778,6 @@ pub(crate) struct ManagedSessionSummary {
     parent_session_id: Option<String>,
     branch_name: Option<String>,
 }
-
-
-
 
 pub(crate) struct RuntimeMcpState {
     runtime: tokio::runtime::Runtime,
@@ -4274,7 +4299,6 @@ impl HookAbortMonitor {
     }
 }
 
-
 pub(crate) fn sessions_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     let store = runtime::SessionStore::from_cwd(&cwd)
@@ -4290,7 +4314,9 @@ pub(crate) fn create_managed_session_handle(
     Ok(SessionHandle { id, path })
 }
 
-pub(crate) fn resolve_session_reference(reference: &str) -> Result<SessionHandle, Box<dyn std::error::Error>> {
+pub(crate) fn resolve_session_reference(
+    reference: &str,
+) -> Result<SessionHandle, Box<dyn std::error::Error>> {
     if SESSION_REFERENCE_ALIASES
         .iter()
         .any(|alias| reference.eq_ignore_ascii_case(alias))
@@ -4323,7 +4349,9 @@ pub(crate) fn resolve_session_reference(reference: &str) -> Result<SessionHandle
     Ok(SessionHandle { id, path })
 }
 
-pub(crate) fn resolve_managed_session_path(session_id: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub(crate) fn resolve_managed_session_path(
+    session_id: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let directory = sessions_dir()?;
     for extension in [PRIMARY_SESSION_EXTENSION, LEGACY_SESSION_EXTENSION] {
         let path = directory.join(format!("{session_id}.{extension}"));
@@ -4418,7 +4446,8 @@ pub(crate) fn collect_sessions_from_dir(
     Ok(())
 }
 
-pub(crate) fn list_managed_sessions() -> Result<Vec<ManagedSessionSummary>, Box<dyn std::error::Error>> {
+pub(crate) fn list_managed_sessions(
+) -> Result<Vec<ManagedSessionSummary>, Box<dyn std::error::Error>> {
     let mut sessions = Vec::new();
     let primary_dir = sessions_dir()?;
     collect_sessions_from_dir(&primary_dir, &mut sessions)?;
@@ -4442,7 +4471,8 @@ pub(crate) fn list_managed_sessions() -> Result<Vec<ManagedSessionSummary>, Box<
     Ok(sessions)
 }
 
-pub(crate) fn latest_managed_session() -> Result<ManagedSessionSummary, Box<dyn std::error::Error>> {
+pub(crate) fn latest_managed_session() -> Result<ManagedSessionSummary, Box<dyn std::error::Error>>
+{
     list_managed_sessions()?
         .into_iter()
         .next()
@@ -4479,7 +4509,9 @@ pub(crate) fn format_no_managed_sessions() -> String {
     )
 }
 
-pub(crate) fn render_session_list(active_session_id: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_session_list(
+    active_session_id: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
     let sessions = list_managed_sessions()?;
     let mut lines = vec![
         "Sessions".to_string(),
@@ -4799,7 +4831,10 @@ pub(crate) fn format_sandbox_report(status: &runtime::SandboxStatus) -> String {
     )
 }
 
-pub(crate) fn format_commit_preflight_report(branch: Option<&str>, summary: GitWorkspaceSummary) -> String {
+pub(crate) fn format_commit_preflight_report(
+    branch: Option<&str>,
+    summary: GitWorkspaceSummary,
+) -> String {
     format!(
         "Commit
   Result           ready
@@ -4887,7 +4922,9 @@ pub(crate) fn print_help_topic(topic: LocalHelpTopic) {
     println!("{}", render_help_topic(topic));
 }
 
-pub(crate) fn render_config_report(section: Option<&str>) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_config_report(
+    section: Option<&str>,
+) -> Result<String, Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
     let loader = ConfigLoader::default_for(&cwd);
     let discovered = loader.discover();
@@ -5128,7 +5165,9 @@ pub(crate) fn render_teleport_report(target: &str) -> Result<String, Box<dyn std
     Ok(lines.join("\n"))
 }
 
-pub(crate) fn render_last_tool_debug_report(session: &Session) -> Result<String, Box<dyn std::error::Error>> {
+pub(crate) fn render_last_tool_debug_report(
+    session: &Session,
+) -> Result<String, Box<dyn std::error::Error>> {
     let last_tool_use = session
         .messages
         .iter()
@@ -5608,7 +5647,11 @@ pub(crate) fn run_export(
     Ok(())
 }
 
-pub(crate) fn render_session_markdown(session: &Session, session_id: &str, session_path: &Path) -> String {
+pub(crate) fn render_session_markdown(
+    session: &Session,
+    session_id: &str,
+    session_path: &Path,
+) -> String {
     let mut lines = vec![
         "# Conversation Export".to_string(),
         String::new(),
@@ -5716,7 +5759,8 @@ pub(crate) fn build_system_prompt() -> Result<Vec<String>, Box<dyn std::error::E
     )?)
 }
 
-pub(crate) fn build_runtime_plugin_state() -> Result<RuntimePluginState, Box<dyn std::error::Error>> {
+pub(crate) fn build_runtime_plugin_state() -> Result<RuntimePluginState, Box<dyn std::error::Error>>
+{
     let cwd = env::current_dir()?;
     let loader = ConfigLoader::default_for(&cwd);
     let runtime_config = loader.load()?;
@@ -5783,7 +5827,9 @@ pub(crate) fn resolve_plugin_path(cwd: &Path, config_home: &Path, value: &str) -
     }
 }
 
-pub(crate) fn runtime_hook_config_from_plugin_hooks(hooks: PluginHooks) -> runtime::RuntimeHookConfig {
+pub(crate) fn runtime_hook_config_from_plugin_hooks(
+    hooks: PluginHooks,
+) -> runtime::RuntimeHookConfig {
     runtime::RuntimeHookConfig::new(
         hooks.pre_tool_use,
         hooks.post_tool_use,
@@ -6385,7 +6431,9 @@ where
     })
 }
 
-pub(crate) fn load_runtime_oauth_config_for(cwd: &Path) -> Result<Option<OAuthConfig>, api::ApiError> {
+pub(crate) fn load_runtime_oauth_config_for(
+    cwd: &Path,
+) -> Result<Option<OAuthConfig>, api::ApiError> {
     let config = ConfigLoader::default_for(cwd).load().map_err(|error| {
         api::ApiError::Auth(format!("failed to load runtime OAuth config: {error}"))
     })?;
@@ -6643,7 +6691,10 @@ pub(crate) fn format_user_visible_api_error(session_id: &str, error: &api::ApiEr
     }
 }
 
-pub(crate) fn format_context_window_blocked_error(session_id: &str, error: &api::ApiError) -> String {
+pub(crate) fn format_context_window_blocked_error(
+    session_id: &str,
+    error: &api::ApiError,
+) -> String {
     let mut lines = vec![
         "Context window blocked".to_string(),
         "  Failure class    context_window_blocked".to_string(),
@@ -6771,7 +6822,9 @@ pub(crate) fn collect_tool_results(summary: &runtime::TurnSummary) -> Vec<serde_
         .collect()
 }
 
-pub(crate) fn collect_prompt_cache_events(summary: &runtime::TurnSummary) -> Vec<serde_json::Value> {
+pub(crate) fn collect_prompt_cache_events(
+    summary: &runtime::TurnSummary,
+) -> Vec<serde_json::Value> {
     summary
         .prompt_cache_events
         .iter()
@@ -7212,7 +7265,11 @@ pub(crate) fn format_grep_result(icon: &str, parsed: &serde_json::Value) -> Stri
     }
 }
 
-pub(crate) fn format_generic_tool_result(icon: &str, name: &str, parsed: &serde_json::Value) -> String {
+pub(crate) fn format_generic_tool_result(
+    icon: &str,
+    name: &str,
+    parsed: &serde_json::Value,
+) -> String {
     let rendered_output = match parsed {
         serde_json::Value::String(text) => text.clone(),
         serde_json::Value::Null => String::new(),
@@ -7254,7 +7311,11 @@ pub(crate) fn truncate_for_summary(value: &str, limit: usize) -> String {
     }
 }
 
-pub(crate) fn truncate_output_for_display(content: &str, max_lines: usize, max_chars: usize) -> String {
+pub(crate) fn truncate_output_for_display(
+    content: &str,
+    max_lines: usize,
+    max_chars: usize,
+) -> String {
     let original = content.trim_end_matches('\n');
     if original.is_empty() {
         return String::new();
@@ -7386,7 +7447,10 @@ pub(crate) fn response_to_events(
     Ok(events)
 }
 
-pub(crate) fn push_prompt_cache_record(client: &ApiProviderClient, events: &mut Vec<AssistantEvent>) {
+pub(crate) fn push_prompt_cache_record(
+    client: &ApiProviderClient,
+    events: &mut Vec<AssistantEvent>,
+) {
     // `ApiProviderClient::take_last_prompt_cache_record` is a pass-through
     // to the Anthropic variant and returns `None` for OpenAI-compat /
     // xAI variants, which do not have a prompt cache. So this helper

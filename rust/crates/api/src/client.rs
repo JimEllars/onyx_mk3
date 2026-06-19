@@ -112,7 +112,9 @@ impl ProviderClient {
             Self::Cloudflare(client) => client.send_message(request).await,
         };
         let status = if result.is_ok() { "success" } else { "error" };
-        telemetry::metrics::LLM_API_CALLS.with_label_values(&[provider_name, &request.model, status]).inc();
+        telemetry::metrics::LLM_API_CALLS
+            .with_label_values(&[provider_name, &request.model, status])
+            .inc();
         result
     }
 

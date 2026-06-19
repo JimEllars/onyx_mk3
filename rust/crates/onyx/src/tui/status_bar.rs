@@ -1,13 +1,13 @@
-use runtime::fleet_health::{ActionStatus, GlobalFleetStatus};
-use runtime::TokenUsage;
-use std::fmt::Write as _;
-use std::io::{stdout, Write};
 use crossterm::{
     cursor::{MoveTo, RestorePosition, SavePosition},
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
     terminal::{size, Clear, ClearType},
     QueueableCommand,
 };
+use runtime::fleet_health::{ActionStatus, GlobalFleetStatus};
+use runtime::TokenUsage;
+use std::fmt::Write as _;
+use std::io::{stdout, Write};
 
 pub fn render_status_bar_text(
     model: &str,
@@ -86,7 +86,15 @@ pub fn draw_status_bar(
     worker_status: Option<&runtime::WorkerStatus>,
     playbook_status: Option<&Vec<(String, String, String)>>,
 ) {
-    let text = render_status_bar_text(model, session_id, usage, cost, fleet_status, worker_status, playbook_status);
+    let text = render_status_bar_text(
+        model,
+        session_id,
+        usage,
+        cost,
+        fleet_status,
+        worker_status,
+        playbook_status,
+    );
 
     if let Ok((cols, rows)) = size() {
         let mut out = stdout();
@@ -102,7 +110,11 @@ pub fn draw_status_bar(
         let _ = out.queue(MoveTo(0, rows - 1));
         let _ = out.queue(SetBackgroundColor(Color::DarkGrey));
         let _ = out.queue(SetForegroundColor(Color::White));
-        let _ = out.queue(Print(format!("{:<width$}", truncated_text, width = cols as usize)));
+        let _ = out.queue(Print(format!(
+            "{:<width$}",
+            truncated_text,
+            width = cols as usize
+        )));
         let _ = out.queue(ResetColor);
         let _ = out.queue(RestorePosition);
         let _ = out.flush();

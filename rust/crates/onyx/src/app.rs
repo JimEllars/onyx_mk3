@@ -138,7 +138,10 @@ pub(crate) fn run_repl(
     }
 
     // Setup scroll region to leave the bottom line for the status bar
-    print!("\x1b[0;{}r", crossterm::terminal::size().unwrap_or((80, 24)).1 - 1);
+    print!(
+        "\x1b[0;{}r",
+        crossterm::terminal::size().unwrap_or((80, 24)).1 - 1
+    );
 
     tui::status_bar::draw_status_bar(
         &cli.model,
@@ -147,7 +150,7 @@ pub(crate) fn run_repl(
         0.0,
         None,
         worker_status.as_ref(),
-        None
+        None,
     );
 
     loop {
@@ -158,7 +161,7 @@ pub(crate) fn run_repl(
             0.0,
             None,
             None,
-            None
+            None,
         );
         editor.set_completions(cli.repl_completion_candidates().unwrap_or_default());
         match editor.read_line()? {
