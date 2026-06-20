@@ -3745,6 +3745,7 @@ pub(crate) fn run_resume_command(
         | SlashCommand::AddDir { .. }
         | SlashCommand::Fleet
         | SlashCommand::Approve { .. }
+        | SlashCommand::Metrics
         | SlashCommand::Reject { .. } => Err("unsupported resumed slash command".into()),
     }
 }

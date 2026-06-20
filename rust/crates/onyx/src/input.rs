@@ -98,6 +98,13 @@ impl Highlighter for SlashCommandHelper {
 impl Validator for SlashCommandHelper {}
 impl Helper for SlashCommandHelper {}
 
+/// Decouples standard I/O streams from the core REPL loop.
+pub trait OnyxIoStream: Send {
+    fn read_line(&mut self) -> io::Result<ReadOutcome>;
+    fn push_history(&mut self, entry: String);
+    fn set_completions(&mut self, completions: Vec<String>);
+}
+
 pub struct LineEditor {
     prompt: String,
     editor: Editor<SlashCommandHelper, DefaultHistory>,
@@ -121,9 +128,10 @@ impl LineEditor {
             editor,
         }
     }
+}
 
-    pub fn push_history(&mut self, entry: impl Into<String>) {
-        let entry = entry.into();
+impl OnyxIoStream for LineEditor {
+    fn push_history(&mut self, entry: String) {
         if entry.trim().is_empty() {
             return;
         }
@@ -131,13 +139,13 @@ impl LineEditor {
         let _ = self.editor.add_history_entry(entry);
     }
 
-    pub fn set_completions(&mut self, completions: Vec<String>) {
+    fn set_completions(&mut self, completions: Vec<String>) {
         if let Some(helper) = self.editor.helper_mut() {
             helper.set_completions(completions);
         }
     }
 
-    pub fn read_line(&mut self) -> io::Result<ReadOutcome> {
+    fn read_line(&mut self) -> io::Result<ReadOutcome> {
         if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
             return self.read_line_fallback();
         }
@@ -164,7 +172,9 @@ impl LineEditor {
             Err(error) => Err(io::Error::other(error)),
         }
     }
+}
 
+impl LineEditor {
     fn current_line(&self) -> String {
         self.editor
             .helper()
@@ -271,6 +281,7 @@ mod tests {
     use rustyline::highlight::Highlighter;
     use rustyline::history::{DefaultHistory, History};
     use rustyline::Context;
+    use super::OnyxIoStream;
 
     #[test]
     fn extracts_terminal_slash_command_prefixes_with_arguments() {
@@ -354,8 +365,8 @@ mod tests {
     #[test]
     fn push_history_ignores_blank_entries() {
         let mut editor = LineEditor::new("> ", vec!["/help".to_string()]);
-        editor.push_history("   ");
-        editor.push_history("/help");
+        editor.push_history("   ".to_string());
+        editor.push_history("/help".to_string());
 
         assert_eq!(editor.editor.history().len(), 1);
     }

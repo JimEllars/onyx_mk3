@@ -105,8 +105,10 @@ pub fn draw_status_bar(
             &text
         };
 
-        // Draw at the bottom line
+        // Setup scrolling region leaving 2 lines at the bottom (1 for status bar, 1 for input)
         let _ = out.queue(SavePosition);
+        // We assume the prompt is drawn by rustyline on the line above the status bar.
+        // Just draw the status bar at the very bottom line.
         let _ = out.queue(MoveTo(0, rows - 1));
         let _ = out.queue(SetBackgroundColor(Color::DarkGrey));
         let _ = out.queue(SetForegroundColor(Color::White));
