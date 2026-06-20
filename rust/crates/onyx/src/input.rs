@@ -276,12 +276,12 @@ pub fn route_webhook_payload_to_task(payload: AximWebhookPayload) -> Result<Task
 
 #[cfg(test)]
 mod tests {
+    use super::OnyxIoStream;
     use super::{slash_command_prefix, LineEditor, SlashCommandHelper};
     use rustyline::completion::Completer;
     use rustyline::highlight::Highlighter;
     use rustyline::history::{DefaultHistory, History};
     use rustyline::Context;
-    use super::OnyxIoStream;
 
     #[test]
     fn extracts_terminal_slash_command_prefixes_with_arguments() {

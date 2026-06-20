@@ -118,8 +118,10 @@ pub(crate) fn run_repl(
     run_stale_base_preflight(base_commit.map(String::as_str));
     let resolved_model = resolve_repl_model(model);
     let mut cli = LiveCli::new(resolved_model, true, allowed_tools, permission_mode)?;
-    let mut editor: Box<dyn input::OnyxIoStream> =
-        Box::new(input::LineEditor::new("> ", cli.repl_completion_candidates().unwrap_or_default()));
+    let mut editor: Box<dyn input::OnyxIoStream> = Box::new(input::LineEditor::new(
+        "> ",
+        cli.repl_completion_candidates().unwrap_or_default(),
+    ));
     println!("{}", cli.startup_banner());
     println!("{}", format_connected_line(&cli.model));
 
@@ -259,10 +261,13 @@ impl LiveCli {
         std::thread::spawn(move || {
             if let Ok(rt) = tokio::runtime::Runtime::new() {
                 rt.block_on(async {
-                    let app = Router::new()
-                        .route("/metrics", get(|| async {
-                            telemetry::metrics::encode_metrics().unwrap_or_else(|e| format!("Error encoding metrics: {e}"))
-                        }));
+                    let app = Router::new().route(
+                        "/metrics",
+                        get(|| async {
+                            telemetry::metrics::encode_metrics()
+                                .unwrap_or_else(|e| format!("Error encoding metrics: {e}"))
+                        }),
+                    );
                     if let Ok(listener) = tokio::net::TcpListener::bind("127.0.0.1:9090").await {
                         let _ = axum::serve(listener, app).await;
                     }
