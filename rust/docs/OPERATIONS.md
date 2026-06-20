@@ -10,3 +10,8 @@ The following hooks have been actively instrumented into the application logic:
 3. **`VAULT_FETCHES_TOTAL`**: Hooked inside `tools/src/axim_vault.rs` to audit every computational decryption or generation of sensitive credentials from the AXiM Vault.
 
 These metrics enable real-time dashboarding for AXiM ecosystem fleet operators.
+
+## Prometheus Automated Scraping
+
+The live telemetry metrics are automatically exposed on a background HTTP listener when the Onyx Mk3 app runs.
+Automated fleet monitoring tools like Prometheus can scrape these metrics from: `http://127.0.0.1:9090/metrics`

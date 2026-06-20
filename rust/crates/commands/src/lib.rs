@@ -1077,6 +1077,7 @@ pub enum SlashCommand {
     Status,
     Sandbox,
     Compact,
+    Metrics,
     Bughunter {
         scope: Option<String>,
     },
@@ -1284,6 +1285,10 @@ pub fn validate_slash_command_input(
         "compact" => {
             validate_no_args(command, &args)?;
             SlashCommand::Compact
+        }
+        "metrics" => {
+            validate_no_args(command, &args)?;
+            SlashCommand::Metrics
         }
         "bughunter" => SlashCommand::Bughunter { scope: remainder },
         "commit" => {
@@ -4042,6 +4047,7 @@ pub fn handle_slash_command(
         | SlashCommand::OutputStyle { .. }
         | SlashCommand::AddDir { .. }
         | SlashCommand::History { .. }
+        | SlashCommand::Metrics
         | SlashCommand::Unknown(_) => None,
         SlashCommand::Approve { task_id } => {
             let rt = tokio::runtime::Runtime::new().unwrap();
