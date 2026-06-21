@@ -1,3 +1,4 @@
+cat << 'INNER_EOF' > rust/crates/tools/src/communication_ops.rs
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -13,7 +14,8 @@ fn log_email_transaction(payload_type: &str, status_code: u16, to: &str) {
                 .unwrap_or_default()
                 .as_secs();
             let uuid = uuid::Uuid::new_v4().to_string();
-            let log_entry = format!("{{\"uuid\": \"{uuid}\", \"type\": \"{payload_type}\", \"timestamp\": {timestamp}, \"status_code\": {status_code}, \"to\": \"{to}\"}}\n");
+            let log_entry = format!("{{\"uuid\": \"{}\", \"type\": \"{}\", \"timestamp\": {}, \"status_code\": {}, \"to\": \"{}\"}}\n",
+                uuid, payload_type, timestamp, status_code, to);
 
             if let Ok(mut file) = OpenOptions::new()
                 .create(true)
@@ -140,7 +142,7 @@ pub async fn execute_dispatch_executive_brief(
             error: None,
         })
     } else {
-        Err(format!("Axim API error: {status}"))
+        Err(format!("Axim API error: {}", status))
     }
 }
 
@@ -177,7 +179,7 @@ pub async fn execute_send_email(to: &str, subject: &str, body: &str) -> Result<(
     if status.is_success() {
         Ok(())
     } else {
-        Err(format!("Axim API error: {status}"))
+        Err(format!("Axim API error: {}", status))
     }
 }
 
@@ -305,3 +307,4 @@ pub async fn escalate_to_creator(message: &str, urgency: &str) -> Result<String,
         .map(|()| "Successfully dispatched escalation email to creator.".to_string())
     }
 }
+INNER_EOF

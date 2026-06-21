@@ -1,3 +1,4 @@
+cat << 'INNER_EOF' > rust/crates/telemetry/src/metrics.rs
 use prometheus::{
     register_counter_vec, register_gauge, register_histogram_vec, CounterVec, Encoder, Gauge,
     HistogramVec, TextEncoder,
@@ -128,3 +129,4 @@ pub fn enqueue_metric_event(event: MetricEvent) {
         let _ = tx.send(event);
     }
 }
+INNER_EOF

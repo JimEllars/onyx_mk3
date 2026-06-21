@@ -178,9 +178,7 @@ pub(crate) fn run_repl(
     loop {
         let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
         if rows < 12 || cols < 45 {
-            telemetry::metrics::TUI_RESIZE_EVENTS_TOTAL
-                .with_label_values(&["too_small"])
-                .inc();
+            telemetry::metrics::enqueue_metric_event(telemetry::metrics::MetricEvent::TuiResize("too_small".to_string()));
             print!("\x1b[2J\x1b[H");
             println!("Terminal window size too small for split-pane view. Please expand window dimensions.");
             std::thread::sleep(std::time::Duration::from_millis(500));
