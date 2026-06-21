@@ -78,6 +78,10 @@ struct RepoDetection {
 }
 
 pub(crate) fn initialize_repo(cwd: &Path) -> Result<InitReport, Box<dyn std::error::Error>> {
+    if std::env::var("EMAILIT_API_KEY").is_err() || std::env::var("AXIM_SERVICE_KEY").is_err() {
+        eprintln!("WARNING: Required EmailIt transaction variables (e.g. EMAILIT_API_KEY or AXIM_SERVICE_KEY) are absent from the environment. Communication channels may be degraded.");
+    }
+
     let mut artifacts = Vec::new();
 
     let claw_dir = cwd.join(".onyx");
