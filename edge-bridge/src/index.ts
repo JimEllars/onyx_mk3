@@ -63,14 +63,34 @@ async function fetchWithRetry(url: string, options: any, maxRetries = 3) {
 }
 
 
-// Authentication Check Function
-const checkAuth = (req: Request, env: Env) => {
+// Timing-Safe Authentication Check Function
+async function checkAuth(req: Request, env: Env): Promise<Response | null> {
 	const authHeader = req.headers.get("Authorization");
-	if (!authHeader || authHeader !== `Bearer ${env.AXIM_ONYX_SECRET}`) {
+	if (!authHeader) {
 		return new Response("Unauthorized", { status: 401, headers: getCorsHeaders(req) });
 	}
+
+	const expectedToken = `Bearer ${env.AXIM_ONYX_SECRET}`;
+
+	// Double SHA-256 Hash + Constant-Time Uint8Array Comparison
+	const encoder = new TextEncoder();
+	const incomingHashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(authHeader));
+	const expectedHashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(expectedToken));
+
+	const incomingHash = new Uint8Array(incomingHashBuffer);
+	const expectedHash = new Uint8Array(expectedHashBuffer);
+
+	let result = 0;
+	for (let i = 0; i < incomingHash.length; i++) {
+		result |= incomingHash[i] ^ expectedHash[i];
+	}
+
+	if (result !== 0) {
+		return new Response("Unauthorized", { status: 401, headers: getCorsHeaders(req) });
+	}
+
 	return null;
-};
+}
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -116,7 +136,23 @@ export default {
 					});
 				}
 
-				const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
+				const idempotencyKey = request.headers.get("Idempotency-Key") || payload.idempotency_key;
+				if (idempotencyKey && env.ONYX_STATE) {
+					const cachedResponse = await env.ONYX_STATE.get(`idem:${idempotencyKey}`);
+					if (cachedResponse) {
+						return new Response(cachedResponse, {
+							headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+						});
+					}
+				}
+
+				if (!env.CORE_INGEST_URL) {
+					return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), {
+						status: 500,
+						headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+					});
+				}
+				const ingestUrl = env.CORE_INGEST_URL;
 				ctx.waitUntil(fetchWithRetry(ingestUrl, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
@@ -128,14 +164,20 @@ export default {
 					})
 				}).catch(e => console.error("Billing forward failed", e)));
 
-				return new Response(JSON.stringify({
+				const responseBody = JSON.stringify({
 					status: "success",
 					message: "Blockchain fallback verification queued."
-				}), {
+				});
+
+				if (idempotencyKey && env.ONYX_STATE) {
+					ctx.waitUntil(env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, { expirationTtl: 86400 })); // Keep for 24h
+				}
+
+				return new Response(responseBody, {
 					headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
 				});
 			} else if (request.method === "POST" && url.pathname === "/api/v1/chat") {
-				const authError = checkAuth(request, env);
+				const authError = await checkAuth(request, env);
 				if (authError) return authError;
 				// 3. Parse command and context
 				const { command, context } = await request.json() as { command?: string, context?: any };
@@ -183,7 +225,7 @@ export default {
 
 
 			} else if (request.method === "POST" && url.pathname === "/api/v1/telemetry") {
-				const authError = checkAuth(request, env);
+				const authError = await checkAuth(request, env);
 				if (authError) return authError;
 				// Type definitions for Telemetry
 				interface TelemetryPayload {
@@ -206,7 +248,13 @@ export default {
 				}
 
 				// Forward to AXiM Core Telemetry via ctx.waitUntil
-				const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
+				if (!env.CORE_INGEST_URL) {
+					return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), {
+						status: 500,
+						headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+					});
+				}
+				const ingestUrl = env.CORE_INGEST_URL;
 				ctx.waitUntil(fetchWithRetry(ingestUrl, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
@@ -221,10 +269,10 @@ export default {
 				});
 
 			} else if (request.method === "POST" && url.pathname === "/api/approve") {
-				const authError = checkAuth(request, env);
+				const authError = await checkAuth(request, env);
 				if (authError) return authError;
 				// POST /api/approve endpoint to receive HITL signals from Core
-				const payload = await request.json() as { task_id?: string; signed_payload?: any };
+				const payload = await request.json() as { task_id?: string; signed_payload?: any, idempotency_key?: string };
 
 				if (!payload.task_id || !payload.signed_payload) {
 					return new Response(JSON.stringify({ error: "Missing task_id or signed_payload" }), {
@@ -233,27 +281,49 @@ export default {
 					});
 				}
 
+				const idempotencyKey = request.headers.get("Idempotency-Key") || payload.idempotency_key;
+				if (idempotencyKey && env.ONYX_STATE) {
+					const cachedResponse = await env.ONYX_STATE.get(`idem:${idempotencyKey}`);
+					if (cachedResponse) {
+						return new Response(cachedResponse, {
+							headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+						});
+					}
+				}
+
 				// Save approval to KV store
 				if (env.ONYX_STATE) {
 					await env.ONYX_STATE.put(`approval:${payload.task_id}`, JSON.stringify(payload));
 				}
 
 				// Relay to Rust core (fire and forget)
-				const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
+				if (!env.CORE_INGEST_URL) {
+					return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), {
+						status: 500,
+						headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+					});
+				}
+				const ingestUrl = env.CORE_INGEST_URL;
 				ctx.waitUntil(fetchWithRetry(ingestUrl, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ type: "approval_relay", payload })
 				}).catch(e => console.error("Approval relay failed", e)));
 
-				return new Response(JSON.stringify({
+				const responseBody = JSON.stringify({
 					status: "success",
 					message: `Approval for task ${payload.task_id} relayed to Rust core.`
-				}), {
+				});
+
+				if (idempotencyKey && env.ONYX_STATE) {
+					ctx.waitUntil(env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, { expirationTtl: 86400 })); // Keep for 24h
+				}
+
+				return new Response(responseBody, {
 					headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
 				});
 			} else if (request.method === "POST" && url.pathname === "/api/v1/playbook/trigger") {
-				const authError = checkAuth(request, env);
+				const authError = await checkAuth(request, env);
 				if (authError) return authError;
 					// POST /api/v1/playbook/trigger endpoint for push-based playbook triggers from AXiM Core
 					const payload = await request.json() as { severity?: string; service?: string; metric?: string; details?: any };
@@ -266,7 +336,13 @@ export default {
 					}
 
 
-					const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
+					if (!env.CORE_INGEST_URL) {
+					return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), {
+						status: 500,
+						headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+					});
+				}
+				const ingestUrl = env.CORE_INGEST_URL;
 
 					// Here we're forwarding the alert to the backend. In a full implementation, we might send it to an Event Queue
 					// or push it directly to the listening Onyx instance via its state endpoint.
@@ -287,7 +363,7 @@ export default {
 						headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
 					});
 				} else if (url.pathname === "/api/approvals" && request.method === "GET") {
-				const authError = checkAuth(request, env);
+				const authError = await checkAuth(request, env);
 				if (authError) return authError;
 				// Read approvals from KV store
 				const approvals: any[] = [];
@@ -370,7 +446,13 @@ export default {
 					return new Response("Missing signature", { status: 401, headers: getCorsHeaders(request) });
 				}
 
-				const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
+				if (!env.CORE_INGEST_URL) {
+					return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), {
+						status: 500,
+						headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+					});
+				}
+				const ingestUrl = env.CORE_INGEST_URL;
 
 				// Ensure payload is passed to the Rust core (simulated here via AXiM Core or direct fetch)
 				ctx.waitUntil(fetchWithRetry(ingestUrl, {
