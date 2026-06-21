@@ -86,6 +86,12 @@ pub fn draw_status_bar(
     worker_status: Option<&runtime::WorkerStatus>,
     playbook_status: Option<&Vec<(String, String, String)>>,
 ) {
+    if let Ok((cols, rows)) = size() {
+        if rows < 12 || cols < 45 {
+            return;
+        }
+    }
+
     let text = render_status_bar_text(
         model,
         session_id,
