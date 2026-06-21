@@ -111,7 +111,8 @@ pub async fn execute_dispatch_executive_brief(
 
     let url = format!("{axim_core_url}/api/v1/functions/send-email");
 
-    let to_email = std::env::var("AXIM_PRIMARY_EMAIL").unwrap_or_else(|_| "james.ellars@axim.us.com".to_string());
+    let to_email = std::env::var("AXIM_PRIMARY_EMAIL")
+        .unwrap_or_else(|_| "james.ellars@axim.us.com".to_string());
 
     let payload = serde_json::json!({
         "to": to_email,
