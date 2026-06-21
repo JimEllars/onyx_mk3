@@ -1,9 +1,10 @@
+cat << 'INNER_EOF' > rust/crates/telemetry/src/metrics.rs
 use prometheus::{
     register_counter_vec, register_gauge, register_histogram_vec, CounterVec, Encoder, Gauge,
     HistogramVec, TextEncoder,
 };
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::LazyLock;
+use std::sync::mpsc::{self, Sender, Receiver};
 use std::sync::Mutex;
 use std::thread;
 
@@ -115,9 +116,7 @@ pub static METRIC_TX: LazyLock<Mutex<Sender<MetricEvent>>> = LazyLock::new(|| {
         while let Ok(event) = rx.recv() {
             match event {
                 MetricEvent::TuiResize(event_name) => {
-                    TUI_RESIZE_EVENTS_TOTAL
-                        .with_label_values(&[&event_name])
-                        .inc();
+                    TUI_RESIZE_EVENTS_TOTAL.with_label_values(&[&event_name]).inc();
                 }
             }
         }
@@ -130,3 +129,4 @@ pub fn enqueue_metric_event(event: MetricEvent) {
         let _ = tx.send(event);
     }
 }
+INNER_EOF

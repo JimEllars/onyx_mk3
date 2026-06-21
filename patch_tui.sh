@@ -1,3 +1,4 @@
+cat << 'INNER_EOF' > rust/crates/onyx/src/tui/status_bar.rs
 use crossterm::{
     cursor::{MoveTo, RestorePosition, SavePosition},
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
@@ -40,7 +41,7 @@ pub fn render_status_bar_text(
 
     let mut text = format!(
         "⚡ Tx: Active | Threads: {} | Model: {} | Session: {} | Tokens: In {}, Out {} | Cost: ${:.4}{}",
-        std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
+        std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
         model, session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str
     );
 
@@ -128,3 +129,4 @@ pub fn draw_status_bar(
         let _ = out.flush();
     }
 }
+INNER_EOF
