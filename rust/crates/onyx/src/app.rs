@@ -142,10 +142,28 @@ pub(crate) fn run_repl(
     }
 
     // Setup scroll region to leave the bottom two lines for the status bar and input prompt
-    print!(
-        "\x1b[0;{}r",
-        crossterm::terminal::size().unwrap_or((80, 24)).1 - 2
-    );
+    let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
+
+    if rows < 12 || cols < 45 {
+        print!("\x1b[2J\x1b[H"); // Clear screen and move to top-left
+        println!(
+            "Terminal window size too small for split-pane view. Please expand window dimensions."
+        );
+        // We will loop until it gets bigger
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let (new_cols, new_rows) = crossterm::terminal::size().unwrap_or((80, 24));
+            if new_rows >= 12 && new_cols >= 45 {
+                print!("\x1b[2J\x1b[H");
+                println!("{}", cli.startup_banner());
+                println!("{}", format_connected_line(&cli.model));
+                break;
+            }
+        }
+    }
+
+    let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
+    print!("\x1b[0;{}r", rows.saturating_sub(2));
 
     tui::status_bar::draw_status_bar(
         &cli.model,
@@ -158,6 +176,16 @@ pub(crate) fn run_repl(
     );
 
     loop {
+        let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
+        if rows < 12 || cols < 45 {
+            telemetry::metrics::TUI_RESIZE_EVENTS_TOTAL
+                .with_label_values(&["too_small"])
+                .inc();
+            print!("\x1b[2J\x1b[H");
+            println!("Terminal window size too small for split-pane view. Please expand window dimensions.");
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            continue;
+        }
         tui::status_bar::draw_status_bar(
             &cli.model,
             &cli.session.id,

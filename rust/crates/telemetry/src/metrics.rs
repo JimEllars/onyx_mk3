@@ -74,3 +74,30 @@ pub fn encode_metrics() -> Result<String, Box<dyn std::error::Error>> {
     encoder.encode(&metric_families, &mut buffer)?;
     Ok(String::from_utf8(buffer)?)
 }
+
+pub static TUI_RESIZE_EVENTS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
+    register_counter_vec!(
+        "onyx_tui_resize_events_total",
+        "Total number of layout recalculations",
+        &["event"]
+    )
+    .unwrap()
+});
+
+pub static IO_STREAM_ERRORS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
+    register_counter_vec!(
+        "onyx_io_stream_errors_total",
+        "Count of read/write stream drop occurrences through the OnyxIoStream interface",
+        &["type"]
+    )
+    .unwrap()
+});
+
+pub static EDGE_AUTH_MISMATCH_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
+    register_counter_vec!(
+        "onyx_edge_auth_mismatch_total",
+        "Track rejected double-hash authorization matches on the edge-bridge layer",
+        &["status"]
+    )
+    .unwrap()
+});
