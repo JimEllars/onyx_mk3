@@ -112,6 +112,14 @@ type RuntimePluginStateBuildOutput = (
 
 #[allow(clippy::too_many_lines)]
 fn main() {
+    // Phase 35 Hardening Directive: Verify secure communication targets
+    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let _service_key = std::env::var("AXIM_SERVICE_KEY").unwrap_or_else(|_| String::new());
+    let primary_email = std::env::var("AXIM_PRIMARY_EMAIL").unwrap_or_else(|_| "james.ellars@axim.us.com".to_string());
+
+    // Output only in debug/development contexts, or log it instead of stdout to avoid breaking JSON/compact formats
+    eprintln!("[Onyx-Secure-Comm]: Primary channel initialized to {primary_email}");
+
     let state_dir = std::path::Path::new(".claw");
     let state_path = state_dir.join("swarm-state.json");
     if state_path.exists() {

@@ -83,7 +83,7 @@ pub async fn execute_dispatch_executive_brief(
     let url = format!("{axim_core_url}/api/v1/functions/send-email");
 
     let payload = serde_json::json!({
-        "to": "james.ellars@axim.us.com",
+        "to": std::env::var("AXIM_PRIMARY_EMAIL").unwrap_or_else(|_| "james.ellars@axim.us.com".to_string()),
         "priority": input.priority,
         "message": input.message_body,
     });
@@ -117,7 +117,7 @@ pub async fn execute_send_email(_to: &str, subject: &str, body: &str) -> Result<
     let url = format!("{axim_core_url}/api/v1/email/send");
 
     let payload = serde_json::json!({
-        "to": "james.ellars@axim.us.com", // Hardcoded per security bootstrap rules
+        "to": std::env::var("AXIM_PRIMARY_EMAIL").unwrap_or_else(|_| "james.ellars@axim.us.com".to_string()),
         "subject": subject,
         "body": body
     });
@@ -252,7 +252,7 @@ pub async fn escalate_to_creator(message: &str, urgency: &str) -> Result<String,
             .map(|()| "Successfully dispatched high priority SMS to creator.".to_string())
     } else {
         // Medium/Low
-        execute_send_email("james.ellars@axim.us.com", "Onyx Escaltion", message)
+        execute_send_email(&std::env::var("AXIM_PRIMARY_EMAIL").unwrap_or_else(|_| "james.ellars@axim.us.com".to_string()), "Onyx Escaltion", message)
             .await
             .map(|()| "Successfully dispatched escalation email to creator.".to_string())
     }

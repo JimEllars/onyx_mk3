@@ -184,6 +184,14 @@ pub(crate) fn run_repl(
             print!("\x1b[2J\x1b[H");
             println!("Terminal window size too small for split-pane view. Please expand window dimensions.");
             std::thread::sleep(std::time::Duration::from_millis(500));
+
+            let (new_cols, new_rows) = crossterm::terminal::size().unwrap_or((80, 24));
+            if new_rows >= 12 && new_cols >= 45 {
+                print!("\x1b[2J\x1b[H");
+                println!("{}", cli.startup_banner());
+                println!("{}", format_connected_line(&cli.model));
+                print!("\x1b[0;{}r", new_rows.saturating_sub(2));
+            }
             continue;
         }
         tui::status_bar::draw_status_bar(
