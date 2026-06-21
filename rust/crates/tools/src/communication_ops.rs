@@ -252,8 +252,13 @@ pub async fn escalate_to_creator(message: &str, urgency: &str) -> Result<String,
             .map(|()| "Successfully dispatched high priority SMS to creator.".to_string())
     } else {
         // Medium/Low
-        execute_send_email(&std::env::var("AXIM_PRIMARY_EMAIL").unwrap_or_else(|_| "james.ellars@axim.us.com".to_string()), "Onyx Escaltion", message)
-            .await
-            .map(|()| "Successfully dispatched escalation email to creator.".to_string())
+        execute_send_email(
+            &std::env::var("AXIM_PRIMARY_EMAIL")
+                .unwrap_or_else(|_| "james.ellars@axim.us.com".to_string()),
+            "Onyx Escaltion",
+            message,
+        )
+        .await
+        .map(|()| "Successfully dispatched escalation email to creator.".to_string())
     }
 }
