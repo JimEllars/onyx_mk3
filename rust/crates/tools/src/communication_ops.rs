@@ -21,12 +21,16 @@ fn log_email_transaction(payload_type: &str, status_code: u16, to: &str) {
     let receipt = ReceiptPayload {
         uuid: uuid::Uuid::new_v4().to_string(),
         payload_type: payload_type.clone(),
-        timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
+        timestamp: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
         status_code,
         to: to.clone(),
     };
 
-    let log_entry = serde_json::to_string(&receipt).unwrap_or_default() + "
+    let log_entry = serde_json::to_string(&receipt).unwrap_or_default()
+        + "
 ";
 
     // Write locally to main log
@@ -38,7 +42,8 @@ fn log_email_transaction(payload_type: &str, status_code: u16, to: &str) {
         let _ = file.write_all(log_entry.as_bytes());
     }
 
-    let core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let core_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
     let sync_url = format!("{core_url}/api/v1/receipts/sync");
 
     let fut = async move {
@@ -47,10 +52,7 @@ fn log_email_transaction(payload_type: &str, status_code: u16, to: &str) {
             .build()
             .unwrap_or_default();
 
-        let res = client.post(&sync_url)
-            .json(&receipt)
-            .send()
-            .await;
+        let res = client.post(&sync_url).json(&receipt).send().await;
 
         // Decentralized caching fallback
         if res.is_err() || res.unwrap().status().is_server_error() {

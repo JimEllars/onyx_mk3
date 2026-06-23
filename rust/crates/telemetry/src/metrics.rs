@@ -6,7 +6,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::thread;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 static LAST_TUI_RESIZE: LazyLock<Mutex<Option<Instant>>> = LazyLock::new(|| Mutex::new(None));
 
@@ -134,7 +134,8 @@ pub fn enqueue_metric_event(event: MetricEvent) {
             let mut should_send = false;
             if let Ok(mut last) = LAST_TUI_RESIZE.lock() {
                 let now = Instant::now();
-                if last.is_none() || now.duration_since(last.unwrap()) > Duration::from_millis(500) {
+                if last.is_none() || now.duration_since(last.unwrap()) > Duration::from_millis(500)
+                {
                     *last = Some(now);
                     should_send = true;
                 }
