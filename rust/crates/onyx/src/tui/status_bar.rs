@@ -9,6 +9,7 @@ use runtime::TokenUsage;
 use std::fmt::Write as _;
 use std::io::{stdout, Write};
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_status_bar_text(
     model: &str,
     session_id: &str,
@@ -17,6 +18,7 @@ pub fn render_status_bar_text(
     fleet_status: Option<&GlobalFleetStatus>,
     worker_status: Option<&runtime::WorkerStatus>,
     playbook_status: Option<&Vec<(String, String, String)>>,
+    focus_state: Option<&crate::app::FocusState>,
 ) -> String {
     let mut has_executing = false;
     let mut has_pending = false;
@@ -78,6 +80,7 @@ pub fn render_status_bar_text(
     text
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_status_bar(
     model: &str,
     session_id: &str,
@@ -86,6 +89,7 @@ pub fn draw_status_bar(
     fleet_status: Option<&GlobalFleetStatus>,
     worker_status: Option<&runtime::WorkerStatus>,
     playbook_status: Option<&Vec<(String, String, String)>>,
+    focus_state: Option<&crate::app::FocusState>,
 ) {
     if let Ok((cols, rows)) = size() {
         if rows < 12 || cols < 45 {
@@ -101,6 +105,7 @@ pub fn draw_status_bar(
         fleet_status,
         worker_status,
         playbook_status,
+        focus_state,
     );
 
     if let Ok((cols, rows)) = size() {
@@ -115,8 +120,16 @@ pub fn draw_status_bar(
         let _ = out.queue(SavePosition);
         let _ = out.queue(MoveTo(0, rows - 1));
 
-        let _ = out.queue(SetBackgroundColor(Color::DarkGrey));
-        let _ = out.queue(SetForegroundColor(Color::Cyan));
+        let (bg, fg) = if let Some(focus) = focus_state {
+            match focus {
+                crate::app::FocusState::CommandPalette => (Color::DarkGrey, Color::Cyan), // Active
+                _ => (Color::Black, Color::DarkGrey), // Inactive dims
+            }
+        } else {
+            (Color::DarkGrey, Color::Cyan)
+        };
+        let _ = out.queue(SetBackgroundColor(bg));
+        let _ = out.queue(SetForegroundColor(fg));
 
         let _ = out.queue(Print(format!(
             "{:<width$}",
