@@ -1,4 +1,3 @@
-
 use crate::{TelemetryEvent, TelemetrySink};
 use reqwest::Client;
 use std::env;

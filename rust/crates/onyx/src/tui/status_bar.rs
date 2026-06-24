@@ -97,7 +97,7 @@ pub fn draw_status_bar(
         }
     }
 
-let text = render_status_bar_text(
+    let text = render_status_bar_text(
         model,
         session_id,
         usage,

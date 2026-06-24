@@ -58,10 +58,19 @@ impl SwarmWorker {
     }
 
     async fn process_packet(&self, priority: &str, packet: TaskPacket) {
-        println!("[Swarm Worker] Processing {priority} priority task: {:?}", packet.objective);
+        println!(
+            "[Swarm Worker] Processing {priority} priority task: {:?}",
+            packet.objective
+        );
 
-        let agent_id = packet.worker_id.clone().unwrap_or_else(|| "swarm_worker".to_string());
-        let session_id = packet.job_id.clone().unwrap_or_else(|| "swarm_job".to_string());
+        let agent_id = packet
+            .worker_id
+            .clone()
+            .unwrap_or_else(|| "swarm_worker".to_string());
+        let session_id = packet
+            .job_id
+            .clone()
+            .unwrap_or_else(|| "swarm_job".to_string());
 
         // Emit start event using runtime's handle_telemetry_event
         let _ = crate::lane_events::handle_telemetry_event(&crate::lane_events::TelemetryEvent {
@@ -75,8 +84,9 @@ impl SwarmWorker {
                     "objective": packet.objective,
                     "repo": packet.repo
                 }
-            })
-        }).await;
+            }),
+        })
+        .await;
 
         // In a real execution, dispatch to playbook or MCP tools
         sleep(Duration::from_millis(10)).await;
@@ -99,8 +109,9 @@ impl SwarmWorker {
                     "priority": priority,
                     "status": "success"
                 }
-            })
-        }).await;
+            }),
+        })
+        .await;
 
         println!("[Swarm Worker] Finished {priority} priority task");
     }
@@ -149,8 +160,14 @@ mod tests {
             reasoning_effort: None,
         };
 
-        dispatcher.dispatch(TaskPriority::Low, low_packet.clone()).await.unwrap();
-        dispatcher.dispatch(TaskPriority::Critical, critical_packet.clone()).await.unwrap();
+        dispatcher
+            .dispatch(TaskPriority::Low, low_packet.clone())
+            .await
+            .unwrap();
+        dispatcher
+            .dispatch(TaskPriority::Critical, critical_packet.clone())
+            .await
+            .unwrap();
 
         let worker = SwarmWorker::new(queues);
 

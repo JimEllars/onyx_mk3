@@ -23,7 +23,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 
-
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -114,7 +113,6 @@ type RuntimePluginStateBuildOutput = (
 
 #[allow(clippy::too_many_lines)]
 fn main() {
-
     let env_map: std::collections::HashMap<String, String> = std::env::vars().collect();
     if let Err(e) = runtime::config_validate::validate_proxy_mode_secrets(&env_map) {
         eprintln!("[Boot Error]: {e}");

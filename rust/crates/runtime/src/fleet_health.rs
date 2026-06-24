@@ -531,8 +531,6 @@ pub struct RemediationAction {
     pub reason: String,
 }
 
-
-
 pub async fn evaluate_health_with_ai_dynamic(
     diagnostic_data: HealthDiagnostic,
     _mcp_manager: &McpServerManager,
@@ -554,7 +552,7 @@ pub async fn evaluate_health_with_ai_dynamic(
         "reduce_request_rate",
         "purge_zone_cache",
         "execute_circuit_breaker",
-        "log_incident"
+        "log_incident",
     ];
 
     let action = if ai_mode == "llm" {
@@ -566,14 +564,16 @@ pub async fn evaluate_health_with_ai_dynamic(
             "You are an AI DevOps agent. Given the diagnostic: {diagnostic_data:?}\n            And the available tools: {available_tools:?}\n            Choose the best tool to resolve the issue. You MUST respond with a JSON object: {{\"tool_name\": \"name\", \"arguments\": {{}}, \"reason\": \"why\"}}"
         );
 
-
         let mut llm_action = None;
         if let Ok(simulated_response) = std::env::var("SIMULATED_LLM_FLEET_RESPONSE") {
             if let Ok(action) = serde_json::from_str::<RemediationAction>(&simulated_response) {
                 if allowlist.contains(&action.tool_name.as_str()) {
                     llm_action = Some(action);
                 } else {
-                    println!("[Fleet Health] LLM suggested tool outside allowlist: {}", action.tool_name);
+                    println!(
+                        "[Fleet Health] LLM suggested tool outside allowlist: {}",
+                        action.tool_name
+                    );
                 }
             }
         }
@@ -631,7 +631,6 @@ mod tests_ai_eval {
     use super::*;
     use crate::mcp_stdio::McpServerManager;
 
-
     #[tokio::test]
     async fn test_fallback_eval() {
         let diag = HealthDiagnostic {
@@ -644,7 +643,7 @@ mod tests_ai_eval {
         assert_eq!(action.tool_name, "purge_zone_cache");
     }
 
-#[tokio::test]
+    #[tokio::test]
     async fn test_llm_mode_fallback_on_invalid_response() {
         std::env::set_var("FLEET_AI_MODE", "llm");
         std::env::remove_var("SIMULATED_LLM_FLEET_RESPONSE");
@@ -659,7 +658,9 @@ mod tests_ai_eval {
             mcp_server_status: "ok".to_string(),
         };
 
-        let action = evaluate_health_with_ai_dynamic(diag, &manager).await.unwrap();
+        let action = evaluate_health_with_ai_dynamic(diag, &manager)
+            .await
+            .unwrap();
         assert_eq!(action.tool_name, "restart_mcp_server");
     }
 
@@ -683,9 +684,10 @@ mod tests_ai_eval {
             mcp_server_status: "ok".to_string(),
         };
 
-        let action = evaluate_health_with_ai_dynamic(diag, &manager).await.unwrap();
+        let action = evaluate_health_with_ai_dynamic(diag, &manager)
+            .await
+            .unwrap();
         // Since `rm_rf_slash` is blocked, it falls back to dynamic eval which picks `restart_mcp_server`
         assert_eq!(action.tool_name, "restart_mcp_server");
     }
-
 }

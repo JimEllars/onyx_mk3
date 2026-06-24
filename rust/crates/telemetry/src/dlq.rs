@@ -1,12 +1,13 @@
+use reqwest::Client;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
-use reqwest::Client;
 use std::time::Duration;
 use tokio::time::sleep;
 
 pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::SupabaseTelemetrySink>) {
     let dlq_path = std::path::PathBuf::from(".claw/unsynced_receipts.jsonl");
-    let core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let core_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
     let sync_url = format!("{core_url}/api/v1/receipts/sync");
     let client = Client::builder()
         .timeout(Duration::from_secs(5))
@@ -21,7 +22,9 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
             if let Ok(file) = File::open(&dlq_path) {
                 let reader = BufReader::new(file);
                 for line in reader.lines().map_while(Result::ok) {
-                    if line.trim().is_empty() { continue; }
+                    if line.trim().is_empty() {
+                        continue;
+                    }
 
                     if let Ok(receipt) = serde_json::from_str::<serde_json::Value>(&line) {
                         let res = client.post(&sync_url).json(&receipt).send().await;
@@ -39,7 +42,11 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
             if lines_to_keep.is_empty() {
                 let _ = std::fs::remove_file(&dlq_path);
             } else {
-                if let Ok(mut file) = OpenOptions::new().write(true).truncate(true).open(&dlq_path) {
+                if let Ok(mut file) = OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .open(&dlq_path)
+                {
                     for line in lines_to_keep {
                         let _ = writeln!(file, "{line}");
                     }
@@ -47,7 +54,8 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
 
                 // Alert if DLQ gets too big / repeatedly fails
                 if let Ok(metadata) = std::fs::metadata(&dlq_path) {
-                    if metadata.len() > 10 * 1024 * 1024 || repeated_failures > 50 { // 10MB or many failures
+                    if metadata.len() > 10 * 1024 * 1024 || repeated_failures > 50 {
+                        // 10MB or many failures
                         sink.dispatch_critical_alert(
                             "DLQ overflow or persistent failure",
                             &serde_json::json!({ "file_size": metadata.len(), "failures": repeated_failures })
