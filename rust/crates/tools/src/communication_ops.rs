@@ -3,27 +3,78 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-fn log_email_transaction(payload_type: &str, status_code: u16, to: &str) {
-    std::thread::spawn({
-        let payload_type = payload_type.to_string();
-        let to = to.to_string();
-        move || {
-            let timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            let uuid = uuid::Uuid::new_v4().to_string();
-            let log_entry = format!("{{\"uuid\": \"{uuid}\", \"type\": \"{payload_type}\", \"timestamp\": {timestamp}, \"status_code\": {status_code}, \"to\": \"{to}\"}}\n");
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ReceiptPayload {
+    uuid: String,
+    payload_type: String,
+    timestamp: u64,
+    status_code: u16,
+    to: String,
+}
 
+fn log_email_transaction(payload_type: &str, status_code: u16, to: &str) {
+    let payload_type = payload_type.to_string();
+    let to = to.to_string();
+
+    // We try to get the current tokio runtime handle.
+    // If we are in an async context, we spawn. Otherwise we fallback to thread.
+    let receipt = ReceiptPayload {
+        uuid: uuid::Uuid::new_v4().to_string(),
+        payload_type: payload_type.clone(),
+        timestamp: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        status_code,
+        to: to.clone(),
+    };
+
+    let log_entry = serde_json::to_string(&receipt).unwrap_or_default()
+        + "
+";
+
+    // Write locally to main log
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(".claw/email_transactions.log")
+    {
+        let _ = file.write_all(log_entry.as_bytes());
+    }
+
+    let core_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let sync_url = format!("{core_url}/api/v1/receipts/sync");
+
+    let fut = async move {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .unwrap_or_default();
+
+        let res = client.post(&sync_url).json(&receipt).send().await;
+
+        // Decentralized caching fallback
+        if res.is_err() || res.unwrap().status().is_server_error() {
             if let Ok(mut file) = OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(".claw/email_transactions.log")
+                .open(".claw/unsynced_receipts.jsonl")
             {
                 let _ = file.write_all(log_entry.as_bytes());
             }
         }
-    });
+    };
+
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(fut);
+    } else {
+        std::thread::spawn(move || {
+            if let Ok(rt) = tokio::runtime::Runtime::new() {
+                rt.block_on(fut);
+            }
+        });
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -61,6 +61,24 @@ use tools::{
 };
 
 const DEFAULT_MODEL: &str = "axim-default";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FocusState {
+    MainChat,
+    SidePanel,
+    CommandPalette,
+}
+
+impl FocusState {
+    pub fn next(self) -> Self {
+        match self {
+            FocusState::MainChat => FocusState::SidePanel,
+            FocusState::SidePanel => FocusState::CommandPalette,
+            FocusState::CommandPalette => FocusState::MainChat,
+        }
+    }
+}
+
 pub(crate) fn max_tokens_for_model(model: &str) -> u32 {
     if model.contains("opus") {
         32_000
@@ -173,6 +191,7 @@ pub(crate) fn run_repl(
         None,
         worker_status.as_ref(),
         None,
+        Some(&cli.focus_state),
     );
 
     loop {
@@ -202,6 +221,7 @@ pub(crate) fn run_repl(
             None,
             None,
             None,
+            Some(&cli.focus_state),
         );
         editor.set_completions(cli.repl_completion_candidates().unwrap_or_default());
         match editor.read_line()? {
@@ -249,6 +269,7 @@ pub(crate) struct LiveCli {
     pub(crate) runtime: BuiltRuntime,
     pub(crate) session: SessionHandle,
     pub(crate) prompt_history: Vec<PromptHistoryEntry>,
+    pub(crate) focus_state: FocusState,
 }
 #[derive(Debug, Clone)]
 pub(crate) struct PromptHistoryEntry {
@@ -290,6 +311,7 @@ impl LiveCli {
             runtime,
             session,
             prompt_history: Vec::new(),
+            focus_state: FocusState::MainChat,
         };
         cli.persist_session()?;
 

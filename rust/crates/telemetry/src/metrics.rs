@@ -6,6 +6,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::thread;
+use std::time::{Duration, Instant};
+
+static LAST_TUI_RESIZE: LazyLock<Mutex<Option<Instant>>> = LazyLock::new(|| Mutex::new(None));
 
 pub static HTTP_REQUESTS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
     register_counter_vec!(
@@ -126,6 +129,23 @@ pub static METRIC_TX: LazyLock<Mutex<Sender<MetricEvent>>> = LazyLock::new(|| {
 });
 
 pub fn enqueue_metric_event(event: MetricEvent) {
+    match event {
+        MetricEvent::TuiResize(_) => {
+            let mut should_send = false;
+            if let Ok(mut last) = LAST_TUI_RESIZE.lock() {
+                let now = Instant::now();
+                if last.is_none() || now.duration_since(last.unwrap()) > Duration::from_millis(500)
+                {
+                    *last = Some(now);
+                    should_send = true;
+                }
+            }
+            if !should_send {
+                return;
+            }
+        }
+    }
+
     if let Ok(tx) = METRIC_TX.lock() {
         let _ = tx.send(event);
     }
