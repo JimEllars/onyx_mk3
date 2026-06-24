@@ -531,6 +531,8 @@ pub struct RemediationAction {
     pub reason: String,
 }
 
+
+
 pub async fn evaluate_health_with_ai_dynamic(
     diagnostic_data: HealthDiagnostic,
     _mcp_manager: &McpServerManager,
@@ -545,7 +547,57 @@ pub async fn evaluate_health_with_ai_dynamic(
     })
     .await;
 
-    let action = if diagnostic_data.status_code == Some(502)
+    let ai_mode = std::env::var("FLEET_AI_MODE").unwrap_or_else(|_| "dynamic".to_string());
+
+    let allowlist = vec![
+        "restart_mcp_server",
+        "reduce_request_rate",
+        "purge_zone_cache",
+        "execute_circuit_breaker",
+        "log_incident"
+    ];
+
+    let action = if ai_mode == "llm" {
+        // We'll trust the allowlist and dynamic tools
+        // A full MCP server inspection via `discover_tools_best_effort` can be done here if needed.
+        let available_tools = allowlist.clone();
+
+        let _system_prompt = format!(
+            "You are an AI DevOps agent. Given the diagnostic: {diagnostic_data:?}\n            And the available tools: {available_tools:?}\n            Choose the best tool to resolve the issue. You MUST respond with a JSON object: {{\"tool_name\": \"name\", \"arguments\": {{}}, \"reason\": \"why\"}}"
+        );
+
+
+        let mut llm_action = None;
+        if let Ok(simulated_response) = std::env::var("SIMULATED_LLM_FLEET_RESPONSE") {
+            if let Ok(action) = serde_json::from_str::<RemediationAction>(&simulated_response) {
+                if allowlist.contains(&action.tool_name.as_str()) {
+                    llm_action = Some(action);
+                } else {
+                    println!("[Fleet Health] LLM suggested tool outside allowlist: {}", action.tool_name);
+                }
+            }
+        }
+
+        llm_action.unwrap_or_else(|| fallback_dynamic_eval(&diagnostic_data))
+    } else {
+        fallback_dynamic_eval(&diagnostic_data)
+    };
+
+    let _ = crate::lane_events::handle_telemetry_event(&crate::lane_events::TelemetryEvent {
+        r#type: "health_evaluation_completed".to_string(),
+        payload: serde_json::json!({
+            "app_id": diagnostic_data.app_id,
+            "action": action.tool_name,
+            "automated": true,
+        }),
+    })
+    .await;
+
+    Ok(action)
+}
+
+fn fallback_dynamic_eval(diagnostic_data: &HealthDiagnostic) -> RemediationAction {
+    if diagnostic_data.status_code == Some(502)
         || diagnostic_data.mcp_server_status == "unresponsive"
     {
         RemediationAction {
@@ -571,17 +623,69 @@ pub async fn evaluate_health_with_ai_dynamic(
             arguments: serde_json::json!({ "app_id": diagnostic_data.app_id }),
             reason: "Unknown failure, escalating to circuit breaker with HITL".to_string(),
         }
-    };
+    }
+}
 
-    let _ = crate::lane_events::handle_telemetry_event(&crate::lane_events::TelemetryEvent {
-        r#type: "health_evaluation_completed".to_string(),
-        payload: serde_json::json!({
-            "app_id": diagnostic_data.app_id,
-            "action": action.tool_name,
-            "automated": true,
-        }),
-    })
-    .await;
+#[cfg(test)]
+mod tests_ai_eval {
+    use super::*;
+    use crate::mcp_stdio::McpServerManager;
 
-    Ok(action)
+
+    #[tokio::test]
+    async fn test_fallback_eval() {
+        let diag = HealthDiagnostic {
+            app_id: "test".to_string(),
+            status_code: Some(500),
+            error_rate: 0.1,
+            mcp_server_status: "ok".to_string(),
+        };
+        let action = fallback_dynamic_eval(&diag);
+        assert_eq!(action.tool_name, "purge_zone_cache");
+    }
+
+#[tokio::test]
+    async fn test_llm_mode_fallback_on_invalid_response() {
+        std::env::set_var("FLEET_AI_MODE", "llm");
+        std::env::remove_var("SIMULATED_LLM_FLEET_RESPONSE");
+
+        let config = crate::config::RuntimeConfig::empty();
+        let manager = McpServerManager::from_runtime_config(&config);
+
+        let diag = HealthDiagnostic {
+            app_id: "test2".to_string(),
+            status_code: Some(502),
+            error_rate: 0.1,
+            mcp_server_status: "ok".to_string(),
+        };
+
+        let action = evaluate_health_with_ai_dynamic(diag, &manager).await.unwrap();
+        assert_eq!(action.tool_name, "restart_mcp_server");
+    }
+
+    #[tokio::test]
+    async fn test_llm_mode_rejects_unallowed_tool() {
+        std::env::set_var("FLEET_AI_MODE", "llm");
+        let simulated_resp = serde_json::json!({
+            "tool_name": "rm_rf_slash",
+            "arguments": {},
+            "reason": "because"
+        });
+        std::env::set_var("SIMULATED_LLM_FLEET_RESPONSE", simulated_resp.to_string());
+
+        let config = crate::config::RuntimeConfig::empty();
+        let manager = McpServerManager::from_runtime_config(&config);
+
+        let diag = HealthDiagnostic {
+            app_id: "test3".to_string(),
+            status_code: Some(502),
+            error_rate: 0.1,
+            mcp_server_status: "ok".to_string(),
+        };
+
+        let action = evaluate_health_with_ai_dynamic(diag, &manager).await.unwrap();
+        // Since `rm_rf_slash` is blocked, it falls back to dynamic eval which picks `restart_mcp_server`
+        assert_eq!(action.tool_name, "restart_mcp_server");
+    }
+
 }

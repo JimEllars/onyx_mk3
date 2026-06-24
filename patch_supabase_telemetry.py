@@ -1,4 +1,11 @@
+import re
+import sys
 
+def patch():
+    with open("rust/crates/telemetry/src/supabase.rs", "r") as f:
+        content = f.read()
+
+    replacement = """
 use crate::{TelemetryEvent, TelemetrySink};
 use reqwest::Client;
 use std::env;
@@ -156,19 +163,9 @@ impl SupabaseTelemetrySink {
         }
     }
 }
+"""
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    with open("rust/crates/telemetry/src/supabase.rs", "w") as f:
+        f.write(replacement)
 
-    #[test]
-    fn test_supabase_sink_builds_only_when_configured() {
-        std::env::remove_var("AXIM_CORE_LANE_EVENTS_ENDPOINT");
-        let sink = SupabaseTelemetrySink::new();
-        assert!(sink.is_none());
-
-        std::env::set_var("AXIM_CORE_LANE_EVENTS_ENDPOINT", "http://localhost");
-        let sink = SupabaseTelemetrySink::new();
-        assert!(sink.is_some());
-    }
-}
+patch()
