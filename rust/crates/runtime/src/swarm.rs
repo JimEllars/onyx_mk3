@@ -92,7 +92,8 @@ impl SwarmWorker {
         sleep(Duration::from_millis(10)).await;
 
         // Real execution via AXiM Core REST endpoint
-        let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+        let axim_core_url = std::env::var("AXIM_CORE_URL")
+            .unwrap_or_else(|_| "https://api.axim.us.com".to_string());
         let axim_secret = std::env::var("AXIM_ONYX_SECRET").unwrap_or_default();
         let client = reqwest::Client::new();
         let url = format!("{axim_core_url}/api/v1/swarm/execute");
@@ -106,7 +107,8 @@ impl SwarmWorker {
             // Fallback for tests
             sleep(Duration::from_millis(10)).await;
         } else {
-            let _ = client.post(&url)
+            let _ = client
+                .post(&url)
                 .header("Authorization", format!("Bearer {axim_secret}"))
                 .json(&payload)
                 .send()
