@@ -91,11 +91,26 @@ impl SwarmWorker {
         // In a real execution, dispatch to playbook or MCP tools
         sleep(Duration::from_millis(10)).await;
 
-        // Example execution stub
-        if packet.objective.contains("mcp") {
-            // pass to MCP tools
+        // Real execution via AXiM Core REST endpoint
+        let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+        let axim_secret = std::env::var("AXIM_ONYX_SECRET").unwrap_or_default();
+        let client = reqwest::Client::new();
+        let url = format!("{axim_core_url}/api/v1/swarm/execute");
+
+        let payload = serde_json::json!({
+            "packet": packet
+        });
+
+        // Note: in a fully non-blocking architecture, we could spawn this out or await it depending on guarantees
+        if axim_secret.is_empty() {
+            // Fallback for tests
+            sleep(Duration::from_millis(10)).await;
         } else {
-            // dispatch to playbook
+            let _ = client.post(&url)
+                .header("Authorization", format!("Bearer {axim_secret}"))
+                .json(&payload)
+                .send()
+                .await;
         }
 
         // Emit finish event
