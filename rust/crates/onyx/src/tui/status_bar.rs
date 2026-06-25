@@ -97,7 +97,6 @@ pub fn draw_status_bar(
         }
     }
 
-
     // Windowed redraw threshold check
     thread_local! {
         static LAST_PAINT: std::cell::RefCell<std::time::Instant> = std::cell::RefCell::new(
@@ -120,7 +119,6 @@ pub fn draw_status_bar(
     }
 
     let text = render_status_bar_text(
-
         model,
         session_id,
         usage,
