@@ -903,3 +903,50 @@ mod tests {
         );
     }
 }
+
+pub fn validate_proxy_mode_secrets<S: ::std::hash::BuildHasher>(
+    env_vars: &std::collections::HashMap<String, String, S>,
+) -> Result<(), String> {
+    if env_vars.get("CHAT_ROUTING_MODE").map(String::as_str) == Some("proxy") {
+        if env_vars.get("AXIM_ONYX_SECRET").is_none() {
+            return Err("Missing required secret AXIM_ONYX_SECRET for proxy mode.".to_string());
+        }
+
+        let url = env_vars.get("AXIM_CORE_URL").cloned().unwrap_or_default();
+        if url.contains("axim-core.internal") || url.contains("placeholder") {
+            return Err(format!(
+                "Invalid AXIM_CORE_URL for proxy mode: {url} contains a placeholder."
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod proxy_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_proxy_mode_validation() {
+        let mut envs = HashMap::new();
+        envs.insert("CHAT_ROUTING_MODE".to_string(), "proxy".to_string());
+
+        assert!(validate_proxy_mode_secrets(&envs).is_err());
+
+        envs.insert("AXIM_ONYX_SECRET".to_string(), "secret".to_string());
+        envs.insert(
+            "AXIM_CORE_URL".to_string(),
+            "http://axim-core.internal".to_string(),
+        );
+
+        assert!(validate_proxy_mode_secrets(&envs).is_err());
+
+        envs.insert(
+            "AXIM_CORE_URL".to_string(),
+            "https://api.axim.us.com".to_string(),
+        );
+        assert!(validate_proxy_mode_secrets(&envs).is_ok());
+    }
+}

@@ -22,6 +22,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -112,6 +113,11 @@ type RuntimePluginStateBuildOutput = (
 
 #[allow(clippy::too_many_lines)]
 fn main() {
+    let env_map: std::collections::HashMap<String, String> = std::env::vars().collect();
+    if let Err(e) = runtime::config_validate::validate_proxy_mode_secrets(&env_map) {
+        eprintln!("[Boot Error]: {e}");
+        std::process::exit(1);
+    }
     // Phase 35 Hardening Directive: Verify secure communication targets
     let axim_core_url =
         std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
@@ -1956,6 +1962,14 @@ pub(crate) fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Er
     runtime.block_on(async move {
         let cron_registry = Arc::new(runtime::team_cron_registry::CronRegistry::new());
         let fleet_status = runtime::fleet_health::create_global_fleet_status();
+        let (dispatcher, queues) = runtime::dispatch::Dispatcher::new(100);
+        let swarm_enabled = std::env::var("SWARM_ENABLED").unwrap_or_else(|_| "false".to_string()) == "true";
+        if swarm_enabled {
+            let swarm_worker = runtime::swarm::SwarmWorker::new(queues);
+            tokio::spawn(async move {
+                swarm_worker.run().await;
+            });
+        }
         let fleet_status_clone = fleet_status.clone();
 
         let _bg = runtime::team_cron_registry::start_background_tick_loop(
@@ -2086,7 +2100,14 @@ pub(crate) fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Er
             }
         });
 
-        let fleet_status_telemetry = fleet_status.clone();
+if let Some(sink) = telemetry::supabase::SupabaseTelemetrySink::new() {
+            let sink_arc = std::sync::Arc::new(sink);
+            tokio::spawn(async move {
+                telemetry::dlq::start_dlq_drain_loop(sink_arc).await;
+            });
+        }
+
+                let fleet_status_telemetry = fleet_status.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
             loop {
@@ -2139,6 +2160,10 @@ pub(crate) fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Er
             let mut batch = String::new();
             let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
 
+        let sink = std::sync::Arc::new(telemetry::supabase::SupabaseTelemetrySink::new().unwrap());
+        tokio::spawn(async move {
+            telemetry::dlq::start_dlq_drain_loop(sink).await;
+        });
             loop {
                 tokio::select! {
                     msg = telemetry_rx.recv() => {
