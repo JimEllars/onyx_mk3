@@ -97,6 +97,27 @@ pub fn draw_status_bar(
         }
     }
 
+    // Windowed redraw threshold check
+    thread_local! {
+        static LAST_PAINT: std::cell::RefCell<std::time::Instant> = std::cell::RefCell::new(
+            std::time::Instant::now().checked_sub(std::time::Duration::from_millis(200)).unwrap()
+        );
+    }
+
+    let should_paint = LAST_PAINT.with(|last_paint| {
+        let mut lp = last_paint.borrow_mut();
+        if lp.elapsed() >= std::time::Duration::from_millis(100) {
+            *lp = std::time::Instant::now();
+            true
+        } else {
+            false
+        }
+    });
+
+    if !should_paint {
+        return;
+    }
+
     let text = render_status_bar_text(
         model,
         session_id,

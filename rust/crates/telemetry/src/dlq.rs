@@ -19,6 +19,9 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
             let mut lines_to_keep = Vec::new();
             let mut repeated_failures = 0;
 
+            let max_file_size = 10 * 1024 * 1024; // 10MB
+            let max_lines = 5000;
+
             if let Ok(file) = File::open(&dlq_path) {
                 let reader = BufReader::new(file);
                 for line in reader.lines().map_while(Result::ok) {
@@ -36,6 +39,26 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
                         // Unparseable, discard
                     }
                 }
+            }
+
+            // FIFO eviction if the queue grows too large
+            if lines_to_keep.len() > max_lines {
+                let overflow = lines_to_keep.len() - max_lines;
+                lines_to_keep.drain(0..overflow);
+            }
+
+            // Further memory boundary check
+            let mut total_size: usize = lines_to_keep.iter().map(std::string::String::len).sum();
+            let mut drop_count = 0;
+            for line in &lines_to_keep {
+                if total_size <= max_file_size {
+                    break;
+                }
+                total_size -= line.len();
+                drop_count += 1;
+            }
+            if drop_count > 0 {
+                lines_to_keep.drain(0..drop_count);
             }
 
             // Rewrite the file with lines to keep
