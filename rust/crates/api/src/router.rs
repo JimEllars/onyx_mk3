@@ -5,6 +5,7 @@ use axum::{
     routing::post,
     Router,
 };
+use chrono::Utc;
 use commands::extensions::demand_letter::{DemandLetterGenerator, DemandLetterRequest};
 use commands::extensions::lead_scoring::PredictiveLeadScoring;
 use commands::extensions::nda::NDAGenerator;
@@ -16,7 +17,6 @@ use serde_json::json;
 use std::sync::Arc;
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
-use chrono::Utc;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -28,7 +28,10 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/v1/commands/dispatch", post(handle_dispatch))
         .route("/v1/generate/nda", post(handle_generate_nda))
-        .route("/v1/generate/demand-letter", post(handle_generate_demand_letter))
+        .route(
+            "/v1/generate/demand-letter",
+            post(handle_generate_demand_letter),
+        )
         .with_state(state)
 }
 
@@ -102,7 +105,11 @@ pub async fn handle_generate_nda(
         reasoning_effort: None,
     };
 
-    if let Err(e) = state.dispatcher.dispatch(runtime::dispatch::TaskPriority::Standard, packet).await {
+    if let Err(e) = state
+        .dispatcher
+        .dispatch(runtime::dispatch::TaskPriority::Standard, packet)
+        .await
+    {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             axum::Json(json!({"error": e})),
@@ -167,7 +174,11 @@ pub async fn handle_generate_demand_letter(
         reasoning_effort: None,
     };
 
-    if let Err(e) = state.dispatcher.dispatch(runtime::dispatch::TaskPriority::Standard, packet).await {
+    if let Err(e) = state
+        .dispatcher
+        .dispatch(runtime::dispatch::TaskPriority::Standard, packet)
+        .await
+    {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             axum::Json(json!({"error": e})),
@@ -177,7 +188,9 @@ pub async fn handle_generate_demand_letter(
 
     (
         StatusCode::ACCEPTED,
-        axum::Json(json!({"status": "Success", "message": "Demand Letter generation task dispatched"})),
+        axum::Json(
+            json!({"status": "Success", "message": "Demand Letter generation task dispatched"}),
+        ),
     )
         .into_response()
 }
