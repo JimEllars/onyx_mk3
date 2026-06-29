@@ -27,3 +27,26 @@ pub fn write_to_spool<T: Serialize>(prefix: &str, payload: &T) -> std::io::Resul
     file.write_all(content.as_bytes())?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_concurrency_stress_write_spool() {
+        // Run 100 concurrent writers
+        let mut handles = vec![];
+        for i in 0..100 {
+            let h = tokio::spawn(async move {
+                let payload = json!({"test": i});
+                let _ = write_to_spool("stress_test", &payload);
+            });
+            handles.push(h);
+        }
+
+        for h in handles {
+            let _ = h.await;
+        }
+    }
+}

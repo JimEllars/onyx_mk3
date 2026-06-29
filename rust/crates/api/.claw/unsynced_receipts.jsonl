@@ -1,0 +1,1 @@
+{"error":"Malformed payload structure: Failed to deserialize the JSON body into the target type: missing field `source_channel` at line 1 column 27","raw_payload":"Failed to deserialize the JSON body into the target type: missing field `source_channel` at line 1 column 27","route":"/v1/commands/dispatch","timestamp":"2026-06-29T14:02:59.277645036+00:00"}
