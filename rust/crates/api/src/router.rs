@@ -5,7 +5,8 @@ use axum::{
     routing::post,
     Router,
 };
-use commands::extensions::demand_letter::DemandLetterGenerator;
+use chrono::Utc;
+use commands::extensions::demand_letter::{DemandLetterGenerator, DemandLetterRequest};
 use commands::extensions::lead_scoring::PredictiveLeadScoring;
 use commands::extensions::nda::NDAGenerator;
 use commands::extensions::support_triage::SupportTriage;
@@ -14,6 +15,8 @@ use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use runtime::dispatch::Dispatcher;
 use serde_json::json;
 use std::sync::Arc;
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncWriteExt;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -24,7 +27,172 @@ pub struct AppState {
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/v1/commands/dispatch", post(handle_dispatch))
+        .route("/v1/generate/nda", post(handle_generate_nda))
+        .route(
+            "/v1/generate/demand-letter",
+            post(handle_generate_demand_letter),
+        )
         .with_state(state)
+}
+
+async fn route_to_dlq(payload_text: &str, route: &str, error_msg: &str) {
+    let dlq_path = ".claw/unsynced_receipts.jsonl";
+    // Ensure dir exists
+    let _ = tokio::fs::create_dir_all(".claw").await;
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dlq_path)
+        .await
+    {
+        let entry = json!({
+            "timestamp": Utc::now().to_rfc3339(),
+            "route": route,
+            "error": error_msg,
+            "raw_payload": payload_text
+        });
+        let _ = file.write_all(format!("{entry}\n").as_bytes()).await;
+    }
+}
+
+#[axum::debug_handler]
+pub async fn handle_generate_nda(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    payload_result: Result<Json<serde_json::Value>, JsonRejection>,
+) -> impl IntoResponse {
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let expected_token = format!("Bearer {}", state.auth_token);
+
+    if auth_header != Some(&expected_token) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(json!({"error": "Unauthorized"})),
+        )
+            .into_response();
+    }
+
+    let _payload_val = match payload_result {
+        Ok(Json(v)) => v,
+        Err(e) => {
+            let error_msg = format!("Malformed JSON payload: {}", e.body_text());
+            route_to_dlq(&e.body_text(), "/v1/generate/nda", &error_msg).await;
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(json!({
+                    "error": "Malformed payload structure",
+                    "details": e.body_text()
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    let packet = runtime::TaskPacket {
+        job_id: None,
+        worker_id: None,
+        objective: "Generate NDA document".to_string(),
+        scope: "micro_program".to_string(),
+        repo: "axim-core".to_string(),
+        branch_policy: "main".to_string(),
+        acceptance_tests: vec![],
+        commit_policy: "strict".to_string(),
+        reporting_contract: "none".to_string(),
+        escalation_policy: "halt".to_string(),
+        context: "nda generator context".to_string(),
+        goal: "generate_nda".to_string(),
+        expected_schema: serde_json::Value::Null,
+        reasoning_effort: None,
+    };
+
+    if let Err(e) = state
+        .dispatcher
+        .dispatch(runtime::dispatch::TaskPriority::Standard, packet)
+        .await
+    {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(json!({"error": e})),
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::ACCEPTED,
+        axum::Json(json!({"status": "Success", "message": "NDA generation task dispatched"})),
+    )
+        .into_response()
+}
+
+#[axum::debug_handler]
+pub async fn handle_generate_demand_letter(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    payload_result: Result<Json<DemandLetterRequest>, JsonRejection>,
+) -> impl IntoResponse {
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let expected_token = format!("Bearer {}", state.auth_token);
+
+    if auth_header != Some(&expected_token) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(json!({"error": "Unauthorized"})),
+        )
+            .into_response();
+    }
+
+    let payload = match payload_result {
+        Ok(Json(v)) => v,
+        Err(e) => {
+            let error_msg = format!("Malformed payload structure: {}", e.body_text());
+            route_to_dlq(&e.body_text(), "/v1/generate/demand-letter", &error_msg).await;
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(json!({
+                    "error": "Malformed payload structure",
+                    "details": e.body_text()
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    let packet = runtime::TaskPacket {
+        job_id: None,
+        worker_id: None,
+        objective: "Generate Demand Letter document".to_string(),
+        scope: "micro_program".to_string(),
+        repo: "axim-core".to_string(),
+        branch_policy: "main".to_string(),
+        acceptance_tests: vec![],
+        commit_policy: "strict".to_string(),
+        reporting_contract: "none".to_string(),
+        escalation_policy: "halt".to_string(),
+        context: serde_json::to_string(&payload).unwrap_or_default(),
+        goal: "generate_demand_letter".to_string(),
+        expected_schema: serde_json::Value::Null,
+        reasoning_effort: None,
+    };
+
+    if let Err(e) = state
+        .dispatcher
+        .dispatch(runtime::dispatch::TaskPriority::Standard, packet)
+        .await
+    {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(json!({"error": e})),
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::ACCEPTED,
+        axum::Json(
+            json!({"status": "Success", "message": "Demand Letter generation task dispatched"}),
+        ),
+    )
+        .into_response()
 }
 
 #[axum::debug_handler]
@@ -84,6 +252,8 @@ pub async fn handle_dispatch(
                 }),
             })
             .await;
+
+            route_to_dlq(&e.body_text(), "/v1/commands/dispatch", &error_msg).await;
 
             return (
                 StatusCode::BAD_REQUEST,

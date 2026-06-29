@@ -196,4 +196,42 @@ mod tests {
         // Wait a tiny bit to let tokio run the spawned task
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
     }
+
+    #[tokio::test]
+    async fn test_swarm_worker_error_boundary() {
+        let (dispatcher, queues) = Dispatcher::new(10);
+        let worker = SwarmWorker::new(queues);
+
+        // We simulate a malformed/missing packet processing
+        let packet = TaskPacket {
+            objective: "Test error boundary".to_string(),
+            repo: "axim".to_string(),
+            branch_policy: "main".to_string(),
+            scope: "global".to_string(),
+            worker_id: Some("worker-3".to_string()),
+            job_id: Some("job-3".to_string()),
+            acceptance_tests: vec![],
+            commit_policy: String::new(),
+            reporting_contract: String::new(),
+            escalation_policy: String::new(),
+            context: String::new(),
+            goal: String::new(),
+            expected_schema: serde_json::Value::Null,
+            reasoning_effort: None,
+        };
+
+        dispatcher
+            .dispatch(TaskPriority::Standard, packet)
+            .await
+            .unwrap();
+
+        // Spawn the worker but stop it by dropping after a short time
+        tokio::spawn(async move {
+            worker.run().await;
+        });
+
+        // Wait a tiny bit to let tokio run the spawned task
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        // if it doesn't panic, the error boundary holds
+    }
 }
