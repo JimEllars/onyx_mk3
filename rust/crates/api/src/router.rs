@@ -14,9 +14,9 @@ use commands::micro_program::MicroProgram;
 use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use runtime::dispatch::Dispatcher;
 use serde_json::json;
-use std::sync::Arc;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -99,11 +99,23 @@ pub async fn handle_generate_nda(
         reasoning_effort: None,
     };
 
-    if let Err(e) = state.dispatcher.dispatch(runtime::dispatch::TaskPriority::Standard, packet).await {
-        return (StatusCode::INTERNAL_SERVER_ERROR, axum::Json(json!({"error": e}))).into_response();
+    if let Err(e) = state
+        .dispatcher
+        .dispatch(runtime::dispatch::TaskPriority::Standard, packet)
+        .await
+    {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(json!({"error": e})),
+        )
+            .into_response();
     }
 
-    (StatusCode::ACCEPTED, axum::Json(json!({"status": "Success", "message": "NDA generation task dispatched"}))).into_response()
+    (
+        StatusCode::ACCEPTED,
+        axum::Json(json!({"status": "Success", "message": "NDA generation task dispatched"})),
+    )
+        .into_response()
 }
 
 #[axum::debug_handler]
@@ -164,7 +176,8 @@ pub async fn handle_generate_demand_letter(
         context: json!({
             "status": "processing",
             "metadata_scrubbed": true
-        }).to_string(),
+        })
+        .to_string(),
         goal: "log_telemetry".to_string(),
         expected_schema: serde_json::Value::Null,
         reasoning_effort: None,
@@ -173,7 +186,9 @@ pub async fn handle_generate_demand_letter(
     // Spawn task to background the telemetry dispatch so we don't block
     let dispatcher = state.dispatcher.clone();
     tokio::spawn(async move {
-        let _ = dispatcher.dispatch(runtime::dispatch::TaskPriority::Low, packet).await;
+        let _ = dispatcher
+            .dispatch(runtime::dispatch::TaskPriority::Low, packet)
+            .await;
     });
 
     // Immediate document generation using the micro-program execution path
@@ -184,11 +199,13 @@ pub async fn handle_generate_demand_letter(
                 "status": "Success",
                 "data": res
             })),
-        ).into_response(),
+        )
+            .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             axum::Json(json!({"error": e})),
-        ).into_response()
+        )
+            .into_response(),
     }
 }
 
@@ -221,7 +238,8 @@ pub async fn handle_dispatch(
                             "agent_id": "axim_router",
                             "error": validation_err
                         }),
-                    }).await;
+                    })
+                    .await;
 
                 return (
                     StatusCode::BAD_REQUEST,
@@ -243,7 +261,8 @@ pub async fn handle_dispatch(
                     "agent_id": "axim_router",
                     "error": error_msg
                 }),
-            }).await;
+            })
+            .await;
 
             route_to_dlq(&e.body_text(), "/v1/commands/dispatch", &error_msg);
 

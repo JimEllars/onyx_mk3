@@ -183,7 +183,16 @@ mod tests {
             cache_read_input_tokens: 0,
         };
         for _ in 0..100 {
-            draw_status_bar("test_model", "test_session", &usage, 0.0, None, None, None, None);
+            draw_status_bar(
+                "test_model",
+                "test_session",
+                &usage,
+                0.0,
+                None,
+                None,
+                None,
+                None,
+            );
         }
     }
 }
