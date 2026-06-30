@@ -15,8 +15,8 @@ use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use runtime::dispatch::Dispatcher;
 use serde_json::json;
 use std::sync::Arc;
-use tokio::fs::OpenOptions;
-use tokio::io::AsyncWriteExt;
+use std::fs::OpenOptions;
+use std::io::Write;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -35,23 +35,17 @@ pub fn create_router(state: AppState) -> Router {
         .with_state(state)
 }
 
-async fn route_to_dlq(payload_text: &str, route: &str, error_msg: &str) {
+fn route_to_dlq(payload_text: &str, route: &str, error_msg: &str) {
     let dlq_path = ".claw/unsynced_receipts.jsonl";
-    // Ensure dir exists
-    let _ = tokio::fs::create_dir_all(".claw").await;
-    if let Ok(mut file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(dlq_path)
-        .await
-    {
+    let _ = std::fs::create_dir_all(".claw");
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(dlq_path) {
         let entry = json!({
             "timestamp": Utc::now().to_rfc3339(),
             "route": route,
             "error": error_msg,
             "raw_payload": payload_text
         });
-        let _ = file.write_all(format!("{entry}\n").as_bytes()).await;
+        let _ = file.write_all(format!("{entry}\n").as_bytes());
     }
 }
 
@@ -76,7 +70,7 @@ pub async fn handle_generate_nda(
         Ok(Json(v)) => v,
         Err(e) => {
             let error_msg = format!("Malformed JSON payload: {}", e.body_text());
-            route_to_dlq(&e.body_text(), "/v1/generate/nda", &error_msg).await;
+            route_to_dlq(&e.body_text(), "/v1/generate/nda", &error_msg);
             return (
                 StatusCode::BAD_REQUEST,
                 axum::Json(json!({
@@ -105,23 +99,11 @@ pub async fn handle_generate_nda(
         reasoning_effort: None,
     };
 
-    if let Err(e) = state
-        .dispatcher
-        .dispatch(runtime::dispatch::TaskPriority::Standard, packet)
-        .await
-    {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(json!({"error": e})),
-        )
-            .into_response();
+    if let Err(e) = state.dispatcher.dispatch(runtime::dispatch::TaskPriority::Standard, packet).await {
+        return (StatusCode::INTERNAL_SERVER_ERROR, axum::Json(json!({"error": e}))).into_response();
     }
 
-    (
-        StatusCode::ACCEPTED,
-        axum::Json(json!({"status": "Success", "message": "NDA generation task dispatched"})),
-    )
-        .into_response()
+    (StatusCode::ACCEPTED, axum::Json(json!({"status": "Success", "message": "NDA generation task dispatched"}))).into_response()
 }
 
 #[axum::debug_handler]
@@ -145,7 +127,7 @@ pub async fn handle_generate_demand_letter(
         Ok(Json(v)) => v,
         Err(e) => {
             let error_msg = format!("Malformed payload structure: {}", e.body_text());
-            route_to_dlq(&e.body_text(), "/v1/generate/demand-letter", &error_msg).await;
+            route_to_dlq(&e.body_text(), "/v1/generate/demand-letter", &error_msg);
             return (
                 StatusCode::BAD_REQUEST,
                 axum::Json(json!({
@@ -157,42 +139,57 @@ pub async fn handle_generate_demand_letter(
         }
     };
 
+    let generator = DemandLetterGenerator;
+
+    let webhook_payload = AximWebhookPayload {
+        source_channel: "api_gateway".to_string(),
+        intent: generator.signature().to_string(),
+        priority: runtime::dispatch::TaskPriority::Standard,
+        meta_data: json!(payload),
+        timestamp: Utc::now(),
+    };
+
+    // Asynchronous dispatch to the Swarm for telemetry
     let packet = runtime::TaskPacket {
         job_id: None,
         worker_id: None,
-        objective: "Generate Demand Letter document".to_string(),
-        scope: "micro_program".to_string(),
+        objective: "Log Demand Letter generation telemetry".to_string(),
+        scope: "micro_program_telemetry".to_string(),
         repo: "axim-core".to_string(),
         branch_policy: "main".to_string(),
         acceptance_tests: vec![],
         commit_policy: "strict".to_string(),
         reporting_contract: "none".to_string(),
         escalation_policy: "halt".to_string(),
-        context: serde_json::to_string(&payload).unwrap_or_default(),
-        goal: "generate_demand_letter".to_string(),
+        context: json!({
+            "status": "processing",
+            "metadata_scrubbed": true
+        }).to_string(),
+        goal: "log_telemetry".to_string(),
         expected_schema: serde_json::Value::Null,
         reasoning_effort: None,
     };
 
-    if let Err(e) = state
-        .dispatcher
-        .dispatch(runtime::dispatch::TaskPriority::Standard, packet)
-        .await
-    {
-        return (
+    // Spawn task to background the telemetry dispatch so we don't block
+    let dispatcher = state.dispatcher.clone();
+    tokio::spawn(async move {
+        let _ = dispatcher.dispatch(runtime::dispatch::TaskPriority::Low, packet).await;
+    });
+
+    // Immediate document generation using the micro-program execution path
+    match generator.execute(&webhook_payload).await {
+        Ok(res) => (
+            StatusCode::OK,
+            axum::Json(json!({
+                "status": "Success",
+                "data": res
+            })),
+        ).into_response(),
+        Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             axum::Json(json!({"error": e})),
-        )
-            .into_response();
+        ).into_response()
     }
-
-    (
-        StatusCode::ACCEPTED,
-        axum::Json(
-            json!({"status": "Success", "message": "Demand Letter generation task dispatched"}),
-        ),
-    )
-        .into_response()
 }
 
 #[axum::debug_handler]
@@ -202,7 +199,6 @@ pub async fn handle_dispatch(
     headers: axum::http::HeaderMap,
     payload_result: Result<Json<AximWebhookPayload>, JsonRejection>,
 ) -> impl IntoResponse {
-    // Verify authorization
     let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
     let expected_token = format!("Bearer {}", state.auth_token);
 
@@ -225,8 +221,7 @@ pub async fn handle_dispatch(
                             "agent_id": "axim_router",
                             "error": validation_err
                         }),
-                    })
-                    .await;
+                    }).await;
 
                 return (
                     StatusCode::BAD_REQUEST,
@@ -241,8 +236,6 @@ pub async fn handle_dispatch(
         }
         Err(e) => {
             let error_msg = format!("Malformed payload structure: {}", e.body_text());
-
-            // Record telemetry event before termination
             let _ = runtime::internal_mcp::call_telemetry_event_handler(&runtime::TelemetryEvent {
                 r#type: "webhook_ingest_error".to_string(),
                 payload: json!({
@@ -250,10 +243,9 @@ pub async fn handle_dispatch(
                     "agent_id": "axim_router",
                     "error": error_msg
                 }),
-            })
-            .await;
+            }).await;
 
-            route_to_dlq(&e.body_text(), "/v1/commands/dispatch", &error_msg).await;
+            route_to_dlq(&e.body_text(), "/v1/commands/dispatch", &error_msg);
 
             return (
                 StatusCode::BAD_REQUEST,
@@ -266,7 +258,6 @@ pub async fn handle_dispatch(
         }
     };
 
-    // Route to micro-programs based on intent
     let lead_scoring = PredictiveLeadScoring;
     let demand_letter = DemandLetterGenerator;
     let nda = NDAGenerator;

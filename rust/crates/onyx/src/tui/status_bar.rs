@@ -169,3 +169,21 @@ pub fn draw_status_bar(
         let _ = out.flush();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_status_bar_throttle() {
+        let usage = runtime::TokenUsage {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+        };
+        for _ in 0..100 {
+            draw_status_bar("test_model", "test_session", &usage, 0.0, None, None, None, None);
+        }
+    }
+}

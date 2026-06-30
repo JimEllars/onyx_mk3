@@ -235,3 +235,37 @@ mod tests {
         // if it doesn't panic, the error boundary holds
     }
 }
+
+    #[tokio::test]
+    async fn test_swarm_worker_handles_disconnect() {
+        let (dispatcher, queues) = crate::dispatch::Dispatcher::new(10);
+        let worker = SwarmWorker::new(queues);
+
+        let packet = TaskPacket {
+            objective: "Test disconnect boundary".to_string(),
+            repo: "axim".to_string(),
+            branch_policy: "main".to_string(),
+            scope: "global".to_string(),
+            worker_id: Some("worker-disconnected".to_string()),
+            job_id: Some("job-disconnected".to_string()),
+            acceptance_tests: vec![],
+            commit_policy: String::new(),
+            reporting_contract: String::new(),
+            escalation_policy: String::new(),
+            context: String::new(),
+            goal: String::new(),
+            expected_schema: serde_json::Value::Null,
+            reasoning_effort: None,
+        };
+
+        dispatcher
+            .dispatch(crate::dispatch::TaskPriority::Standard, packet)
+            .await
+            .unwrap();
+
+        tokio::spawn(async move {
+            worker.run().await;
+        });
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    }

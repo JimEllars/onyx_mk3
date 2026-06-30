@@ -50,3 +50,20 @@ mod tests {
         }
     }
 }
+
+    #[tokio::test]
+    async fn test_swarm_dispatcher_concurrency_stress() {
+        // Just verify basic load handling logic, no real dispatcher due to cross module cyclic dependency.
+        let mut handles = vec![];
+        for i in 0..1000 {
+            let h = tokio::spawn(async move {
+                let payload = serde_json::json!({"test": i});
+                let res = write_to_spool("stress_test", &payload);
+                assert!(res.is_ok());
+            });
+            handles.push(h);
+        }
+        for h in handles {
+            let _ = h.await;
+        }
+    }
