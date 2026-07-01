@@ -634,9 +634,9 @@ pub fn start_session_background_loop(
 #[cfg(test)]
 mod tests {
     use super::{
-        create_managed_session_handle_for, fork_managed_session_for,
-        list_managed_sessions_for, resolve_session_reference_for,
-        workspace_fingerprint, ManagedSessionSummary, SessionStore, LATEST_SESSION_REFERENCE,
+        create_managed_session_handle_for, fork_managed_session_for, list_managed_sessions_for,
+        resolve_session_reference_for, workspace_fingerprint, ManagedSessionSummary, SessionStore,
+        LATEST_SESSION_REFERENCE,
     };
     use crate::session::Session;
     use std::fs;
@@ -717,11 +717,15 @@ mod tests {
         fs::create_dir_all(&root).expect("root dir should exist");
         let mut older = persist_session(&root, "older session");
         older.workspace_root = Some(root.clone());
-        older.save_to_path(root.join(format!("{}.jsonl", older.session_id))).unwrap();
+        older
+            .save_to_path(root.join(format!("{}.jsonl", older.session_id)))
+            .unwrap();
         wait_for_next_millisecond();
         let mut newer = persist_session(&root, "newer session");
         newer.workspace_root = Some(root.clone());
-        newer.save_to_path(root.join(format!("{}.jsonl", newer.session_id))).unwrap();
+        newer
+            .save_to_path(root.join(format!("{}.jsonl", newer.session_id)))
+            .unwrap();
 
         // when
         let handle = resolve_session_reference_for(&root, LATEST_SESSION_REFERENCE)
