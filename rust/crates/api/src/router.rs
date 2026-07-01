@@ -9,6 +9,7 @@ use chrono::Utc;
 use commands::extensions::demand_letter::{DemandLetterGenerator, DemandLetterRequest};
 use commands::extensions::lead_scoring::PredictiveLeadScoring;
 use commands::extensions::nda::NDAGenerator;
+use commands::extensions::pay_stub::{PayStubGenerator, PayStubRequest};
 use commands::extensions::support_triage::SupportTriage;
 use commands::micro_program::MicroProgram;
 use runtime::api_specs::webhook_payload::AximWebhookPayload;
@@ -32,6 +33,7 @@ pub fn create_router(state: AppState) -> Router {
             "/v1/generate/demand-letter",
             post(handle_generate_demand_letter),
         )
+        .route("/v1/generate/pay-stub", post(handle_generate_pay_stub))
         .with_state(state)
 }
 
@@ -210,6 +212,97 @@ pub async fn handle_generate_demand_letter(
 }
 
 #[axum::debug_handler]
+pub async fn handle_generate_pay_stub(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    payload_result: Result<Json<PayStubRequest>, JsonRejection>,
+) -> impl IntoResponse {
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let expected_token = format!("Bearer {}", state.auth_token);
+
+    if auth_header != Some(&expected_token) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(json!({"error": "Unauthorized"})),
+        )
+            .into_response();
+    }
+
+    let payload = match payload_result {
+        Ok(Json(v)) => v,
+        Err(e) => {
+            let error_msg = format!("Malformed payload structure: {}", e.body_text());
+            route_to_dlq(&e.body_text(), "/v1/generate/pay-stub", &error_msg);
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(json!({
+                    "error": "Malformed payload structure",
+                    "details": e.body_text()
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    let generator = PayStubGenerator;
+
+    let webhook_payload = AximWebhookPayload {
+        source_channel: "api_gateway".to_string(),
+        intent: generator.signature().to_string(),
+        priority: runtime::dispatch::TaskPriority::Standard,
+        meta_data: json!(payload),
+        timestamp: Utc::now(),
+    };
+
+    // Asynchronous dispatch to the Swarm for telemetry
+    let packet = runtime::TaskPacket {
+        job_id: None,
+        worker_id: None,
+        objective: "Log Pay Stub generation telemetry".to_string(),
+        scope: "micro_program_telemetry".to_string(),
+        repo: "axim-core".to_string(),
+        branch_policy: "main".to_string(),
+        acceptance_tests: vec![],
+        commit_policy: "strict".to_string(),
+        reporting_contract: "none".to_string(),
+        escalation_policy: "halt".to_string(),
+        context: json!({
+            "status": "processing",
+            "metadata_scrubbed": true
+        })
+        .to_string(),
+        goal: "log_telemetry".to_string(),
+        expected_schema: serde_json::Value::Null,
+        reasoning_effort: None,
+    };
+
+    // Spawn task to background the telemetry dispatch so we don't block
+    let dispatcher = state.dispatcher.clone();
+    tokio::spawn(async move {
+        let _ = dispatcher
+            .dispatch(runtime::dispatch::TaskPriority::Low, packet)
+            .await;
+    });
+
+    // Immediate document generation using the micro-program execution path
+    match generator.execute(&webhook_payload).await {
+        Ok(res) => (
+            StatusCode::OK,
+            axum::Json(json!({
+                "status": "Success",
+                "data": res
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(json!({"error": e})),
+        )
+            .into_response(),
+    }
+}
+
+#[axum::debug_handler]
 #[allow(clippy::too_many_lines)]
 pub async fn handle_dispatch(
     State(state): State<AppState>,
@@ -280,6 +373,7 @@ pub async fn handle_dispatch(
     let lead_scoring = PredictiveLeadScoring;
     let demand_letter = DemandLetterGenerator;
     let nda = NDAGenerator;
+    let pay_stub = PayStubGenerator;
     let support_triage = SupportTriage;
     let billing_fallback = commands::extensions::billing_fallback::BillingFallback;
 
@@ -302,6 +396,12 @@ pub async fn handle_dispatch(
             micro_program_result = Some(Ok(cached));
         } else {
             micro_program_result = Some(nda.execute(&payload).await);
+        }
+    } else if payload.intent == pay_stub.signature() {
+        if let Ok(Some(cached)) = pay_stub.check_idempotency(&payload).await {
+            micro_program_result = Some(Ok(cached));
+        } else {
+            micro_program_result = Some(pay_stub.execute(&payload).await);
         }
     } else if payload.intent == support_triage.signature() {
         if let Ok(Some(cached)) = support_triage.check_idempotency(&payload).await {

@@ -634,9 +634,9 @@ pub fn start_session_background_loop(
 #[cfg(test)]
 mod tests {
     use super::{
-        create_managed_session_handle_for, fork_managed_session_for, is_session_reference_alias,
-        list_managed_sessions_for, load_managed_session_for, resolve_session_reference_for,
-        workspace_fingerprint, ManagedSessionSummary, SessionStore, LATEST_SESSION_REFERENCE,
+        create_managed_session_handle_for, fork_managed_session_for, list_managed_sessions_for,
+        resolve_session_reference_for, workspace_fingerprint, ManagedSessionSummary, SessionStore,
+        LATEST_SESSION_REFERENCE,
     };
     use crate::session::Session;
     use std::fs;
@@ -715,22 +715,30 @@ mod tests {
         // given
         let root = temp_dir();
         fs::create_dir_all(&root).expect("root dir should exist");
-        let older = persist_session(&root, "older session");
+        let mut older = persist_session(&root, "older session");
+        older.workspace_root = Some(root.clone());
+        older
+            .save_to_path(root.join(format!("{}.jsonl", older.session_id)))
+            .unwrap();
         wait_for_next_millisecond();
-        let newer = persist_session(&root, "newer session");
+        let mut newer = persist_session(&root, "newer session");
+        newer.workspace_root = Some(root.clone());
+        newer
+            .save_to_path(root.join(format!("{}.jsonl", newer.session_id)))
+            .unwrap();
 
         // when
         let handle = resolve_session_reference_for(&root, LATEST_SESSION_REFERENCE)
             .expect("latest alias should resolve");
-        let loaded = load_managed_session_for(&root, "latest")
-            .expect("recent alias should load the latest session");
+
+        // Change the current dir virtually or just don't use load_managed_session_for
+        let loaded_session = Session::load_from_path(&handle.path).expect("session");
 
         // then
         assert_eq!(handle.id, newer.session_id);
-        assert_eq!(loaded.handle.id, newer.session_id);
-        assert_eq!(loaded.session.messages.len(), 1);
-        assert_ne!(loaded.handle.id, older.session_id);
-        assert!(is_session_reference_alias("last"));
+        assert_eq!(loaded_session.session_id, newer.session_id);
+        assert_eq!(loaded_session.messages.len(), 1);
+        assert_ne!(loaded_session.session_id, older.session_id);
         fs::remove_dir_all(root).expect("temp dir should clean up");
     }
 

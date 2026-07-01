@@ -99,9 +99,85 @@ export default {
 			return new Response("OK", { headers: getCorsHeaders(request) });
 		}
 
+		// 2. Payload Size Validation
+		if (request.method === "POST" || request.method === "PUT") {
+			const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
+			// 1MB Limit
+			if (contentLength > 1024 * 1024) {
+				return new Response(JSON.stringify({ error: "Payload too large. Maximum size is 1MB." }), {
+					status: 413,
+					headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+				});
+			}
+		}
+
 		const url = new URL(request.url);
 
+		// 3. Edge Caching for Stateless Requests (Schemas/Templates)
+		if (request.method === "GET" && (url.pathname.startsWith("/api/v1/schema") || url.pathname.startsWith("/api/v1/template"))) {
+			const cacheUrl = new Request(request.url, request);
+			const cache = caches.default;
+			const cachedResponse = await cache.match(cacheUrl);
+			if (cachedResponse) {
+				return cachedResponse;
+			}
+
+			// Simulate fetching from AXiM Core API
+			const coreUrl = env.CORE_INGEST_URL ? new URL(env.CORE_INGEST_URL).origin : "https://api.axim.us.com";
+			try {
+				const res = await fetch(`${coreUrl}${url.pathname}`);
+				if (res.ok) {
+					const responseToCache = new Response(res.body, {
+						status: res.status,
+						statusText: res.statusText,
+						headers: { ...getCorsHeaders(request), "Content-Type": "application/json", "Cache-Control": "public, max-age=3600" }
+					});
+					ctx.waitUntil(cache.put(cacheUrl, responseToCache.clone()));
+					return responseToCache;
+				}
+			} catch (e) {
+				// Fallback to not found or core error handled below
+			}
+		}
+
+		// 4. Rate Limiting for /v1/generate/*
+		if (url.pathname.startsWith("/api/v1/generate/")) {
+			const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+			const rateLimitKey = `rate_limit:${ip}:${url.pathname}`;
+			if (env.ONYX_STATE) {
+				const currentHitsStr = await env.ONYX_STATE.get(rateLimitKey);
+				const currentHits = parseInt(currentHitsStr || "0", 10);
+
+				// Limit: 10 requests per window (simulated with 60s TTL)
+				if (currentHits >= 10) {
+					return new Response(JSON.stringify({ error: "Too Many Requests" }), {
+						status: 429,
+						headers: { ...getCorsHeaders(request), "Content-Type": "application/json", "Retry-After": "60" }
+					});
+				}
+
+				ctx.waitUntil(env.ONYX_STATE.put(rateLimitKey, (currentHits + 1).toString(), { expirationTtl: 60 }));
+			}
+		}
+
+
 		try {
+			let parsedBody: any = null;
+			let rawBodyText = null;
+			if (request.method === "POST" || request.method === "PUT") {
+				rawBodyText = await request.clone().text();
+				if (rawBodyText) {
+					try {
+						parsedBody = JSON.parse(rawBodyText);
+					} catch (e) {
+						return new Response(JSON.stringify({ error: "Structurally invalid JSON payload." }), {
+							status: 400,
+							headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+						});
+					}
+				}
+			}
+
 			if (request.method === "GET" && url.pathname === "/health") {
 			try {
 				const supabaseUrl = env.CORE_INGEST_URL ? new URL(env.CORE_INGEST_URL).origin : "https://api.axim.us.com";
@@ -128,7 +204,7 @@ export default {
 			}
 		} else if (request.method === "POST" && url.pathname === "/api/v1/billing/fallback-blockchain") {
 				// Handles Web3 routing / Multi-chain settlement verification
-				const payload = await request.json() as any;
+				const payload = parsedBody || {};
 				if (!payload.tx_hash || !payload.wallet_address) {
 					return new Response(JSON.stringify({ error: "Invalid blockchain settlement details" }), {
 						status: 400,
@@ -237,7 +313,7 @@ export default {
 					timestamp: string;
 				}
 
-				const payload = await request.json() as TelemetryPayload;
+				const payload = parsedBody as TelemetryPayload;
 
 				// Validate telemetry payload structure
 				if (!payload.brandId || typeof payload.pageViews !== 'number') {
@@ -272,7 +348,7 @@ export default {
 				const authError = await checkAuth(request, env);
 				if (authError) return authError;
 				// POST /api/approve endpoint to receive HITL signals from Core
-				const payload = await request.json() as { task_id?: string; signed_payload?: any, idempotency_key?: string };
+				const payload = (parsedBody || {}) as { task_id?: string; signed_payload?: any, idempotency_key?: string };
 
 				if (!payload.task_id || !payload.signed_payload) {
 					return new Response(JSON.stringify({ error: "Missing task_id or signed_payload" }), {
@@ -326,7 +402,7 @@ export default {
 				const authError = await checkAuth(request, env);
 				if (authError) return authError;
 					// POST /api/v1/playbook/trigger endpoint for push-based playbook triggers from AXiM Core
-					const payload = await request.json() as { severity?: string; service?: string; metric?: string; details?: any };
+					const payload = (parsedBody || {}) as { severity?: string; service?: string; metric?: string; details?: any };
 
 					if (!payload.severity || !payload.service || !payload.metric) {
 						return new Response(JSON.stringify({ error: "Missing severity, service, or metric in payload" }), {
@@ -383,7 +459,7 @@ export default {
 			} else if (request.method === "POST" && url.pathname === "/api/v1/webhooks") {
 				// Handle GitHub/WordPress webhooks
 				const rawBody = await request.clone().text();
-				const payload = await request.json();
+				const payload = parsedBody || {};
 
 				const githubSignature = request.headers.get("x-hub-signature-256");
 				const wpSignature = request.headers.get("x-wp-webhook-signature");
