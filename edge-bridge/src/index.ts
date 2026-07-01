@@ -7,6 +7,8 @@
 export interface Env {
 	CHAT_MODEL?: string;
 	ONYX_STATE?: KVNamespace;
+	ONYX_DISPATCH_LOCKS?: KVNamespace;
+	ONYX_PROMPT_CACHE?: KVNamespace;
 	CORE_CRYPTO_KEY?: string;
 	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
 	// MY_KV_NAMESPACE: KVNamespace;
@@ -44,6 +46,26 @@ function getCorsHeaders(request: Request) {
     };
 }
 
+
+
+async function kvGetWithTimeout(kv: KVNamespace, key: string, timeoutMs = 2000): Promise<string | null> {
+	try {
+		return await Promise.race([
+			kv.get(key),
+			new Promise<null>((_, reject) => setTimeout(() => reject(new Error("KV timeout")), timeoutMs))
+		]);
+	} catch (e) {
+		console.warn(`KV read failed/timeout for key ${key}:`, e);
+		return null; // fail open
+	}
+}
+
+async function sha256(message: string): Promise<string> {
+	const msgBuffer = new TextEncoder().encode(message);
+	const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+	const hashArray = Array.from(new Uint8Array(hashBuffer));
+	return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 async function fetchWithRetry(url: string, options: any, maxRetries = 3) {
 	let lastErr;
@@ -145,7 +167,7 @@ export default {
 			const ip = request.headers.get("CF-Connecting-IP") || "unknown";
 			const rateLimitKey = `rate_limit:${ip}:${url.pathname}`;
 			if (env.ONYX_STATE) {
-				const currentHitsStr = await env.ONYX_STATE.get(rateLimitKey);
+				const currentHitsStr = await kvGetWithTimeout(env.ONYX_STATE, rateLimitKey);
 				const currentHits = parseInt(currentHitsStr || "0", 10);
 
 				// Limit: 10 requests per window (simulated with 60s TTL)
@@ -156,7 +178,7 @@ export default {
 					});
 				}
 
-				ctx.waitUntil(env.ONYX_STATE.put(rateLimitKey, (currentHits + 1).toString(), { expirationTtl: 60 }));
+				try { ctx.waitUntil(env.ONYX_STATE.put(rateLimitKey, (currentHits + 1).toString(), { expirationTtl: 60 })); } catch (e) { console.warn("KV write failed:", e); }
 			}
 		}
 
@@ -214,7 +236,7 @@ export default {
 
 				const idempotencyKey = request.headers.get("Idempotency-Key") || payload.idempotency_key;
 				if (idempotencyKey && env.ONYX_STATE) {
-					const cachedResponse = await env.ONYX_STATE.get(`idem:${idempotencyKey}`);
+					const cachedResponse = await kvGetWithTimeout(env.ONYX_STATE, `idem:${idempotencyKey}`);
 					if (cachedResponse) {
 						return new Response(cachedResponse, {
 							headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
@@ -246,7 +268,7 @@ export default {
 				});
 
 				if (idempotencyKey && env.ONYX_STATE) {
-					ctx.waitUntil(env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, { expirationTtl: 86400 })); // Keep for 24h
+					try { ctx.waitUntil(env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, { expirationTtl: 86400 })); } catch (e) { console.warn("KV write failed:", e); } // Keep for 24h
 				}
 
 				return new Response(responseBody, {
@@ -270,7 +292,27 @@ export default {
 
 				// 5. Call Anthropic API
 				const chatModel = env.CHAT_MODEL || "claude-3-5-sonnet-20241022";
-				const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
+
+				const promptHash = await sha256(onyxSystemPrompt + command);
+				if (env.ONYX_PROMPT_CACHE) {
+					const cachedResult = await kvGetWithTimeout(env.ONYX_PROMPT_CACHE, `cache:${promptHash}`);
+					if (cachedResult) {
+						// Send cache hit metric async
+						if (env.CORE_INGEST_URL) {
+							ctx.waitUntil(fetchWithRetry(env.CORE_INGEST_URL, {
+								method: "POST",
+								headers: { "Content-Type": "application/json" },
+								body: JSON.stringify({ type: "telemetry", payload: { metric: "cache_hit" }})
+							}).catch(() => {}));
+						}
+
+						return new Response(cachedResult, {
+							headers: { ...getCorsHeaders(request), "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" }
+						});
+					}
+				}
+
+const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
 					method: "POST",
 					headers: {
 						"x-api-key": env.ANTHROPIC_API_KEY,
@@ -285,6 +327,36 @@ export default {
 						stream: true
 					})
 				});
+
+				// If streaming, caching the response is harder unless we accumulate it.
+				// For the sake of the exercise, we assume we might intercept non-stream or handle it if we could accumulate.
+				// Since it is streaming, we'll wait until the stream is done or intercept it using a TransformStream.
+				// We'll scaffold the cache PUT for demonstration if it were a simple JSON response,
+				// but since it's an event-stream we'd normally buffer it. We will buffer it via a TransformStream.
+
+				if (env.ONYX_PROMPT_CACHE && claudeResponse.ok) {
+					const [stream1, stream2] = claudeResponse.body!.tee();
+					ctx.waitUntil((async () => {
+						try {
+							const reader = stream2.getReader();
+							const decoder = new TextDecoder();
+							let fullResponse = "";
+							while (true) {
+								const { done, value } = await reader.read();
+								if (done) break;
+								fullResponse += decoder.decode(value, { stream: true });
+							}
+							await env.ONYX_PROMPT_CACHE!.put(`cache:${promptHash}`, fullResponse, { expirationTtl: 86400 });
+						} catch (e) {
+							console.error("Cache populate error:", e);
+						}
+					})());
+
+					return new Response(stream1, {
+						headers: { ...getCorsHeaders(request), "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" }
+					});
+				}
+
 
 				if (!claudeResponse.ok) {
 					const errorData = await claudeResponse.text();
@@ -359,7 +431,7 @@ export default {
 
 				const idempotencyKey = request.headers.get("Idempotency-Key") || payload.idempotency_key;
 				if (idempotencyKey && env.ONYX_STATE) {
-					const cachedResponse = await env.ONYX_STATE.get(`idem:${idempotencyKey}`);
+					const cachedResponse = await kvGetWithTimeout(env.ONYX_STATE, `idem:${idempotencyKey}`);
 					if (cachedResponse) {
 						return new Response(cachedResponse, {
 							headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
@@ -369,7 +441,7 @@ export default {
 
 				// Save approval to KV store
 				if (env.ONYX_STATE) {
-					await env.ONYX_STATE.put(`approval:${payload.task_id}`, JSON.stringify(payload));
+					try { await env.ONYX_STATE.put(`approval:${payload.task_id}`, JSON.stringify(payload)); } catch (e) { console.warn("KV write failed:", e); }
 				}
 
 				// Relay to Rust core (fire and forget)
@@ -392,7 +464,7 @@ export default {
 				});
 
 				if (idempotencyKey && env.ONYX_STATE) {
-					ctx.waitUntil(env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, { expirationTtl: 86400 })); // Keep for 24h
+					try { ctx.waitUntil(env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, { expirationTtl: 86400 })); } catch (e) { console.warn("KV write failed:", e); } // Keep for 24h
 				}
 
 				return new Response(responseBody, {
@@ -444,9 +516,9 @@ export default {
 				// Read approvals from KV store
 				const approvals: any[] = [];
 				if (env.ONYX_STATE) {
-					const listed = await env.ONYX_STATE.list({ prefix: "approval:" });
+					let listed: { keys: any[] } = { keys: [] }; try { listed = await env.ONYX_STATE.list({ prefix: "approval:" }); } catch (e) { console.warn("KV list failed:", e); }
 					for (const key of listed.keys) {
-						const value = await env.ONYX_STATE.get(key.name);
+						const value = await kvGetWithTimeout(env.ONYX_STATE, key.name);
 						if (value) approvals.push(JSON.parse(value));
 					}
 				}

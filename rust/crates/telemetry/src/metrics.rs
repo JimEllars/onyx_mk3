@@ -108,8 +108,27 @@ pub static EDGE_AUTH_MISMATCH_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
     .unwrap()
 });
 
+
+pub static EDGE_CACHE_HITS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
+    register_counter_vec!(
+        "onyx_edge_cache_hits_total",
+        "Total number of prompt cache hits intercepted by the Edge Bridge",
+        &["status"]
+    )
+    .unwrap()
+});
+
+pub static EDGE_STATE_DEGRADED: LazyLock<Gauge> = LazyLock::new(|| {
+    register_gauge!(
+        "onyx_edge_state_degraded",
+        "Indicates if the Cloudflare KV Edge Bridge state is degraded (1 = Degraded, 0 = OK)"
+    )
+    .unwrap()
+});
+
 pub enum MetricEvent {
     TuiResize(String),
+
 }
 
 pub static METRIC_TX: LazyLock<Mutex<Sender<MetricEvent>>> = LazyLock::new(|| {

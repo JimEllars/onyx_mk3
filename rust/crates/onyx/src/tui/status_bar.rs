@@ -34,16 +34,27 @@ pub fn render_status_bar_text(
         }
     }
 
+
     let worker_state_str = if let Some(ws) = worker_status {
         format!(" | State: {ws}")
     } else {
         String::new()
     };
 
+    let edge_degraded = telemetry::metrics::EDGE_STATE_DEGRADED.get() > 0.0;
+    let edge_status_str = if edge_degraded {
+        "[EDGE: DEGRADED]"
+    } else {
+        "[EDGE: OK]"
+    };
+
+    let cache_hits = telemetry::metrics::EDGE_CACHE_HITS_TOTAL.with_label_values(&["success"]).get();
+    let cache_hits_str = format!("[CACHE HITS: {cache_hits}]");
+
     let mut text = format!(
-        "⚡ Tx: Active | Threads: {} | Model: {} | Session: {} | Tokens: In {}, Out {} | Cost: ${:.4}{}",
+        "⚡ Tx: Active | Threads: {} | Model: {} | Session: {} | Tokens: In {}, Out {} | Cost: ${:.4}{} | {} | {}",
         std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
-        model, session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str
+        model, session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str, edge_status_str, cache_hits_str
     );
 
     let mut playbook_str = String::new();
