@@ -79,7 +79,7 @@ pub fn render_status_bar_text(
 
     let edge_status_val = telemetry::metrics::EDGE_KV_STATUS.get();
     let edge_state_str = if (edge_status_val - 1.0).abs() < f64::EPSILON {
-        "[EDGE: OK]"
+        "[EDGE: KV ACTIVE]"
     } else {
         "[EDGE: DEGRADED]"
     };
