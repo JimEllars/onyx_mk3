@@ -12,3 +12,15 @@ CORE_INGEST_URL = "https://api.axim.us.com/v1/functions/telemetry-ingest"
 binding = "ONYX_STATE"
 id = "mock-id-for-onyx-state"
 preview_id = "mock-preview-id-for-onyx-state"
+
+[[kv_namespaces]]
+binding = "ONYX_SESSION_STATE"
+id = "1cb8dcf7fea24988b75aa43b73777364"
+
+[[kv_namespaces]]
+binding = "ONYX_PROMPT_CACHE"
+id = "186183af00e3487ba5b70d7f0b0e8cbe"
+
+[[kv_namespaces]]
+binding = "ONYX_DISPATCH_LOCKS"
+id = "4b72094b034d4732adbbfeaad4d33b2c"

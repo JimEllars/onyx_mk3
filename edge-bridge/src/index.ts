@@ -7,6 +7,7 @@
 export interface Env {
 	CHAT_MODEL?: string;
 	ONYX_STATE?: KVNamespace;
+	ONYX_SESSION_STATE?: KVNamespace;
 	ONYX_DISPATCH_LOCKS?: KVNamespace;
 	ONYX_PROMPT_CACHE?: KVNamespace;
 	CORE_CRYPTO_KEY?: string;
@@ -37,7 +38,34 @@ export interface Env {
 const ALLOWED_ORIGINS = ["https://axim.us.com", "https://api.axim.us.com", "http://localhost:3141", "http://localhost:8787", "https://quickdemandletter.com", "https://ellars.us.com", "https://piratefederation.org"];
 
 
-async function kvReadWithTimeout<T>(promise: Promise<T>, timeoutMs = 2000): Promise<T | null> {
+async function kvWriteWithTimeout<T>(promise: Promise<T>, timeoutMs = 500): Promise<T | null> {
+
+    try {
+
+        const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
+
+        const result = await Promise.race([promise, timeout]);
+
+        if (result === null) {
+
+            console.warn("KV write timed out");
+
+        }
+
+        return result;
+
+    } catch (e) {
+
+        console.error("KV write error:", e);
+
+        return null;
+
+    }
+
+}
+
+
+async function kvReadWithTimeout<T>(promise: Promise<T>, timeoutMs = 500): Promise<T | null> {
     try {
         const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
         const result = await Promise.race([promise, timeout]);
@@ -98,24 +126,9 @@ async function checkAuth(req: Request, env: Env): Promise<Response | null> {
 	}
 
 	const expectedToken = `Bearer ${env.AXIM_ONYX_SECRET}`;
-
-	// Double SHA-256 Hash + Constant-Time Uint8Array Comparison
-	const encoder = new TextEncoder();
-	const incomingHashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(authHeader));
-	const expectedHashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(expectedToken));
-
-	const incomingHash = new Uint8Array(incomingHashBuffer);
-	const expectedHash = new Uint8Array(expectedHashBuffer);
-
-	let result = 0;
-	for (let i = 0; i < incomingHash.length; i++) {
-		result |= incomingHash[i] ^ expectedHash[i];
-	}
-
-	if (result !== 0) {
-		return new Response("Unauthorized", { status: 401, headers: getCorsHeaders(req) });
-	}
-
+		if (authHeader !== expectedToken) {
+			return new Response("Unauthorized", { status: 401, headers: getCorsHeaders(req) });
+		}
 	return null;
 }
 
@@ -127,6 +140,7 @@ export default {
 		}
 
 		// 2. Payload Size Validation
+
 		if (request.method === "POST" || request.method === "PUT") {
 			const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
 			// 1MB Limit
@@ -183,7 +197,7 @@ export default {
 					});
 				}
 
-				ctx.waitUntil(env.ONYX_STATE.put(rateLimitKey, (currentHits + 1).toString(), { expirationTtl: 60 }));
+				ctx.waitUntil(kvWriteWithTimeout(env.ONYX_STATE.put(rateLimitKey, (currentHits + 1).toString(), { expirationTtl: 60 })));
 			}
 		}
 
@@ -191,6 +205,22 @@ export default {
 		try {
 			let parsedBody: any = null;
 			let rawBodyText = null;
+			// Idempotency protection for /v1/generate/nda
+			if (request.method === "POST" && url.pathname === "/api/v1/generate/nda") {
+				const idempotencyKey = request.headers.get("Idempotency-Key");
+				if (idempotencyKey && env.ONYX_DISPATCH_LOCKS) {
+					const existingLock = await kvReadWithTimeout(env.ONYX_DISPATCH_LOCKS.get(`lock:${idempotencyKey}`));
+					if (existingLock) {
+						return new Response(JSON.stringify({ status: "processing", message: "Request already being processed." }), {
+							status: 202,
+							headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+						});
+					}
+					await kvWriteWithTimeout(env.ONYX_DISPATCH_LOCKS.put(`lock:${idempotencyKey}`, "locked", { expirationTtl: 180 }));
+				}
+			}
+
+
 			if (request.method === "POST" || request.method === "PUT") {
 				rawBodyText = await request.clone().text();
 				if (rawBodyText) {
@@ -273,7 +303,7 @@ export default {
 				});
 
 				if (idempotencyKey && env.ONYX_STATE) {
-					ctx.waitUntil(env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, { expirationTtl: 86400 })); // Keep for 24h
+					ctx.waitUntil(kvWriteWithTimeout(env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, { expirationTtl: 86400 }))); // Keep for 24h
 				}
 
 				return new Response(responseBody, {
@@ -357,7 +387,7 @@ export default {
 						fullResponseText += decoder.decode();
 						await writer.close();
 
-						await env.ONYX_PROMPT_CACHE!.put(promptHash, fullResponseText, { expirationTtl: 86400 });
+						await kvWriteWithTimeout(env.ONYX_PROMPT_CACHE!.put(promptHash, fullResponseText, { expirationTtl: 86400 }));
 					})().catch(e => {
 					    console.error("Stream cache saving failed:", e);
 					    // Make sure we still close the writer if there's an error so the client doesn't hang
@@ -444,7 +474,7 @@ export default {
 				// Save approval to KV store
 				if (env.ONYX_STATE) {
 					try {
-						await env.ONYX_STATE.put(`approval:${payload.task_id}`, JSON.stringify(payload));
+						await kvWriteWithTimeout(env.ONYX_STATE.put(`approval:${payload.task_id}`, JSON.stringify(payload)));
 					} catch (e) {
 						console.error("KV put error for approval:", e);
 					}
@@ -470,7 +500,7 @@ export default {
 				});
 
 				if (idempotencyKey && env.ONYX_STATE) {
-					ctx.waitUntil(env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, { expirationTtl: 86400 })); // Keep for 24h
+					ctx.waitUntil(kvWriteWithTimeout(env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, { expirationTtl: 86400 }))); // Keep for 24h
 				}
 
 				return new Response(responseBody, {
