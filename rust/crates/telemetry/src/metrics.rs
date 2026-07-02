@@ -150,3 +150,21 @@ pub fn enqueue_metric_event(event: MetricEvent) {
         let _ = tx.send(event);
     }
 }
+
+pub static EDGE_KV_STATUS: LazyLock<Gauge> = LazyLock::new(|| {
+    let gauge = register_gauge!(
+        "onyx_edge_kv_status",
+        "Status of the Cloudflare KV Edge (1=OK, 0=Degraded)"
+    )
+    .unwrap();
+    gauge.set(1.0); // Default to OK
+    gauge
+});
+
+pub static EDGE_CACHE_HITS_TOTAL: LazyLock<prometheus::Counter> = LazyLock::new(|| {
+    prometheus::register_counter!(
+        "onyx_edge_cache_hits_total",
+        "Total number of prompt cache hits intercepted by Cloudflare KV"
+    )
+    .unwrap()
+});
