@@ -7,6 +7,8 @@
 export interface Env {
 	CHAT_MODEL?: string;
 	ONYX_STATE?: KVNamespace;
+	ONYX_DISPATCH_LOCKS?: KVNamespace;
+	ONYX_PROMPT_CACHE?: KVNamespace;
 	CORE_CRYPTO_KEY?: string;
 	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
 	// MY_KV_NAMESPACE: KVNamespace;
@@ -33,6 +35,31 @@ export interface Env {
 }
 
 const ALLOWED_ORIGINS = ["https://axim.us.com", "https://api.axim.us.com", "http://localhost:3141", "http://localhost:8787", "https://quickdemandletter.com", "https://ellars.us.com", "https://piratefederation.org"];
+
+
+async function kvReadWithTimeout<T>(promise: Promise<T>, timeoutMs = 2000): Promise<T | null> {
+    try {
+        const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
+        const result = await Promise.race([promise, timeout]);
+        if (result === null) {
+            console.warn("KV read timed out");
+        }
+        return result;
+    } catch (e) {
+        console.error("KV read error:", e);
+        return null;
+    }
+}
+
+
+async function hashPrompt(prompt: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(prompt);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+}
 
 function getCorsHeaders(request: Request) {
     const origin = request.headers.get("Origin") || "";
@@ -145,7 +172,7 @@ export default {
 			const ip = request.headers.get("CF-Connecting-IP") || "unknown";
 			const rateLimitKey = `rate_limit:${ip}:${url.pathname}`;
 			if (env.ONYX_STATE) {
-				const currentHitsStr = await env.ONYX_STATE.get(rateLimitKey);
+				const currentHitsStr = await kvReadWithTimeout(env.ONYX_STATE.get(rateLimitKey));
 				const currentHits = parseInt(currentHitsStr || "0", 10);
 
 				// Limit: 10 requests per window (simulated with 60s TTL)
@@ -214,7 +241,7 @@ export default {
 
 				const idempotencyKey = request.headers.get("Idempotency-Key") || payload.idempotency_key;
 				if (idempotencyKey && env.ONYX_STATE) {
-					const cachedResponse = await env.ONYX_STATE.get(`idem:${idempotencyKey}`);
+					const cachedResponse = await kvReadWithTimeout(env.ONYX_STATE.get(`idem:${idempotencyKey}`));
 					if (cachedResponse) {
 						return new Response(cachedResponse, {
 							headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
@@ -270,6 +297,18 @@ export default {
 
 				// 5. Call Anthropic API
 				const chatModel = env.CHAT_MODEL || "claude-3-5-sonnet-20241022";
+				const fullPrompt = `System: ${onyxSystemPrompt}\nUser: ${command}`;
+				const promptHash = await hashPrompt(fullPrompt);
+
+				if (env.ONYX_PROMPT_CACHE) {
+					const cachedResult = await kvReadWithTimeout(env.ONYX_PROMPT_CACHE.get(promptHash));
+					if (cachedResult) {
+						return new Response(cachedResult, {
+							headers: { ...getCorsHeaders(request), "Content-Type": "text/event-stream" }
+						});
+					}
+				}
+
 				const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
 					method: "POST",
 					headers: {
@@ -295,8 +334,43 @@ export default {
 					});
 				}
 
+				// If streaming, we need to intercept the response chunks to cache the complete response
+				// However, since we return the stream immediately, it's easiest to create a TransformStream
+				const { readable, writable } = new TransformStream();
+
+				if (env.ONYX_PROMPT_CACHE) {
+					const reader = claudeResponse.body!.getReader();
+					const writer = writable.getWriter();
+
+					ctx.waitUntil((async () => {
+						let fullResponseText = "";
+						const decoder = new TextDecoder("utf-8");
+
+						while (true) {
+							const { done, value } = await reader.read();
+							if (done) break;
+
+							fullResponseText += decoder.decode(value, { stream: true });
+							await writer.write(value);
+						}
+
+						fullResponseText += decoder.decode();
+						await writer.close();
+
+						await env.ONYX_PROMPT_CACHE!.put(promptHash, fullResponseText, { expirationTtl: 86400 });
+					})().catch(e => {
+					    console.error("Stream cache saving failed:", e);
+					    // Make sure we still close the writer if there's an error so the client doesn't hang
+					    writer.close().catch(() => {});
+					}));
+
+					return new Response(readable, {
+						headers: { ...getCorsHeaders(request), "Content-Type": "text/event-stream" }
+					});
+				}
+
 				return new Response(claudeResponse.body, {
-					headers: { ...getCorsHeaders(request), "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" }
+					headers: { ...getCorsHeaders(request), "Content-Type": "text/event-stream" }
 				});
 
 
@@ -359,7 +433,7 @@ export default {
 
 				const idempotencyKey = request.headers.get("Idempotency-Key") || payload.idempotency_key;
 				if (idempotencyKey && env.ONYX_STATE) {
-					const cachedResponse = await env.ONYX_STATE.get(`idem:${idempotencyKey}`);
+					const cachedResponse = await kvReadWithTimeout(env.ONYX_STATE.get(`idem:${idempotencyKey}`));
 					if (cachedResponse) {
 						return new Response(cachedResponse, {
 							headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
@@ -369,7 +443,11 @@ export default {
 
 				// Save approval to KV store
 				if (env.ONYX_STATE) {
-					await env.ONYX_STATE.put(`approval:${payload.task_id}`, JSON.stringify(payload));
+					try {
+						await env.ONYX_STATE.put(`approval:${payload.task_id}`, JSON.stringify(payload));
+					} catch (e) {
+						console.error("KV put error for approval:", e);
+					}
 				}
 
 				// Relay to Rust core (fire and forget)
@@ -444,9 +522,10 @@ export default {
 				// Read approvals from KV store
 				const approvals: any[] = [];
 				if (env.ONYX_STATE) {
-					const listed = await env.ONYX_STATE.list({ prefix: "approval:" });
+					const listed = await kvReadWithTimeout(env.ONYX_STATE.list({ prefix: "approval:" }));
+					if (!listed) return new Response(JSON.stringify({ status: "success", approvals: [] }), { headers: { ...getCorsHeaders(request), "Content-Type": "application/json" } });
 					for (const key of listed.keys) {
-						const value = await env.ONYX_STATE.get(key.name);
+						const value = await kvReadWithTimeout(env.ONYX_STATE.get(key.name));
 						if (value) approvals.push(JSON.parse(value));
 					}
 				}
