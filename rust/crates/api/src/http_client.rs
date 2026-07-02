@@ -221,6 +221,26 @@ pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Respon
                 telemetry::metrics::HTTP_REQUESTS_TOTAL
                     .with_label_values(&[&endpoint, &status])
                     .inc();
+
+                // Sniff incoming cache and health headers
+                if let Some(cache_status) = res.headers().get("X-Onyx-Cache-Status") {
+                    if let Ok(cache_str) = cache_status.to_str() {
+                        if cache_str == "HIT" {
+                            telemetry::metrics::EDGE_CACHE_HITS_TOTAL.inc();
+                        }
+                    }
+                }
+
+                if let Some(edge_health) = res.headers().get("X-Onyx-Edge-Health") {
+                    if let Ok(health_str) = edge_health.to_str() {
+                        if health_str == "OK" {
+                            telemetry::metrics::EDGE_KV_STATUS.set(1.0);
+                        } else if health_str == "DEGRADED" {
+                            telemetry::metrics::EDGE_KV_STATUS.set(0.0);
+                        }
+                    }
+                }
+
                 if res.status().is_server_error() {
                     if attempt < 3 {
                         let backoff = 2_u64.pow(attempt - 1);
