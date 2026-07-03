@@ -168,3 +168,23 @@ pub static EDGE_CACHE_HITS_TOTAL: LazyLock<prometheus::Counter> = LazyLock::new(
     )
     .unwrap()
 });
+
+pub static EDGE_CACHE_HIT_RATE: LazyLock<Gauge> = LazyLock::new(|| {
+    let gauge = register_gauge!(
+        "onyx_edge_cache_hit_rate",
+        "Rolling cache hit-rate percentage (0.0 to 100.0)"
+    )
+    .unwrap();
+    gauge.set(0.0);
+    gauge
+});
+
+pub static EDGE_CACHE_TTL: LazyLock<Gauge> = LazyLock::new(|| {
+    let gauge = register_gauge!(
+        "onyx_edge_cache_ttl",
+        "Last received edge cache TTL in seconds"
+    )
+    .unwrap();
+    gauge.set(0.0);
+    gauge
+});

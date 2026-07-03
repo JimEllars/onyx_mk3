@@ -382,7 +382,7 @@ export default {
 						fullResponseText += decoder.decode();
 						await writer.close();
 
-						await kvWriteWithTimeout(env.ONYX_PROMPT_CACHE!.put(promptHash, fullResponseText, { expirationTtl: 86400 }), 500, edgeStatus);
+						await kvWriteWithTimeout(env.ONYX_PROMPT_CACHE!.put(promptHash, fullResponseText, { expirationTtl: 86400, metadata: { timestamp: Date.now() } }), 500, edgeStatus);
 					})().catch(e => {
 					    console.error("Stream cache saving failed:", e);
 					    // Make sure we still close the writer if there's an error so the client doesn't hang
