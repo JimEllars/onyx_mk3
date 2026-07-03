@@ -70,8 +70,40 @@ impl CircuitBreaker {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
+pub struct CacheEfficiencyTracker {
+    history: std::sync::Mutex<std::collections::VecDeque<bool>>,
+    capacity: usize,
+}
+
+impl CacheEfficiencyTracker {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            history: std::sync::Mutex::new(std::collections::VecDeque::with_capacity(capacity)),
+            capacity,
+        }
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    pub fn record(&self, is_hit: bool) -> f64 {
+        let mut history = self.history.lock().unwrap();
+        if history.len() == self.capacity {
+            history.pop_front();
+        }
+        history.push_back(is_hit);
+
+        let hits = history.iter().filter(|&&h| h).count();
+        (hits as f64 / history.len() as f64) * 100.0
+    }
+}
+
+pub static GLOBAL_CACHE_TRACKER: std::sync::LazyLock<Arc<CacheEfficiencyTracker>> =
+    std::sync::LazyLock::new(|| Arc::new(CacheEfficiencyTracker::new(100)));
+
 pub static GLOBAL_CIRCUIT_BREAKER: std::sync::LazyLock<Arc<CircuitBreaker>> =
     std::sync::LazyLock::new(|| Arc::new(CircuitBreaker::new(3, 30)));
+
+pub static LAST_DEGRADED_TIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Snapshot of the proxy-related environment variables that influence the
 /// outbound HTTP client. Captured up front so callers can inspect, log, and
@@ -183,12 +215,23 @@ pub fn build_http_client_with(config: &ProxyConfig) -> Result<reqwest::Client, A
 }
 
 #[allow(dead_code)]
+#[allow(clippy::too_many_lines)]
 pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Response, String> {
     let endpoint = request
         .try_clone()
         .and_then(|r| r.build().ok())
         .and_then(|req| req.url().host_str().map(ToString::to_string))
         .unwrap_or_else(|| "unknown".to_string());
+
+    let last_degraded = LAST_DEGRADED_TIME.load(Ordering::SeqCst);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    if now - last_degraded < 10 {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
 
     let state = GLOBAL_CIRCUIT_BREAKER.state();
 
@@ -225,8 +268,19 @@ pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Respon
                 // Sniff incoming cache and health headers
                 if let Some(cache_status) = res.headers().get("X-Onyx-Cache-Status") {
                     if let Ok(cache_str) = cache_status.to_str() {
-                        if cache_str == "HIT" {
+                        let is_hit = cache_str == "HIT";
+                        if is_hit {
                             telemetry::metrics::EDGE_CACHE_HITS_TOTAL.inc();
+                        }
+                        let hit_rate = GLOBAL_CACHE_TRACKER.record(is_hit);
+                        telemetry::metrics::EDGE_CACHE_HIT_RATE.set(hit_rate);
+                    }
+                }
+
+                if let Some(cache_ttl) = res.headers().get("X-Onyx-Cache-TTL") {
+                    if let Ok(ttl_str) = cache_ttl.to_str() {
+                        if let Ok(ttl) = ttl_str.parse::<f64>() {
+                            telemetry::metrics::EDGE_CACHE_TTL.set(ttl);
                         }
                     }
                 }
@@ -237,6 +291,13 @@ pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Respon
                             telemetry::metrics::EDGE_KV_STATUS.set(1.0);
                         } else if health_str == "DEGRADED" {
                             telemetry::metrics::EDGE_KV_STATUS.set(0.0);
+                            LAST_DEGRADED_TIME.store(
+                                std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_secs(),
+                                Ordering::SeqCst,
+                            );
                         }
                     }
                 }
