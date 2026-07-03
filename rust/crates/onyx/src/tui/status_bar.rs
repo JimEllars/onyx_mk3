@@ -86,7 +86,9 @@ pub fn render_status_bar_text(
     let cache_hit_rate = telemetry::metrics::EDGE_CACHE_HIT_RATE.get();
     let cache_ttl = telemetry::metrics::EDGE_CACHE_TTL.get();
 
-    text = format!("{text} | [EDGE: {edge_state_str} | CACHE: {cache_hit_rate:.0}% | TTL: {cache_ttl:.0}s]");
+    text = format!(
+        "{text} | [EDGE: {edge_state_str} | CACHE: {cache_hit_rate:.0}% | TTL: {cache_ttl:.0}s]"
+    );
 
     text
 }

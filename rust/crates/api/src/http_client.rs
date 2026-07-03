@@ -70,7 +70,6 @@ impl CircuitBreaker {
 }
 
 #[allow(dead_code)]
-
 #[derive(Debug)]
 pub struct CacheEfficiencyTracker {
     history: std::sync::Mutex<std::collections::VecDeque<bool>>,
