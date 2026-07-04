@@ -115,6 +115,20 @@ async function checkAuth(req: Request, env: Env): Promise<Response | null> {
 }
 
 export default {
+	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+		try {
+			// Execute a low-overhead heartbeat sanity evaluation across active KV stores
+			console.log(`Cron triggered at ${new Date().toISOString()}`);
+			if (env.ONYX_PROMPT_CACHE) {
+				await env.ONYX_PROMPT_CACHE.put("heartbeat_sanity", new Date().toISOString(), { expirationTtl: 3600 });
+			}
+			if (env.ONYX_SESSION_STATE) {
+				await env.ONYX_SESSION_STATE.put("heartbeat_sanity", new Date().toISOString(), { expirationTtl: 3600 });
+			}
+		} catch (e) {
+			console.error("Scheduled task error:", e);
+		}
+	},
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
         const edgeStatus = { degraded: false };
         let cacheStatus = "MISS";
@@ -218,6 +232,14 @@ export default {
 				if (rawBodyText) {
 					try {
 						parsedBody = JSON.parse(rawBodyText);
+						// Ambient action-hook capturing mechanism
+						if (url.pathname.startsWith("/api/v1/action-hook") || url.pathname.includes("mutation") || url.pathname.includes("transaction")) {
+							if (env.ONYX_STATE) {
+								const hookSignature = request.headers.get("x-action-signature") || "unverified";
+								const telemetryPayload = JSON.stringify({ path: url.pathname, signature: hookSignature, timestamp: new Date().toISOString() });
+								ctx.waitUntil(kvWriteWithTimeout(env.ONYX_STATE.put(`action_hook:${Date.now()}_${Math.random().toString(36).substring(7)}`, telemetryPayload, { expirationTtl: 86400 }), 500, edgeStatus));
+							}
+						}
 					} catch (e) {
 						return new Response(JSON.stringify({ error: "Structurally invalid JSON payload." }), {
 							status: 400,

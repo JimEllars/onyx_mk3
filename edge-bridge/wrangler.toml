@@ -24,3 +24,6 @@ id = "186183af00e3487ba5b70d7f0b0e8cbe"
 [[kv_namespaces]]
 binding = "ONYX_DISPATCH_LOCKS"
 id = "4b72094b034d4732adbbfeaad4d33b2c"
+
+[triggers]
+crons = ["0 * * * *"]

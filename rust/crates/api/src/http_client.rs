@@ -72,28 +72,51 @@ impl CircuitBreaker {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct CacheEfficiencyTracker {
-    history: std::sync::Mutex<std::collections::VecDeque<bool>>,
-    capacity: usize,
+    bits: std::sync::atomic::AtomicU64,
+    index: std::sync::atomic::AtomicUsize,
 }
 
 impl CacheEfficiencyTracker {
-    pub fn new(capacity: usize) -> Self {
+    pub fn new(_capacity: usize) -> Self {
         Self {
-            history: std::sync::Mutex::new(std::collections::VecDeque::with_capacity(capacity)),
-            capacity,
+            bits: std::sync::atomic::AtomicU64::new(0),
+            index: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
     #[allow(clippy::cast_precision_loss)]
     pub fn record(&self, is_hit: bool) -> f64 {
-        let mut history = self.history.lock().unwrap();
-        if history.len() == self.capacity {
-            history.pop_front();
+        let idx = self.index.fetch_add(1, Ordering::SeqCst) % 64;
+        let mut current_bits = self.bits.load(Ordering::SeqCst);
+        loop {
+            let next_bits = if is_hit {
+                current_bits | (1 << idx)
+            } else {
+                current_bits & !(1 << idx)
+            };
+            match self.bits.compare_exchange_weak(current_bits, next_bits, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(_) => {
+                    current_bits = next_bits;
+                    break;
+                }
+                Err(b) => current_bits = b,
+            }
         }
-        history.push_back(is_hit);
 
-        let hits = history.iter().filter(|&&h| h).count();
-        (hits as f64 / history.len() as f64) * 100.0
+        let hits = current_bits.count_ones();
+        let total = (self.index.load(Ordering::SeqCst)).min(64);
+
+        let rate = if total == 0 {
+            0.0
+        } else {
+            (f64::from(hits) / total as f64) * 100.0
+        };
+
+        // Standardize metric events to output clean JSON payload diagnostics
+        let payload = format!(r#"{{"event": "cache_metric", "hit": {is_hit}, "rate": {rate:.2}}}"#);
+        tracing::debug!("{}", payload);
+
+        rate
     }
 }
 
