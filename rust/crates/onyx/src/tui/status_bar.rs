@@ -35,13 +35,13 @@ pub fn render_status_bar_text(
     }
 
     let worker_state_str = if let Some(ws) = worker_status {
-        format!(" | State: {ws}")
+        format!(" ∥ State: {ws}")
     } else {
         String::new()
     };
 
     let mut text = format!(
-        "⚡ Tx: Active | Threads: {} | Model: {} | Session: {} | Tokens: In {}, Out {} | Cost: ${:.4}{}",
+        "⚡ Tx: Active ∥ Threads: {} ∥ Model: {} ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{}",
         std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
         model, session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str
     );
@@ -49,7 +49,7 @@ pub fn render_status_bar_text(
     let mut playbook_str = String::new();
     if let Some(tasks) = playbook_status {
         if !tasks.is_empty() {
-            playbook_str.push_str(" | [Playbook: ");
+            playbook_str.push_str(" ∥ Playbook: ");
             for (id, name, status) in tasks {
                 let icon = match status.as_str() {
                     "completed" => "✓",
@@ -58,14 +58,13 @@ pub fn render_status_bar_text(
                 };
                 let _ = write!(playbook_str, "{icon} {name} ");
             }
-            playbook_str.push(']');
         }
     }
 
     if has_executing {
-        text = format!("{text} | [EXECUTING_REMOTE_TASK]");
+        text = format!("{text} ∥ [EXECUTING_REMOTE_TASK]");
     } else if has_pending {
-        text = format!("{text} | [ACTION_REQUIRED]");
+        text = format!("{text} ∥ [ACTION_REQUIRED]");
     }
 
     let delegated = runtime::fleet_health::DELEGATED_NODE_ID
@@ -73,7 +72,7 @@ pub fn render_status_bar_text(
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone();
     if let Some(node_id) = delegated {
-        text = format!("{text} | ⠼ Onyx delegating to [{node_id}]");
+        text = format!("{text} ∥ ⠼ Onyx delegating to [{node_id}]");
     }
     text = format!("{text}{playbook_str}");
 
@@ -87,7 +86,7 @@ pub fn render_status_bar_text(
     let cache_ttl = telemetry::metrics::EDGE_CACHE_TTL.get();
 
     text = format!(
-        "{text} | [EDGE: {edge_state_str} | CACHE: {cache_hit_rate:.0}% | TTL: {cache_ttl:.0}s]"
+        "{text} ∥ EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s"
     );
 
     text
@@ -147,13 +146,17 @@ pub fn draw_status_bar(
     // For now we'll mock queue depth logic or fetch from telemetry
     let swarm_queue_depth = 0; // We'll add this static metric to the text
     let telemetry_queue_depth = 0; // We'll add this static metric to the text
-    let text = format!("{text} | Q: {swarm_queue_depth}/{telemetry_queue_depth}");
+    let text = format!("{text} ∥ Q: {swarm_queue_depth}/{telemetry_queue_depth}");
 
     if let Ok((cols, rows)) = size() {
         let mut out = stdout();
 
-        let truncated_text = if text.len() > cols as usize {
-            &text[0..cols as usize]
+        let truncated_text = if text.chars().count() > cols as usize {
+            let end_idx = text
+                .char_indices()
+                .nth(cols as usize)
+                .map_or(text.len(), |(i, _)| i);
+            &text[0..end_idx]
         } else {
             &text
         };
@@ -163,19 +166,19 @@ pub fn draw_status_bar(
 
         let (bg, fg) = if let Some(focus) = focus_state {
             match focus {
-                crate::app::FocusState::CommandPalette => (Color::DarkGrey, Color::Cyan), // Active
-                _ => (Color::Black, Color::DarkGrey), // Inactive dims
+                crate::app::FocusState::CommandPalette => (Color::DarkBlue, Color::White), // Vibrant Active
+                _ => (Color::Reset, Color::DarkGrey), // Sleek Inactive
             }
         } else {
-            (Color::DarkGrey, Color::Cyan)
+            (Color::DarkBlue, Color::White)
         };
         let _ = out.queue(SetBackgroundColor(bg));
         let _ = out.queue(SetForegroundColor(fg));
 
         let _ = out.queue(Print(format!(
-            "{:<width$}",
+            " {:<width$} ",
             truncated_text,
-            width = cols as usize
+            width = cols.saturating_sub(2) as usize
         )));
         let _ = out.queue(ResetColor);
         let _ = out.queue(RestorePosition);
