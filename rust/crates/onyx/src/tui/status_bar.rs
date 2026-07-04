@@ -58,7 +58,6 @@ pub fn render_status_bar_text(
                 };
                 let _ = write!(playbook_str, "{icon} {name} ");
             }
-
         }
     }
 
@@ -153,7 +152,10 @@ pub fn draw_status_bar(
         let mut out = stdout();
 
         let truncated_text = if text.chars().count() > cols as usize {
-            let end_idx = text.char_indices().nth(cols as usize).map_or(text.len(), |(i, _)| i);
+            let end_idx = text
+                .char_indices()
+                .nth(cols as usize)
+                .map_or(text.len(), |(i, _)| i);
             &text[0..end_idx]
         } else {
             &text

@@ -94,7 +94,12 @@ impl CacheEfficiencyTracker {
             } else {
                 current_bits & !(1 << idx)
             };
-            match self.bits.compare_exchange_weak(current_bits, next_bits, Ordering::SeqCst, Ordering::SeqCst) {
+            match self.bits.compare_exchange_weak(
+                current_bits,
+                next_bits,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
                 Ok(_) => {
                     current_bits = next_bits;
                     break;
