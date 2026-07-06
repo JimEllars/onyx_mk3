@@ -188,3 +188,24 @@ pub static EDGE_CACHE_TTL: LazyLock<Gauge> = LazyLock::new(|| {
     gauge.set(0.0);
     gauge
 });
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+pub static WORKER_QUEUE_DEPTH: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
+pub static WORKER_PROCESSED_TOTAL: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
+
+pub fn set_worker_queue_depth(depth: usize) {
+    WORKER_QUEUE_DEPTH.store(depth, Ordering::Relaxed);
+}
+
+pub fn increment_worker_processed() {
+    WORKER_PROCESSED_TOTAL.fetch_add(1, Ordering::Relaxed);
+}
+
+pub fn get_worker_queue_depth() -> usize {
+    WORKER_QUEUE_DEPTH.load(Ordering::Relaxed)
+}
+
+pub fn get_worker_processed_total() -> usize {
+    WORKER_PROCESSED_TOTAL.load(Ordering::Relaxed)
+}

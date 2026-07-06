@@ -6,6 +6,7 @@ mod providers;
 pub mod router;
 mod sse;
 pub mod types;
+pub mod worker_pool;
 
 pub use client::{
     oauth_token_is_expired, read_base_url, read_xai_base_url, resolve_saved_oauth_token,
