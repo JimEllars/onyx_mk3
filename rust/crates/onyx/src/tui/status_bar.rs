@@ -144,8 +144,8 @@ pub fn draw_status_bar(
     // Check queues if we can. A bit of a hack to get Swarm size,
     // but typically we can append this via a global state if necessary.
     // For now we'll mock queue depth logic or fetch from telemetry
-    let swarm_queue_depth = 0; // We'll add this static metric to the text
-    let telemetry_queue_depth = 0; // We'll add this static metric to the text
+    let swarm_queue_depth = telemetry::metrics::get_worker_queue_depth();
+    let telemetry_queue_depth = telemetry::metrics::get_worker_processed_total();
     let text = format!("{text} ∥ Q: {swarm_queue_depth}/{telemetry_queue_depth}");
 
     if let Ok((cols, rows)) = size() {

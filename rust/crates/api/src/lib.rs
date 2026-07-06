@@ -4,6 +4,7 @@ mod http_client;
 mod prompt_cache;
 mod providers;
 pub mod router;
+pub mod worker_pool;
 mod sse;
 pub mod types;
 
