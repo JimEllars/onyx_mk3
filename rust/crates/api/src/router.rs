@@ -467,10 +467,21 @@ pub async fn handle_dispatch(
 
 #[axum::debug_handler]
 pub async fn handle_event_ingress(
-    State(_state): State<AppState>,
-    _headers: axum::http::HeaderMap,
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     payload_result: Result<Json<serde_json::Value>, JsonRejection>,
 ) -> impl IntoResponse {
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let expected_token = format!("Bearer {}", state.auth_token);
+
+    if auth_header != Some(&expected_token) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(serde_json::json!({"error": "Unauthorized"})),
+        )
+            .into_response();
+    }
+
     let Ok(Json(payload)) = payload_result else {
         return (StatusCode::BAD_REQUEST, "Bad request").into_response();
     };

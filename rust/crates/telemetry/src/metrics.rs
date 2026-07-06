@@ -193,6 +193,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub static WORKER_QUEUE_DEPTH: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
 pub static WORKER_PROCESSED_TOTAL: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
+pub static POOL_EXHAUSTION_EVENTS: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
 
 pub fn set_worker_queue_depth(depth: usize) {
     WORKER_QUEUE_DEPTH.store(depth, Ordering::Relaxed);
@@ -208,4 +209,12 @@ pub fn get_worker_queue_depth() -> usize {
 
 pub fn get_worker_processed_total() -> usize {
     WORKER_PROCESSED_TOTAL.load(Ordering::Relaxed)
+}
+
+pub fn increment_pool_exhaustion() {
+    POOL_EXHAUSTION_EVENTS.fetch_add(1, Ordering::Relaxed);
+}
+
+pub fn get_pool_exhaustion_total() -> usize {
+    POOL_EXHAUSTION_EVENTS.load(Ordering::Relaxed)
 }
