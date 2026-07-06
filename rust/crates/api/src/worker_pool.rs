@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
+use telemetry::metrics::{increment_worker_processed, set_worker_queue_depth};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
-use telemetry::metrics::{increment_worker_processed, set_worker_queue_depth};
 
 type Job = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 
