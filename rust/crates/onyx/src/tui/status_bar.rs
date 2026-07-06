@@ -147,7 +147,8 @@ pub fn draw_status_bar(
     let swarm_queue_depth = telemetry::metrics::get_worker_queue_depth();
     let telemetry_queue_depth = telemetry::metrics::get_worker_processed_total();
     let exhaustion = telemetry::metrics::get_pool_exhaustion_total();
-    let text = format!("{text} ∥ Q: {swarm_queue_depth}/{telemetry_queue_depth} · Exh: {exhaustion}");
+    let text =
+        format!("{text} ∥ Q: {swarm_queue_depth}/{telemetry_queue_depth} · Exh: {exhaustion}");
 
     if let Ok((cols, rows)) = size() {
         let mut out = stdout();
