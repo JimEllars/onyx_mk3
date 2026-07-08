@@ -26,6 +26,7 @@ pub struct CircuitBreaker {
 
 #[allow(dead_code)]
 impl CircuitBreaker {
+    #[must_use]
     pub fn new(failure_threshold: usize, reset_timeout_secs: u64) -> Self {
         Self {
             failure_count: AtomicUsize::new(0),
@@ -77,6 +78,7 @@ pub struct CacheEfficiencyTracker {
 }
 
 impl CacheEfficiencyTracker {
+    #[must_use]
     pub fn new(_capacity: usize) -> Self {
         Self {
             bits: std::sync::atomic::AtomicU64::new(0),

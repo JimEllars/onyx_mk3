@@ -1,1 +1,0 @@
-sed -i 's/telemetry::metrics::TUI_RESIZE_EVENTS_TOTAL/telemetry::metrics::enqueue_metric_event(telemetry::metrics::MetricEvent::TuiResize("window".to_string()));\/\/telemetry::metrics::TUI_RESIZE_EVENTS_TOTAL/g' rust/crates/onyx/src/app.rs

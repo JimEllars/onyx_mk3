@@ -1,6 +1,6 @@
 mod client;
 mod error;
-mod http_client;
+pub mod http_client;
 mod prompt_cache;
 mod providers;
 pub mod router;

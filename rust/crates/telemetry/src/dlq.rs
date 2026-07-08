@@ -54,6 +54,8 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
             }
 
             // Rewrite the file with lines to keep
+            crate::metrics::set_dlq_depth(lines_to_keep.len());
+
             if lines_to_keep.is_empty() {
                 let _ = std::fs::remove_file(&dlq_path);
             } else {
@@ -80,7 +82,7 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
             }
         }
 
-        sleep(Duration::from_secs(300)).await; // run every 5 mins
+        sleep(Duration::from_secs(60)).await; // run every 60 seconds
     }
 }
 

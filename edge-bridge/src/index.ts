@@ -18,6 +18,7 @@ export interface Env {
 	CORE_INGEST_URL: string;
 	GITHUB_WEBHOOK_SECRET: string;
 	WP_WEBHOOK_SECRET: string;
+	AXIM_INTERNAL_KEY: string;
 }
 
 const ALLOWED_ORIGINS = ["https://axim.us.com", "https://api.axim.us.com", "http://localhost:3141", "http://localhost:8787", "https://quickdemandletter.com", "https://ellars.us.com", "https://piratefederation.org"];
@@ -112,6 +113,43 @@ async function checkAuth(req: Request, env: Env): Promise<Response | null> {
 			return new Response("Unauthorized", { status: 401, headers: getCorsHeaders(req) });
 		}
 	return null;
+}
+
+
+async function verifyAximSignature(request: Request, env: Env, bodyText: string): Promise<Response | null> {
+    const signature = request.headers.get("x-axim-signature");
+    if (!signature) {
+        return new Response("Missing x-axim-signature header", { status: 401 });
+    }
+    if (!env.AXIM_INTERNAL_KEY) {
+        return new Response("AXIM_INTERNAL_KEY not configured", { status: 500 });
+    }
+
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(env.AXIM_INTERNAL_KEY),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign", "verify"]
+    );
+
+    const signatureBuffer = await crypto.subtle.sign(
+        "HMAC",
+        key,
+        encoder.encode(bodyText)
+    );
+
+    const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+    const signatureHex = signatureArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+    // Support either direct hex or sha256= prefix format
+    const expectedSignature = `sha256=${signatureHex}`;
+    if (signature !== signatureHex && signature !== expectedSignature) {
+        return new Response("Invalid HMAC signature", { status: 403 });
+    }
+
+    return null;
 }
 
 export default {
@@ -227,8 +265,17 @@ export default {
 				}
 			}
 
-			if (request.method === "POST" || request.method === "PUT") {
+			if (request.method === "POST" || request.method === "PUT" || request.method === "DELETE") {
 				rawBodyText = await request.clone().text();
+
+				// Strict HMAC Validation for payload-mutating requests
+				// Exclude /api/v1/webhooks which uses specific partner logic
+				if (url.pathname !== "/api/v1/webhooks") {
+					const sigError = await verifyAximSignature(request, env, rawBodyText);
+					if (sigError) {
+						return sigError;
+					}
+				}
 				if (rawBodyText) {
 					try {
 						parsedBody = JSON.parse(rawBodyText);
@@ -249,6 +296,12 @@ export default {
 				}
 			}
 
+			if (request.method === "GET" && url.pathname === "/api/v1/health/edge") {
+				return new Response(JSON.stringify({ status: "ok" }), {
+					status: 200,
+					headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
+				});
+			}
 			if (request.method === "GET" && url.pathname === "/health") {
                 try {
                     const supabaseUrl = env.CORE_INGEST_URL ? new URL(env.CORE_INGEST_URL).origin : "https://api.axim.us.com";

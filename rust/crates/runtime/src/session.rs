@@ -1427,8 +1427,7 @@ mod tests {
         // given
         let path = temp_session_path("workspace-root");
         let workspace_root = std::env::current_dir()
-            .expect("should get cwd")
-            .join("target");
+            .expect("should get cwd");
         let mut session = Session::new().with_workspace_root(workspace_root.clone());
         session
             .push_user_text("write to the right cwd")

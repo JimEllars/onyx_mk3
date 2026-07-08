@@ -136,6 +136,27 @@ pub(crate) fn run_repl(
     run_stale_base_preflight(base_commit.map(String::as_str));
     let resolved_model = resolve_repl_model(model);
     let mut cli = LiveCli::new(resolved_model, true, allowed_tools, permission_mode)?;
+
+    // Edge heartbeat background loop
+    tokio::spawn(async move {
+        let edge_url = std::env::var("VITE_ONYX_WORKER_URL").unwrap_or_else(|_| "https://onyx-edge.axim.us.com".to_string());
+        let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)).build().unwrap_or_default();
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+        loop {
+            interval.tick().await;
+            let res = client.get(format!("{edge_url}/api/v1/health/edge")).send().await;
+            match res {
+                Ok(resp) if resp.status().is_success() => {
+                    telemetry::metrics::EDGE_KV_STATUS.set(1.0);
+                    api::http_client::GLOBAL_CACHE_TRACKER.record(true);
+                }
+                _ => {
+                    telemetry::metrics::EDGE_KV_STATUS.set(0.0);
+                    api::http_client::GLOBAL_CACHE_TRACKER.record(false);
+                }
+            }
+        }
+    });
     let mut editor: Box<dyn input::OnyxIoStream> = Box::new(input::LineEditor::new(
         "> ",
         cli.repl_completion_candidates().unwrap_or_default(),
