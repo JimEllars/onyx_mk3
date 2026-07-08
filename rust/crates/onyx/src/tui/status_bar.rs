@@ -145,20 +145,27 @@ pub fn draw_status_bar(
     // but typically we can append this via a global state if necessary.
     // For now we'll mock queue depth logic or fetch from telemetry
     let swarm_queue_depth = telemetry::metrics::get_worker_queue_depth();
-    let telemetry_queue_depth = telemetry::metrics::get_worker_processed_total();
-    let exhaustion = telemetry::metrics::get_pool_exhaustion_total();
-    let text =
-        format!("{text} ∥ Q: {swarm_queue_depth}/{telemetry_queue_depth} · Exh: {exhaustion}");
+
+    // DLQ Depth is now measured directly from the file via DLQ tracker
+    let dlq_depth = telemetry::metrics::get_dlq_depth();
+
+    let text = format!("{text} ∥ Worker Load: {swarm_queue_depth} · DLQ Depth: {dlq_depth}");
 
     if let Ok((cols, rows)) = size() {
         let mut out = stdout();
 
+        // Safely truncate the text dynamically to avoid terminal size panics
         let truncated_text = if text.chars().count() > cols as usize {
-            let end_idx = text
-                .char_indices()
-                .nth(cols as usize)
-                .map_or(text.len(), |(i, _)| i);
-            &text[0..end_idx]
+            let width = cols.saturating_sub(2) as usize;
+            if width == 0 {
+                ""
+            } else {
+                let end_idx = text
+                    .char_indices()
+                    .nth(width)
+                    .map_or(text.len(), |(i, _)| i);
+                &text[0..end_idx]
+            }
         } else {
             &text
         };
