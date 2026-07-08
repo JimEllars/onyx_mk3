@@ -149,8 +149,7 @@ pub fn draw_status_bar(
     // DLQ Depth is now measured directly from the file via DLQ tracker
     let dlq_depth = telemetry::metrics::get_dlq_depth();
 
-    let text =
-        format!("{text} ∥ Worker Load: {swarm_queue_depth} · DLQ Depth: {dlq_depth}");
+    let text = format!("{text} ∥ Worker Load: {swarm_queue_depth} · DLQ Depth: {dlq_depth}");
 
     if let Ok((cols, rows)) = size() {
         let mut out = stdout();

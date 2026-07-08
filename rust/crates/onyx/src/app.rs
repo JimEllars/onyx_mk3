@@ -139,12 +139,19 @@ pub(crate) fn run_repl(
 
     // Edge heartbeat background loop
     tokio::spawn(async move {
-        let edge_url = std::env::var("VITE_ONYX_WORKER_URL").unwrap_or_else(|_| "https://onyx-edge.axim.us.com".to_string());
-        let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)).build().unwrap_or_default();
+        let edge_url = std::env::var("VITE_ONYX_WORKER_URL")
+            .unwrap_or_else(|_| "https://onyx-edge.axim.us.com".to_string());
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .unwrap_or_default();
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
         loop {
             interval.tick().await;
-            let res = client.get(format!("{edge_url}/api/v1/health/edge")).send().await;
+            let res = client
+                .get(format!("{edge_url}/api/v1/health/edge"))
+                .send()
+                .await;
             match res {
                 Ok(resp) if resp.status().is_success() => {
                     telemetry::metrics::EDGE_KV_STATUS.set(1.0);
