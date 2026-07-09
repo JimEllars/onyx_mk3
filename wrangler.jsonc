@@ -1,0 +1,39 @@
+{
+  "$schema": "./edge-bridge/node_modules/wrangler/config-schema.json",
+  // Mirror the Worker config at the repo root so Cloudflare's root-level
+  // deploy command resolves the Worker instead of trying to deploy a Pages site.
+  "name": "onyx-mk3",
+  "main": "./edge-bridge/src/index.ts",
+  "compatibility_date": "2026-07-09",
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [
+    {
+      "pattern": "onyx-edge.axim.us.com",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "CORE_INGEST_URL": "https://api.axim.us.com/v1/functions/telemetry-ingest"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "ONYX_STATE",
+      "id": "049c627a0e144fddaee6ec4034c1f2bd"
+    },
+    {
+      "binding": "ONYX_SESSION_STATE",
+      "id": "1cb8dcf7fea24988b75aa43b73777364"
+    },
+    {
+      "binding": "ONYX_PROMPT_CACHE",
+      "id": "186183af00e3487ba5b70d7f0b0e8cbe"
+    },
+    {
+      "binding": "ONYX_DISPATCH_LOCKS",
+      "id": "4b72094b034d4732adbbfeaad4d33b2c"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 * * * *"]
+  }
+}
