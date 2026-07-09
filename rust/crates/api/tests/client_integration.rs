@@ -77,7 +77,7 @@ async fn send_message_posts_json_and_parses_response() {
         Some("Bearer proxy-token")
     );
     assert_eq!(
-        request.headers.get("anthropic-version").map(String::as_str),
+        request.headers.get("x-anthropic-version").map(String::as_str),
         Some("2023-06-01")
     );
     assert_eq!(
@@ -85,7 +85,7 @@ async fn send_message_posts_json_and_parses_response() {
         Some("claude-code/0.1.0")
     );
     assert_eq!(
-        request.headers.get("anthropic-beta").map(String::as_str),
+        request.headers.get("x-anthropic-beta").map(String::as_str),
         Some("claude-code-20250219,prompt-caching-scope-2026-01-05")
     );
     let body: serde_json::Value =
@@ -182,7 +182,7 @@ async fn send_message_applies_request_profile_and_records_telemetry() {
     let captured = state.lock().await;
     let request = captured.first().expect("server should capture request");
     assert_eq!(
-        request.headers.get("anthropic-beta").map(String::as_str),
+        request.headers.get("x-anthropic-beta").map(String::as_str),
         Some("claude-code-20250219,prompt-caching-scope-2026-01-05,tools-2026-04-01")
     );
     assert_eq!(
