@@ -138,7 +138,7 @@ Gateway handles:
 
 ### Cloudflare Worker deployment surface
 
-- The authoritative Worker config lives at `edge-bridge/wrangler.jsonc`.
+- The authoritative Worker config lives at `edge-bridge/wrangler.jsonc`, with a repo-root `wrangler.jsonc` mirror kept for Cloudflare's root-level deploy command.
 - Local Worker secrets should be placed in `edge-bridge/.dev.vars` using `edge-bridge/.dev.vars.example` as the template.
 - Production secrets must be loaded into Cloudflare with Wrangler, including:
   - `AXIM_ONYX_SECRET`

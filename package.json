@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "npm --prefix edge-bridge install && npm --prefix edge-bridge run build"
+    "build": "npm --prefix edge-bridge install && npm --prefix edge-bridge run build",
+    "deploy": "npm --prefix edge-bridge install && npx wrangler deploy --config wrangler.jsonc",
+    "deploy:dry-run": "npm --prefix edge-bridge install && npx wrangler deploy --dry-run --config wrangler.jsonc"
   }
 }
