@@ -3,16 +3,68 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
 
 // src/index.ts
 var ALLOWED_ORIGINS = ["https://axim.us.com", "https://api.axim.us.com", "http://localhost:3141", "http://localhost:8787", "https://quickdemandletter.com", "https://ellars.us.com", "https://piratefederation.org"];
+var TIMEOUT_SYMBOL = /* @__PURE__ */ Symbol("TIMEOUT");
+async function kvWriteWithTimeout(promise, timeoutMs = 500, status) {
+  try {
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs));
+    const result = await Promise.race([promise, timeout]);
+    if (result === TIMEOUT_SYMBOL) {
+      console.warn("KV write timed out");
+      status.degraded = true;
+      return null;
+    }
+    return result;
+  } catch (e) {
+    console.error("KV write error:", e);
+    status.degraded = true;
+    return null;
+  }
+}
+__name(kvWriteWithTimeout, "kvWriteWithTimeout");
+async function kvReadWithTimeout(promise, timeoutMs = 500, status) {
+  try {
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs));
+    const result = await Promise.race([promise, timeout]);
+    if (result === TIMEOUT_SYMBOL) {
+      console.warn("KV read timed out");
+      status.degraded = true;
+      return null;
+    }
+    return result;
+  } catch (e) {
+    console.error("KV read error:", e);
+    status.degraded = true;
+    return null;
+  }
+}
+__name(kvReadWithTimeout, "kvReadWithTimeout");
+async function hashPrompt(prompt) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(prompt);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return hashHex;
+}
+__name(hashPrompt, "hashPrompt");
 function getCorsHeaders(request) {
   const origin = request.headers.get("Origin") || "";
   const isAllowed = ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".axim.us.com") || origin.endsWith(".workers.dev");
   return {
     "Access-Control-Allow-Origin": isAllowed ? origin : "https://axim.us.com",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization"
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, Idempotency-Key",
+    "Access-Control-Expose-Headers": "X-Onyx-Edge-Health, X-Onyx-Cache-Status"
   };
 }
 __name(getCorsHeaders, "getCorsHeaders");
+function addOnyxHeaders(headers, status, cacheStatus = "MISS") {
+  const h = new Headers(headers);
+  h.set("X-Onyx-Edge-Health", status.degraded ? "DEGRADED" : "OK");
+  h.set("X-Onyx-Cache-Status", cacheStatus);
+  return h;
+}
+__name(addOnyxHeaders, "addOnyxHeaders");
 async function fetchWithRetry(url, options, maxRetries = 3) {
   let lastErr;
   for (let i = 0; i < maxRetries; i++) {
@@ -28,20 +80,173 @@ async function fetchWithRetry(url, options, maxRetries = 3) {
   throw lastErr;
 }
 __name(fetchWithRetry, "fetchWithRetry");
-var checkAuth = /* @__PURE__ */ __name((req, env) => {
+async function checkAuth(req, env) {
   const authHeader = req.headers.get("Authorization");
-  if (!authHeader || authHeader !== `Bearer ${env.AXIM_ONYX_SECRET}`) {
+  if (!authHeader) {
+    return new Response("Unauthorized", { status: 401, headers: getCorsHeaders(req) });
+  }
+  const expectedToken = `Bearer ${env.AXIM_ONYX_SECRET}`;
+  if (authHeader !== expectedToken) {
     return new Response("Unauthorized", { status: 401, headers: getCorsHeaders(req) });
   }
   return null;
-}, "checkAuth");
+}
+__name(checkAuth, "checkAuth");
+async function verifyAximSignature(request, env, bodyText) {
+  const signature = request.headers.get("x-axim-signature");
+  if (!signature) {
+    return new Response("Missing x-axim-signature header", { status: 401 });
+  }
+  if (!env.AXIM_INTERNAL_KEY) {
+    return new Response("AXIM_INTERNAL_KEY not configured", { status: 500 });
+  }
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(env.AXIM_INTERNAL_KEY),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+  const signatureBuffer = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(bodyText)
+  );
+  const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+  const signatureHex = signatureArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  const expectedSignature = `sha256=${signatureHex}`;
+  if (signature !== signatureHex && signature !== expectedSignature) {
+    return new Response("Invalid HMAC signature", { status: 403 });
+  }
+  return null;
+}
+__name(verifyAximSignature, "verifyAximSignature");
 var index_default = {
+  async scheduled(event, env, ctx) {
+    try {
+      console.log(`Cron triggered at ${(/* @__PURE__ */ new Date()).toISOString()}`);
+      if (env.ONYX_PROMPT_CACHE) {
+        await env.ONYX_PROMPT_CACHE.put("heartbeat_sanity", (/* @__PURE__ */ new Date()).toISOString(), { expirationTtl: 3600 });
+      }
+      if (env.ONYX_SESSION_STATE) {
+        await env.ONYX_SESSION_STATE.put("heartbeat_sanity", (/* @__PURE__ */ new Date()).toISOString(), { expirationTtl: 3600 });
+      }
+    } catch (e) {
+      console.error("Scheduled task error:", e);
+    }
+  },
   async fetch(request, env, ctx) {
+    const edgeStatus = { degraded: false };
+    let cacheStatus = "MISS";
     if (request.method === "OPTIONS") {
       return new Response("OK", { headers: getCorsHeaders(request) });
     }
+    if (request.method === "POST" || request.method === "PUT") {
+      const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
+      if (contentLength > 1024 * 1024) {
+        return new Response(JSON.stringify({ error: "Payload too large. Maximum size is 1MB." }), {
+          status: 413,
+          headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
+        });
+      }
+    }
     const url = new URL(request.url);
+    if (request.method === "GET" && (url.pathname.startsWith("/api/v1/schema") || url.pathname.startsWith("/api/v1/template"))) {
+      const cacheUrl = new Request(request.url, request);
+      const cache = caches.default;
+      const cachedResponse = await cache.match(cacheUrl);
+      if (cachedResponse) {
+        cacheStatus = "HIT";
+        return new Response(cachedResponse.body, {
+          status: cachedResponse.status,
+          statusText: cachedResponse.statusText,
+          headers: addOnyxHeaders(cachedResponse.headers, edgeStatus, cacheStatus)
+        });
+      }
+      const coreUrl = env.CORE_INGEST_URL ? new URL(env.CORE_INGEST_URL).origin : "https://api.axim.us.com";
+      try {
+        const res = await fetch(`${coreUrl}${url.pathname}`);
+        if (res.ok) {
+          const responseToCache = new Response(res.body, {
+            status: res.status,
+            statusText: res.statusText,
+            headers: { ...getCorsHeaders(request), "Content-Type": "application/json", "Cache-Control": "public, max-age=3600" }
+          });
+          ctx.waitUntil(cache.put(cacheUrl, responseToCache.clone()));
+          return new Response(responseToCache.body, {
+            status: responseToCache.status,
+            statusText: responseToCache.statusText,
+            headers: addOnyxHeaders(responseToCache.headers, edgeStatus, cacheStatus)
+          });
+        }
+      } catch (e) {
+      }
+    }
+    if (url.pathname.startsWith("/api/v1/generate/")) {
+      const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+      const rateLimitKey = `rate_limit:${ip}:${url.pathname}`;
+      if (env.ONYX_STATE) {
+        const currentHitsStr = await kvReadWithTimeout(env.ONYX_STATE.get(rateLimitKey), 500, edgeStatus);
+        const currentHits = parseInt(currentHitsStr || "0", 10);
+        if (currentHits >= 10) {
+          return new Response(JSON.stringify({ error: "Too Many Requests" }), {
+            status: 429,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json", "Retry-After": "60" }, edgeStatus, cacheStatus)
+          });
+        }
+        ctx.waitUntil(kvWriteWithTimeout(env.ONYX_STATE.put(rateLimitKey, (currentHits + 1).toString(), { expirationTtl: 60 }), 500, edgeStatus));
+      }
+    }
     try {
+      let parsedBody = null;
+      let rawBodyText = null;
+      if (request.method === "POST" && url.pathname === "/api/v1/generate/nda") {
+        const idempotencyKey = request.headers.get("Idempotency-Key");
+        if (idempotencyKey && env.ONYX_DISPATCH_LOCKS) {
+          const existingLock = await kvReadWithTimeout(env.ONYX_DISPATCH_LOCKS.get(`lock:${idempotencyKey}`), 500, edgeStatus);
+          if (existingLock) {
+            console.info(JSON.stringify({ event: "ONYX_DISPATCH_LOCK_CONFLICT", key_hash: idempotencyKey, path: url.pathname }));
+            return new Response(JSON.stringify({ status: "processing", message: "Request already being processed." }), {
+              status: 202,
+              headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
+            });
+          }
+          await kvWriteWithTimeout(env.ONYX_DISPATCH_LOCKS.put(`lock:${idempotencyKey}`, "locked", { expirationTtl: 180 }), 500, edgeStatus);
+        }
+      }
+      if (request.method === "POST" || request.method === "PUT" || request.method === "DELETE") {
+        rawBodyText = await request.clone().text();
+        if (url.pathname !== "/api/v1/webhooks") {
+          const sigError = await verifyAximSignature(request, env, rawBodyText);
+          if (sigError) {
+            return sigError;
+          }
+        }
+        if (rawBodyText) {
+          try {
+            parsedBody = JSON.parse(rawBodyText);
+            if (url.pathname.startsWith("/api/v1/action-hook") || url.pathname.includes("mutation") || url.pathname.includes("transaction")) {
+              if (env.ONYX_STATE) {
+                const hookSignature = request.headers.get("x-action-signature") || "unverified";
+                const telemetryPayload = JSON.stringify({ path: url.pathname, signature: hookSignature, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+                ctx.waitUntil(kvWriteWithTimeout(env.ONYX_STATE.put(`action_hook:${Date.now()}_${Math.random().toString(36).substring(7)}`, telemetryPayload, { expirationTtl: 86400 }), 500, edgeStatus));
+              }
+            }
+          } catch (e) {
+            return new Response(JSON.stringify({ error: "Structurally invalid JSON payload." }), {
+              status: 400,
+              headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
+            });
+          }
+        }
+      }
+      if (request.method === "GET" && url.pathname === "/api/v1/health/edge") {
+        return new Response(JSON.stringify({ status: "ok" }), {
+          status: 200,
+          headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
+        });
+      }
       if (request.method === "GET" && url.pathname === "/health") {
         try {
           const supabaseUrl = env.CORE_INGEST_URL ? new URL(env.CORE_INGEST_URL).origin : "https://api.axim.us.com";
@@ -50,31 +255,47 @@ var index_default = {
           if (!isOp) {
             return new Response(JSON.stringify({ status: "degraded", service: "onyx-mk3", timestamp: (/* @__PURE__ */ new Date()).toISOString() }), {
               status: 503,
-              headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+              headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
             });
           }
           return new Response(JSON.stringify({ status: "operational", service: "onyx-mk3", timestamp: (/* @__PURE__ */ new Date()).toISOString() }), {
             status: 200,
-            headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
           });
         } catch (e) {
           return new Response(JSON.stringify({ status: "degraded", service: "onyx-mk3", timestamp: (/* @__PURE__ */ new Date()).toISOString() }), {
             status: 503,
-            headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
           });
         }
       } else if (request.method === "POST" && url.pathname === "/api/v1/billing/fallback-blockchain") {
-        const payload = await request.json();
+        const payload = parsedBody || {};
         if (!payload.tx_hash || !payload.wallet_address) {
           return new Response(JSON.stringify({ error: "Invalid blockchain settlement details" }), {
             status: 400,
-            headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
           });
         }
-        const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
+        const idempotencyKey = request.headers.get("Idempotency-Key") || payload.idempotency_key;
+        if (idempotencyKey && env.ONYX_STATE) {
+          const cachedResponse = await kvReadWithTimeout(env.ONYX_STATE.get(`idem:${idempotencyKey}`), 500, edgeStatus);
+          if (cachedResponse) {
+            cacheStatus = "HIT";
+            return new Response(cachedResponse, {
+              headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
+            });
+          }
+        }
+        if (!env.CORE_INGEST_URL) {
+          return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), {
+            status: 500,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
+          });
+        }
+        const ingestUrl = env.CORE_INGEST_URL;
         ctx.waitUntil(fetchWithRetry(ingestUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus),
           body: JSON.stringify({
             type: "blockchain_fallback",
             tx_hash: payload.tx_hash,
@@ -82,26 +303,42 @@ var index_default = {
             timestamp: (/* @__PURE__ */ new Date()).toISOString()
           })
         }).catch((e) => console.error("Billing forward failed", e)));
-        return new Response(JSON.stringify({
+        const responseBody = JSON.stringify({
           status: "success",
           message: "Blockchain fallback verification queued."
-        }), {
-          headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+        });
+        if (idempotencyKey && env.ONYX_STATE) {
+          ctx.waitUntil(kvWriteWithTimeout(env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, { expirationTtl: 86400 }), 500, edgeStatus));
+        }
+        return new Response(responseBody, {
+          headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
         });
       } else if (request.method === "POST" && url.pathname === "/api/v1/chat") {
-        const authError = checkAuth(request, env);
+        const authError = await checkAuth(request, env);
         if (authError) return authError;
         const { command, context } = await request.json();
         if (!command) {
           return new Response(JSON.stringify({ error: "Missing command" }), {
             status: 400,
-            headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
           });
         }
         const onyxSystemPrompt = `You are Onyx mk3, the advanced AI orchestrator for AXiM Core.
 Analyze the following command and available system context. Execute the task efficiently.
 Context: ${typeof context === "object" ? JSON.stringify(context) : context || "None"}`;
         const chatModel = env.CHAT_MODEL || "claude-3-5-sonnet-20241022";
+        const fullPrompt = `System: ${onyxSystemPrompt}
+User: ${command}`;
+        const promptHash = await hashPrompt(fullPrompt);
+        if (env.ONYX_PROMPT_CACHE) {
+          const cachedResult = await kvReadWithTimeout(env.ONYX_PROMPT_CACHE.get(promptHash), 500, edgeStatus);
+          if (cachedResult) {
+            cacheStatus = "HIT";
+            return new Response(cachedResult, {
+              headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "text/event-stream" }, edgeStatus, cacheStatus)
+            });
+          }
+        }
         const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
@@ -122,73 +359,134 @@ Context: ${typeof context === "object" ? JSON.stringify(context) : context || "N
           console.error("Anthropic API Error:", errorData);
           return new Response(JSON.stringify({ error: "Upstream API error" }), {
             status: 502,
-            headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
+          });
+        }
+        const { readable, writable } = new TransformStream();
+        if (env.ONYX_PROMPT_CACHE) {
+          const reader = claudeResponse.body.getReader();
+          const writer = writable.getWriter();
+          ctx.waitUntil((async () => {
+            let fullResponseText = "";
+            const decoder = new TextDecoder("utf-8");
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              fullResponseText += decoder.decode(value, { stream: true });
+              await writer.write(value);
+            }
+            fullResponseText += decoder.decode();
+            await writer.close();
+            await kvWriteWithTimeout(env.ONYX_PROMPT_CACHE.put(promptHash, fullResponseText, { expirationTtl: 86400, metadata: { timestamp: Date.now() } }), 500, edgeStatus);
+          })().catch((e) => {
+            console.error("Stream cache saving failed:", e);
+            writer.close().catch(() => {
+            });
+          }));
+          return new Response(readable, {
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "text/event-stream" }, edgeStatus, cacheStatus)
           });
         }
         return new Response(claudeResponse.body, {
-          headers: { ...getCorsHeaders(request), "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" }
+          headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "text/event-stream" }, edgeStatus, cacheStatus)
         });
       } else if (request.method === "POST" && url.pathname === "/api/v1/telemetry") {
-        const authError = checkAuth(request, env);
+        const authError = await checkAuth(request, env);
         if (authError) return authError;
-        const payload = await request.json();
+        const payload = parsedBody;
         if (!payload.brandId || typeof payload.pageViews !== "number") {
           return new Response(JSON.stringify({ error: "Invalid telemetry payload" }), {
             status: 400,
-            headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
           });
         }
-        const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
+        if (!env.CORE_INGEST_URL) {
+          return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), {
+            status: 500,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
+          });
+        }
+        const ingestUrl = env.CORE_INGEST_URL;
         ctx.waitUntil(fetchWithRetry(ingestUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus),
           body: JSON.stringify({ type: "telemetry", payload, timestamp: (/* @__PURE__ */ new Date()).toISOString() })
         }).catch((e) => console.error("Telemetry forward failed", e)));
         return new Response(JSON.stringify({
           status: "success",
           message: "Telemetry ingested successfully."
         }), {
-          headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+          headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
         });
       } else if (request.method === "POST" && url.pathname === "/api/approve") {
-        const authError = checkAuth(request, env);
+        const authError = await checkAuth(request, env);
         if (authError) return authError;
-        const payload = await request.json();
+        const payload = parsedBody || {};
         if (!payload.task_id || !payload.signed_payload) {
           return new Response(JSON.stringify({ error: "Missing task_id or signed_payload" }), {
             status: 400,
-            headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
           });
         }
-        if (env.ONYX_STATE) {
-          await env.ONYX_STATE.put(`approval:${payload.task_id}`, JSON.stringify(payload));
+        const idempotencyKey = request.headers.get("Idempotency-Key") || payload.idempotency_key;
+        if (idempotencyKey && env.ONYX_STATE) {
+          const cachedResponse = await kvReadWithTimeout(env.ONYX_STATE.get(`idem:${idempotencyKey}`), 500, edgeStatus);
+          if (cachedResponse) {
+            cacheStatus = "HIT";
+            return new Response(cachedResponse, {
+              headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
+            });
+          }
         }
-        const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
+        if (env.ONYX_STATE) {
+          try {
+            await kvWriteWithTimeout(env.ONYX_STATE.put(`approval:${payload.task_id}`, JSON.stringify(payload)), 500, edgeStatus);
+          } catch (e) {
+            console.error("KV put error for approval:", e);
+          }
+        }
+        if (!env.CORE_INGEST_URL) {
+          return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), {
+            status: 500,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
+          });
+        }
+        const ingestUrl = env.CORE_INGEST_URL;
         ctx.waitUntil(fetchWithRetry(ingestUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus),
           body: JSON.stringify({ type: "approval_relay", payload })
         }).catch((e) => console.error("Approval relay failed", e)));
-        return new Response(JSON.stringify({
+        const responseBody = JSON.stringify({
           status: "success",
           message: `Approval for task ${payload.task_id} relayed to Rust core.`
-        }), {
-          headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+        });
+        if (idempotencyKey && env.ONYX_STATE) {
+          ctx.waitUntil(kvWriteWithTimeout(env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, { expirationTtl: 86400 }), 500, edgeStatus));
+        }
+        return new Response(responseBody, {
+          headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
         });
       } else if (request.method === "POST" && url.pathname === "/api/v1/playbook/trigger") {
-        const authError = checkAuth(request, env);
+        const authError = await checkAuth(request, env);
         if (authError) return authError;
-        const payload = await request.json();
+        const payload = parsedBody || {};
         if (!payload.severity || !payload.service || !payload.metric) {
           return new Response(JSON.stringify({ error: "Missing severity, service, or metric in payload" }), {
             status: 400,
-            headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
           });
         }
-        const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
+        if (!env.CORE_INGEST_URL) {
+          return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), {
+            status: 500,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
+          });
+        }
+        const ingestUrl = env.CORE_INGEST_URL;
         ctx.waitUntil(fetchWithRetry(ingestUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus),
           body: JSON.stringify({
             type: "playbook_trigger",
             alert: payload,
@@ -199,16 +497,17 @@ Context: ${typeof context === "object" ? JSON.stringify(context) : context || "N
           status: "success",
           message: "Playbook trigger processed and queued for immediate evaluation."
         }), {
-          headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+          headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
         });
       } else if (url.pathname === "/api/approvals" && request.method === "GET") {
-        const authError = checkAuth(request, env);
+        const authError = await checkAuth(request, env);
         if (authError) return authError;
         const approvals = [];
         if (env.ONYX_STATE) {
-          const listed = await env.ONYX_STATE.list({ prefix: "approval:" });
+          const listed = await kvReadWithTimeout(env.ONYX_STATE.list({ prefix: "approval:" }), 500, edgeStatus);
+          if (!listed) return new Response(JSON.stringify({ status: "success", approvals: [] }), { headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus) });
           for (const key of listed.keys) {
-            const value = await env.ONYX_STATE.get(key.name);
+            const value = await kvReadWithTimeout(env.ONYX_STATE.get(key.name), 500, edgeStatus);
             if (value) approvals.push(JSON.parse(value));
           }
         }
@@ -216,16 +515,16 @@ Context: ${typeof context === "object" ? JSON.stringify(context) : context || "N
           status: "success",
           approvals
         }), {
-          headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+          headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
         });
       } else if (request.method === "POST" && url.pathname === "/api/v1/webhooks") {
         const rawBody = await request.clone().text();
-        const payload = await request.json();
+        const payload = parsedBody || {};
         const githubSignature = request.headers.get("x-hub-signature-256");
         const wpSignature = request.headers.get("x-wp-webhook-signature");
         if (githubSignature) {
           if (!env.GITHUB_WEBHOOK_SECRET) {
-            return new Response("Webhook secret not configured", { status: 500, headers: getCorsHeaders(request) });
+            return new Response("Webhook secret not configured", { status: 500, headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus) });
           }
           const encoder = new TextEncoder();
           const key = await crypto.subtle.importKey(
@@ -244,11 +543,11 @@ Context: ${typeof context === "object" ? JSON.stringify(context) : context || "N
           const signatureHex = signatureArray.map((b) => b.toString(16).padStart(2, "0")).join("");
           const expectedSignature = `sha256=${signatureHex}`;
           if (githubSignature !== expectedSignature) {
-            return new Response("Invalid GitHub signature", { status: 401, headers: getCorsHeaders(request) });
+            return new Response("Invalid GitHub signature", { status: 401, headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus) });
           }
         } else if (wpSignature) {
           if (!env.WP_WEBHOOK_SECRET) {
-            return new Response("Webhook secret not configured", { status: 500, headers: getCorsHeaders(request) });
+            return new Response("Webhook secret not configured", { status: 500, headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus) });
           }
           const encoder = new TextEncoder();
           const key = await crypto.subtle.importKey(
@@ -265,35 +564,41 @@ Context: ${typeof context === "object" ? JSON.stringify(context) : context || "N
           );
           const signatureArray = Array.from(new Uint8Array(signatureBuffer));
           const signatureHex = signatureArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-          if (wpSignature !== signatureHex && wpSignature !== `sha256=\${signatureHex}`) {
-            return new Response("Invalid WP signature", { status: 401, headers: getCorsHeaders(request) });
+          if (wpSignature !== signatureHex && wpSignature !== `sha256=${signatureHex}`) {
+            return new Response("Invalid WP signature", { status: 401, headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus) });
           }
         } else {
-          return new Response("Missing signature", { status: 401, headers: getCorsHeaders(request) });
+          return new Response("Missing signature", { status: 401, headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus) });
         }
-        const ingestUrl = env.CORE_INGEST_URL || "https://axim-core.internal/webhook-ingest";
+        if (!env.CORE_INGEST_URL) {
+          return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), {
+            status: 500,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
+          });
+        }
+        const ingestUrl = env.CORE_INGEST_URL;
         ctx.waitUntil(fetchWithRetry(ingestUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus),
           body: JSON.stringify(payload)
         }).catch((e) => console.error("Webhook forwarding failed after retries", e)));
         return new Response(JSON.stringify({
           status: "success",
           message: "Webhook passed to Rust core."
         }), {
-          headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+          headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
         });
       } else {
         if (request.method !== "POST" && request.method !== "GET" && request.method !== "OPTIONS") {
-          return new Response("Method Not Allowed", { status: 405, headers: getCorsHeaders(request) });
+          return new Response("Method Not Allowed", { status: 405, headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus) });
         }
-        return new Response("Not Found", { status: 404, headers: getCorsHeaders(request) });
+        return new Response("Not Found", { status: 404, headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus) });
       }
     } catch (error) {
       console.error("Worker Error:", error);
       return new Response(JSON.stringify({ error: "Internal Server Error" }), {
         status: 500,
-        headers: { ...getCorsHeaders(request), "Content-Type": "application/json" }
+        headers: addOnyxHeaders({ ...getCorsHeaders(request), "Content-Type": "application/json" }, edgeStatus, cacheStatus)
       });
     }
   }

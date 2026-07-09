@@ -69,7 +69,11 @@ async fn send_message_posts_json_and_parses_response() {
     assert_eq!(request.method, "POST");
     assert_eq!(request.path, "/v1/messages");
     assert_eq!(
-        request.headers.get("x-api-key").or_else(|| request.headers.get("x-axim-signature")).map(String::as_str),
+        request
+            .headers
+            .get("x-api-key")
+            .or_else(|| request.headers.get("x-axim-signature"))
+            .map(String::as_str),
         Some("test-key")
     );
     assert_eq!(
@@ -496,7 +500,11 @@ async fn provider_client_dispatches_anthropic_requests() {
     let request = captured.first().expect("server should capture request");
     assert_eq!(request.path, "/v1/messages");
     assert_eq!(
-        request.headers.get("x-api-key").or_else(|| request.headers.get("x-axim-signature")).map(String::as_str),
+        request
+            .headers
+            .get("x-api-key")
+            .or_else(|| request.headers.get("x-axim-signature"))
+            .map(String::as_str),
         Some("test-key")
     );
 }
