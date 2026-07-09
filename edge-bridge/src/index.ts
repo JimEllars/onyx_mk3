@@ -180,14 +180,22 @@ export default {
 		}
 	},
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		if (request.method !== "GET" && request.method !== "POST" && request.method !== "OPTIONS") {
-			console.warn("[Edge Telemetry Warning] Dropped unhandled method: " + request.method);
-			// Zero-allocation response for unhandled methods
-			return new Response(null, { status: 405 });
-		}
-
         const edgeStatus = { degraded: false };
         let cacheStatus = "MISS";
+
+		if (
+			request.method !== "GET" &&
+			request.method !== "POST" &&
+			request.method !== "PUT" &&
+			request.method !== "DELETE" &&
+			request.method !== "OPTIONS"
+		) {
+			console.warn(`[Edge Telemetry Warning] Dropped unhandled method: ${request.method}`);
+			return new Response("Method Not Allowed", {
+				status: 405,
+				headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus)
+			});
+		}
 
 		// 1. CORS Preflight
 		if (request.method === "OPTIONS") {
@@ -195,7 +203,7 @@ export default {
 		}
 
 		// 2. Payload Size Validation
-		if (request.method === "POST") {
+		if (request.method === "POST" || request.method === "PUT") {
 			const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
 			// 1MB Limit
 			if (contentLength > 1024 * 1024) {
@@ -283,7 +291,7 @@ export default {
 				}
 			}
 
-			if (request.method === "POST") {
+			if (request.method === "POST" || request.method === "PUT" || request.method === "DELETE") {
 				rawBodyText = await request.clone().text();
 
 				// Strict HMAC Validation for payload-mutating requests
