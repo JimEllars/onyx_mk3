@@ -2031,7 +2031,7 @@ pub(crate) fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Er
         let _bg_polling = {
             let secret = std::env::var("AXIM_ONYX_SECRET").unwrap_or_default();
             let edge_url = std::env::var("VITE_ONYX_WORKER_URL")
-                .unwrap_or_else(|_| "https://onyx-edge-worker.yourdomain.workers.dev".to_string());
+                .unwrap_or_else(|_| "https://onyx-edge.axim.us.com".to_string());
             let client = reqwest::Client::new();
             runtime::fleet_health::start_approval_polling_loop(
                 fleet_status_polling,
@@ -2044,7 +2044,7 @@ pub(crate) fn run_serve_headless(port: u16) -> Result<(), Box<dyn std::error::Er
         let fleet_status_heartbeat = fleet_status.clone();
         tokio::spawn(async move {
             let edge_url = std::env::var("VITE_ONYX_WORKER_URL")
-                .unwrap_or_else(|_| "https://onyx-edge-worker.yourdomain.workers.dev".to_string());
+                .unwrap_or_else(|_| "https://onyx-edge.axim.us.com".to_string());
             let secret = std::env::var("AXIM_ONYX_SECRET").unwrap_or_default();
             let client = reqwest::Client::new();
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
@@ -2153,7 +2153,7 @@ if let Some(sink) = telemetry::supabase::SupabaseTelemetrySink::new() {
         tokio::spawn(async move {
             let secret = std::env::var("AXIM_ONYX_SECRET").unwrap_or_default();
             let edge_url = std::env::var("VITE_ONYX_WORKER_URL")
-                .unwrap_or_else(|_| "https://onyx-edge-worker.yourdomain.workers.dev".to_string());
+                .unwrap_or_else(|_| "https://onyx-edge.axim.us.com".to_string());
             let telemetry_url = format!("{edge_url}/api/v1/telemetry");
             let client = reqwest::Client::new();
 
