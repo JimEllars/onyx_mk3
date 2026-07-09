@@ -78,7 +78,7 @@ pub fn render_status_bar_text(
 
     let edge_status_val = telemetry::metrics::EDGE_KV_STATUS.get();
     let edge_state_str = if (edge_status_val - 1.0).abs() < f64::EPSILON {
-        "OK"
+        "HEALTHY"
     } else {
         "DEGRADED"
     };
@@ -149,7 +149,13 @@ pub fn draw_status_bar(
     // DLQ Depth is now measured directly from the file via DLQ tracker
     let dlq_depth = telemetry::metrics::get_dlq_depth();
 
-    let text = format!("{text} ∥ Worker Load: {swarm_queue_depth} · DLQ Depth: {dlq_depth}");
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let blocked_ingress = telemetry::metrics::EDGE_AUTH_MISMATCH_TOTAL
+        .get_metric_with_label_values(&["rejected"])
+        .map(|m| m.get())
+        .unwrap_or(0.0) as usize;
+
+    let text = format!("{text} ∥ Worker Load: {swarm_queue_depth} · DLQ Depth: {dlq_depth} ∥ Blocked Ingress: {blocked_ingress}");
 
     if let Ok((cols, rows)) = size() {
         let mut out = stdout();

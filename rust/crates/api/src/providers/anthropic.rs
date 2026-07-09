@@ -22,7 +22,7 @@ use super::{
 use crate::sse::SseParser;
 use crate::types::{MessageDeltaEvent, MessageRequest, MessageResponse, StreamEvent, Usage};
 
-pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
+pub const DEFAULT_BASE_URL: &str = "https://llm-proxy.axim.us.com/anthropic";
 const REQUEST_ID_HEADER: &str = "request-id";
 const ALT_REQUEST_ID_HEADER: &str = "x-request-id";
 const DEFAULT_INITIAL_BACKOFF: Duration = Duration::from_secs(1);
@@ -504,7 +504,11 @@ impl AnthropicClient {
             .header("content-type", "application/json");
         let mut request_builder = self.auth.apply(request_builder);
         for (header_name, header_value) in self.request_profile.header_pairs() {
-            request_builder = request_builder.header(header_name, header_value);
+            if header_name.starts_with("anthropic-") {
+                request_builder = request_builder.header(format!("x-{header_name}"), header_value);
+            } else {
+                request_builder = request_builder.header(header_name, header_value);
+            }
         }
         request_builder
     }

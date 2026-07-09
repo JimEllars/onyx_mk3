@@ -29,6 +29,14 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
                         continue;
                     }
 
+                    if repeated_failures > 0 {
+                        lines_to_keep.push(line);
+                        if lines_to_keep.len() > max_lines {
+                            lines_to_keep.remove(0);
+                        }
+                        continue;
+                    }
+
                     if let Ok(receipt) = serde_json::from_str::<serde_json::Value>(&line) {
                         let res = client.post(&sync_url).json(&receipt).send().await;
                         if res.is_err() || res.unwrap().status().is_server_error() {
