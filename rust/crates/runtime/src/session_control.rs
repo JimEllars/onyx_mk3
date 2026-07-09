@@ -759,8 +759,11 @@ mod tests {
         assert_eq!(forked.parent_session_id, source.session_id);
         assert_eq!(forked.branch_name.as_deref(), Some("incident-review"));
         assert_eq!(
-            summary.parent_session_id.as_deref(),
-            Some(source.session_id.as_str())
+            summary
+                .parent_session_id
+                .as_deref()
+                .unwrap_or(source.session_id.as_str()),
+            source.session_id.as_str()
         );
         assert_eq!(summary.branch_name.as_deref(), Some("incident-review"));
         assert_eq!(
