@@ -435,20 +435,41 @@ export default {
 					}
 				}
 
-				const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
+				const coreUrl = env.CORE_INGEST_URL ? new URL(env.CORE_INGEST_URL).origin : "https://api.axim.us.com";
+				const proxyBody = JSON.stringify({
+					model: chatModel,
+					max_tokens: 1024,
+					system: onyxSystemPrompt,
+					messages: [{ role: "user", content: command }],
+					stream: true
+				});
+
+				const encoder = new TextEncoder();
+				let signatureHex = "";
+				if (env.AXIM_INTERNAL_KEY) {
+					const key = await crypto.subtle.importKey(
+						"raw",
+						encoder.encode(env.AXIM_INTERNAL_KEY),
+						{ name: "HMAC", hash: "SHA-256" },
+						false,
+						["sign"]
+					);
+					const signatureBuffer = await crypto.subtle.sign(
+						"HMAC",
+						key,
+						encoder.encode(proxyBody)
+					);
+					const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+					signatureHex = signatureArray.map(b => b.toString(16).padStart(2, '0')).join('');
+				}
+
+				const claudeResponse = await fetch(`${coreUrl}/v1/llm-proxy`, {
 					method: "POST",
 					headers: {
-						"x-api-key": env.ANTHROPIC_API_KEY,
-						"anthropic-version": "2023-06-01",
-						"content-type": "application/json"
+						"Content-Type": "application/json",
+						"x-axim-signature": `sha256=${signatureHex}`
 					},
-					body: JSON.stringify({
-						model: chatModel,
-						max_tokens: 1024,
-						system: onyxSystemPrompt,
-						messages: [{ role: "user", content: command }],
-						stream: true
-					})
+					body: proxyBody
 				});
 
 				if (!claudeResponse.ok) {
