@@ -183,6 +183,20 @@ export default {
         const edgeStatus = { degraded: false };
         let cacheStatus = "MISS";
 
+		if (
+			request.method !== "GET" &&
+			request.method !== "POST" &&
+			request.method !== "PUT" &&
+			request.method !== "DELETE" &&
+			request.method !== "OPTIONS"
+		) {
+			console.warn(`[Edge Telemetry Warning] Dropped unhandled method: ${request.method}`);
+			return new Response("Method Not Allowed", {
+				status: 405,
+				headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus)
+			});
+		}
+
 		// 1. CORS Preflight
 		if (request.method === "OPTIONS") {
 			return new Response("OK", { headers: getCorsHeaders(request) });
@@ -744,9 +758,6 @@ export default {
 				});
 
 			} else {
-				if (request.method !== "POST" && request.method !== "GET" && request.method !== "OPTIONS") {
-					return new Response("Method Not Allowed", { status: 405, headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus) });
-				}
 				return new Response("Not Found", { status: 404, headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus) });
 			}
 
