@@ -129,10 +129,24 @@ Gateway handles:
 |----------|---------|---------|
 | `AXIM_CORE_URL` | Base URL for AXiM Core API | `https://api.axim.us.com` |
 | `AXIM_ONYX_SECRET` | Worker authentication secret | `secret_xyz...` |
+| `VITE_ONYX_WORKER_URL` | Public URL of the deployed Cloudflare Worker | `https://onyx-edge.axim.us.com` |
+| `CHAT_ROUTING_MODE` | Enables proxy-mode validation for edge-backed routing | `proxy` |
 | `AXIM_CORE_UI_STREAM_ENDPOINT` | UI event stream endpoint | `https://api.axim.us.com/v1/ui/stream` |
 | `AXIM_CORE_SWARM_STATE_ENDPOINT` | Swarm telemetry endpoint | `https://api.axim.us.com/v1/swarm/state` |
 | `AXIM_CORE_SSE_STREAM_ENDPOINT` | Server-Sent Events endpoint | `https://api.axim.us.com/v1/sse/stream` |
 | `AXIM_VAULT_URL` | Vault service URL | `https://api.axim.us.com/v1/vault` |
+
+### Cloudflare Worker deployment surface
+
+- The authoritative Worker config lives at `edge-bridge/wrangler.jsonc`.
+- Local Worker secrets should be placed in `edge-bridge/.dev.vars` using `edge-bridge/.dev.vars.example` as the template.
+- Production secrets must be loaded into Cloudflare with Wrangler, including:
+  - `AXIM_ONYX_SECRET`
+  - `ANTHROPIC_API_KEY`
+  - `GITHUB_WEBHOOK_SECRET`
+  - `WP_WEBHOOK_SECRET`
+  - `AXIM_INTERNAL_KEY`
+- WordPress senders that cannot add an `x-wp-webhook-signature` header may instead call `https://onyx-edge.axim.us.com/api/v1/webhooks?wp_secret=<WP_WEBHOOK_SECRET>` over HTTPS.
 
 ## Troubleshooting
 

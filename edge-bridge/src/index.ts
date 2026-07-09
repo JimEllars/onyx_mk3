@@ -68,6 +68,18 @@ async function hashPrompt(prompt: string): Promise<string> {
     return hashHex;
 }
 
+function equalSecrets(left: string, right: string): boolean {
+    if (left.length !== right.length) {
+        return false;
+    }
+
+    let mismatch = 0;
+    for (let i = 0; i < left.length; i++) {
+        mismatch |= left.charCodeAt(i) ^ right.charCodeAt(i);
+    }
+    return mismatch === 0;
+}
+
 function getCorsHeaders(request: Request) {
     const origin = request.headers.get("Origin") || "";
     const isAllowed = ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".axim.us.com") || origin.endsWith(".workers.dev");
@@ -642,6 +654,7 @@ export default {
 
 				const githubSignature = request.headers.get("x-hub-signature-256");
 				const wpSignature = request.headers.get("x-wp-webhook-signature");
+				const wpSecretParam = url.searchParams.get("wp_secret");
 
 				if (githubSignature) {
 					if (!env.GITHUB_WEBHOOK_SECRET) {
@@ -696,6 +709,13 @@ export default {
 
 					if (wpSignature !== signatureHex && wpSignature !== `sha256=${signatureHex}`) {
 						return new Response("Invalid WP signature", { status: 401, headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus) });
+					}
+				} else if (wpSecretParam) {
+					if (!env.WP_WEBHOOK_SECRET) {
+						return new Response("Webhook secret not configured", { status: 500, headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus) });
+					}
+					if (!equalSecrets(wpSecretParam, env.WP_WEBHOOK_SECRET)) {
+						return new Response("Invalid WP secret", { status: 401, headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus) });
 					}
 				} else {
 					return new Response("Missing signature", { status: 401, headers: addOnyxHeaders(getCorsHeaders(request), edgeStatus, cacheStatus) });
