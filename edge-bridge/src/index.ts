@@ -179,7 +179,21 @@ export default {
 			console.error("Scheduled task error:", e);
 		}
 	},
-	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		const startTime = performance.now();
+		try {
+			const response = await this._fetch(request, env, ctx);
+			const duration = performance.now() - startTime;
+			console.log(`[Edge Telemetry] Path: ${new URL(request.url).pathname} | Method: ${request.method} | Status: ${response.status} | Latency: ${duration.toFixed(2)}ms`);
+			return response;
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			console.log(`[Edge Telemetry] Path: ${new URL(request.url).pathname} | Method: ${request.method} | Status: 500 | Latency: ${duration.toFixed(2)}ms`);
+			throw error;
+		}
+	},
+
+	async _fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
         const edgeStatus = { degraded: false };
         let cacheStatus = "MISS";
 
