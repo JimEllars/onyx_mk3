@@ -85,13 +85,11 @@ pub fn render_status_bar_text(
     let cache_hit_rate = telemetry::metrics::EDGE_CACHE_HIT_RATE.get();
     let cache_ttl = telemetry::metrics::EDGE_CACHE_TTL.get();
 
-
     let edge_latency = telemetry::metrics::EDGE_LATENCY_MS.get();
 
     text = format!(
         "{text} ∥ EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s · LATENCY: {edge_latency:.2}ms"
     );
-
 
     text
 }
@@ -183,7 +181,10 @@ pub fn draw_status_bar(
         let _ = out.queue(SavePosition);
         let _ = out.queue(MoveTo(0, rows - 1));
 
-        let (bg, fg) = if let Some(focus) = focus_state {
+        let pulse_active = telemetry::metrics::is_trace_pulse_active();
+        let (bg, fg) = if pulse_active {
+            (Color::DarkGreen, Color::White) // Trace Pulse
+        } else if let Some(focus) = focus_state {
             match focus {
                 crate::app::FocusState::CommandPalette => (Color::DarkBlue, Color::White), // Vibrant Active
                 _ => (Color::Reset, Color::DarkGrey), // Sleek Inactive

@@ -99,7 +99,6 @@ pub static IO_STREAM_ERRORS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
     .unwrap()
 });
 
-
 pub static EDGE_LATENCY_MS: LazyLock<Gauge> = LazyLock::new(|| {
     register_gauge!(
         "onyx_edge_latency_ms",
@@ -235,4 +234,23 @@ pub fn increment_pool_exhaustion() {
 
 pub fn get_pool_exhaustion_total() -> usize {
     POOL_EXHAUSTION_EVENTS.load(Ordering::Relaxed)
+}
+
+pub static LAST_TRACE_PULSE: LazyLock<Mutex<Option<Instant>>> = LazyLock::new(|| Mutex::new(None));
+
+pub fn trigger_trace_pulse() {
+    if let Ok(mut last) = LAST_TRACE_PULSE.lock() {
+        *last = Some(Instant::now());
+    }
+}
+
+pub fn is_trace_pulse_active() -> bool {
+    if let Ok(last) = LAST_TRACE_PULSE.lock() {
+        if let Some(time) = *last {
+            if time.elapsed() < Duration::from_millis(500) {
+                return true;
+            }
+        }
+    }
+    false
 }

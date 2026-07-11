@@ -208,6 +208,36 @@ pub(crate) fn run_repl(
         }
     }
 
+    let (redraw_tx, redraw_rx) = std::sync::mpsc::channel::<()>();
+    if let Ok(mut guard) = crate::REDRAW_TX.lock() {
+        *guard = Some(redraw_tx);
+    }
+
+    // Start a thread to instantly update TUI columns when REDRAW_TX receives a pulse
+    let model_clone = cli.model.clone();
+    let session_id_clone = cli.session.id.clone();
+    let focus_state_clone = cli.focus_state;
+    std::thread::spawn(move || {
+        while redraw_rx.recv().is_ok() {
+            let dummy_usage = runtime::TokenUsage {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+            };
+            tui::status_bar::draw_status_bar(
+                &model_clone,
+                &session_id_clone,
+                &dummy_usage,
+                0.0,
+                None,
+                None,
+                None,
+                Some(&focus_state_clone),
+            );
+        }
+    });
+
     let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
     print!("\x1b[0;{}r", rows.saturating_sub(2));
 
