@@ -2204,36 +2204,118 @@ if let Some(sink) = telemetry::supabase::SupabaseTelemetrySink::new() {
             let mut invalidator_rx = runtime::prompt::init_prompt_cache_invalidator();
 
             loop {
-                // Here we would use tokio-tungstenite or similar to establish the WebSocket
-                // This simulates the duplex loop processing inbound action packets.
-                tokio::select! {
-                    () = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
-                        // Simulate polling for messages or incoming duplex stream data
-                        // For example, if we received a cache clear payload from the fleet control gateway:
-                        // runtime::prompt::trigger_prompt_cache_invalidation();
+                let url = match url::Url::parse(&duplex_url) {
+                    Ok(url) => url,
+                    Err(e) => {
+                        tracing::error!("Invalid WebSocket URL {}: {}", duplex_url, e);
+                        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                        continue;
+                    }
+                };
 
-                        // Simulate parsing an out-of-band proxy command and validating its HMAC
-                        if let Ok(simulated_payload) = std::env::var("SIMULATE_OOB_PAYLOAD") {
-                            if let Ok(simulated_signature) = std::env::var("SIMULATE_OOB_SIGNATURE") {
-                                if let Ok(secret) = tools::axim_vault::fetch_vault_secret("CREATOR_OOB_SIGNING_KEY").await {
-                                    let mut mac = ring::hmac::Context::with_key(&ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_bytes()));
-                                    mac.update(simulated_payload.as_bytes());
-                                    let result = mac.sign();
+                let request = match tokio_tungstenite::tungstenite::client::IntoClientRequest::into_client_request(url.as_str()) {
+                    Ok(mut req) => {
+                        if let Ok(secret) = std::env::var("AXIM_ONYX_SECRET") {
+                            if let Ok(header_value) = reqwest::header::HeaderValue::from_str(&format!("Bearer {secret}")) {
+                                req.headers_mut().insert("Authorization", header_value);
+                            }
+                        }
+                        req
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to create WebSocket request: {}", e);
+                        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                        continue;
+                    }
+                };
 
-                                    let result_hex = hex::encode(result.as_ref());
-                                    if result_hex == simulated_signature {
-                                        tracing::info!("[Duplex Sync] Out-of-band creator command signature verified. Ingesting.");
-                                        // _tx_queue.send(...)
-                                    } else {
-                                        tracing::error!("[SECURITY ANOMALY] HMAC signature mismatch on out-of-band creator command. Execution isolated.");
-                                        // Stop processing this packet, don't ingest it to _tx_queue
+                match tokio_tungstenite::connect_async(request).await {
+                    Ok((mut ws_stream, _)) => {
+                        tracing::info!("Connected to AXiM Core WebSocket Duplex Sync at {}", duplex_url);
+
+                        loop {
+                            tokio::select! {
+                                msg = futures_util::stream::StreamExt::next(&mut ws_stream) => {
+                                    match msg {
+                                        Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) => {
+                                            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&text) {
+                                                // Handle Trace ID Pulse
+                                                if payload.get("X-Onyx-Trace-Id").is_some() {
+                                                    telemetry::metrics::trigger_trace_pulse();
+                                                }
+
+                                                // Update Telemetry Metrics directly
+                                                if let Some(latency) = payload.get("latency_ms").and_then(serde_json::Value::as_f64) {
+                                                    telemetry::metrics::EDGE_LATENCY_MS.set(latency);
+                                                }
+                                                if let Some(cache_hit_rate) = payload.get("cache_hit_rate").and_then(serde_json::Value::as_f64) {
+                                                    telemetry::metrics::EDGE_CACHE_HIT_RATE.set(cache_hit_rate);
+                                                }
+                                                if let Some(cache_ttl) = payload.get("cache_ttl").and_then(serde_json::Value::as_f64) {
+                                                    telemetry::metrics::EDGE_CACHE_TTL.set(cache_ttl);
+                                                }
+                                                if let Some(status) = payload.get("edge_status").and_then(serde_json::Value::as_f64) {
+                                                    telemetry::metrics::EDGE_KV_STATUS.set(status);
+                                                }
+
+                                                // Check for prompt cache invalidation payload
+                                                if payload.get("type").and_then(serde_json::Value::as_str) == Some("clear_cache") {
+                                                    runtime::prompt::trigger_prompt_cache_invalidation();
+                                                }
+
+                                                if let Ok(guard) = crate::REDRAW_TX.lock() {
+                                                    if let Some(tx) = guard.as_ref() {
+                                                        let _ = tx.send(());
+                                                    }
+                                                }
+
+                                                // Check for OOB Command
+                                                if payload.get("type").and_then(serde_json::Value::as_str) == Some("oob_command") {
+                                                    if let (Some(simulated_payload), Some(simulated_signature)) = (
+                                                        payload.get("payload").and_then(serde_json::Value::as_str),
+                                                        payload.get("signature").and_then(serde_json::Value::as_str)
+                                                    ) {
+                                                        if let Ok(secret) = tools::axim_vault::fetch_vault_secret("CREATOR_OOB_SIGNING_KEY").await {
+                                                            let mut mac = ring::hmac::Context::with_key(&ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_bytes()));
+                                                            mac.update(simulated_payload.as_bytes());
+                                                            let result = mac.sign();
+
+                                                            let result_hex = hex::encode(result.as_ref());
+                                                            if result_hex == simulated_signature {
+                                                                tracing::info!("[Duplex Sync] Out-of-band creator command signature verified. Ingesting.");
+                                                                // _tx_queue.send(...)
+                                                            } else {
+                                                                tracing::error!("[SECURITY ANOMALY] HMAC signature mismatch on out-of-band creator command. Execution isolated.");
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) => {
+                                            tracing::info!("WebSocket closed by server.");
+                                            break;
+                                        }
+                                        Some(Err(e)) => {
+                                            tracing::error!("WebSocket error: {}", e);
+                                            break;
+                                        }
+                                        None => {
+                                            tracing::info!("WebSocket stream ended.");
+                                            break;
+                                        }
+                                        _ => {} // Ignore other message types (Ping, Pong, Binary)
                                     }
+                                }
+                                Ok(()) = invalidator_rx.recv() => {
+                                    tracing::info!("[Duplex Sync] Received internal trigger. Flushed local cache state. Reloading system prompt variables.");
                                 }
                             }
                         }
                     }
-                    Ok(()) = invalidator_rx.recv() => {
-                        tracing::info!("[Duplex Sync] Received internal trigger. Flushed local cache state. Reloading system prompt variables.");
+                    Err(e) => {
+                        tracing::error!("Failed to connect to WebSocket {}: {}", duplex_url, e);
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                     }
                 }
             }
@@ -11197,6 +11279,8 @@ mod sandbox_report_tests {
 use std::sync::OnceLock;
 
 pub static TELEMETRY_TX: OnceLock<tokio::sync::mpsc::Sender<String>> = OnceLock::new();
+pub static REDRAW_TX: std::sync::LazyLock<std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>>> = std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+
 
 #[allow(clippy::unused_async)]
 async fn worker_interrupt(

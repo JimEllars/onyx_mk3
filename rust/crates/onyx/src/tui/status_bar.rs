@@ -183,7 +183,10 @@ pub fn draw_status_bar(
         let _ = out.queue(SavePosition);
         let _ = out.queue(MoveTo(0, rows - 1));
 
-        let (bg, fg) = if let Some(focus) = focus_state {
+        let pulse_active = telemetry::metrics::is_trace_pulse_active();
+        let (bg, fg) = if pulse_active {
+            (Color::DarkGreen, Color::White) // Trace Pulse
+        } else if let Some(focus) = focus_state {
             match focus {
                 crate::app::FocusState::CommandPalette => (Color::DarkBlue, Color::White), // Vibrant Active
                 _ => (Color::Reset, Color::DarkGrey), // Sleek Inactive
