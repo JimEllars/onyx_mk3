@@ -99,7 +99,6 @@ pub static IO_STREAM_ERRORS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
     .unwrap()
 });
 
-
 pub static EDGE_LATENCY_MS: LazyLock<Gauge> = LazyLock::new(|| {
     register_gauge!(
         "onyx_edge_latency_ms",

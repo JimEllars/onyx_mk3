@@ -11279,8 +11279,8 @@ mod sandbox_report_tests {
 use std::sync::OnceLock;
 
 pub static TELEMETRY_TX: OnceLock<tokio::sync::mpsc::Sender<String>> = OnceLock::new();
-pub static REDRAW_TX: std::sync::LazyLock<std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>>> = std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
-
+pub static REDRAW_TX: std::sync::LazyLock<std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
 
 #[allow(clippy::unused_async)]
 async fn worker_interrupt(
