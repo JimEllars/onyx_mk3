@@ -98,6 +98,7 @@ pub struct Session {
     pub prompt_history: Vec<SessionPromptEntry>,
     pub user_jwt: Option<String>,
     pub tenant_id: Option<String>,
+    pub web3_wallet_address: Option<String>,
     persistence: Option<SessionPersistence>,
 }
 
@@ -172,6 +173,7 @@ impl Session {
             prompt_history: Vec::new(),
             user_jwt: None,
             tenant_id: None,
+            web3_wallet_address: None,
             persistence: None,
         }
     }
@@ -296,6 +298,7 @@ impl Session {
             prompt_history: self.prompt_history.clone(),
             user_jwt: self.user_jwt.clone(),
             tenant_id: self.tenant_id.clone(),
+            web3_wallet_address: self.web3_wallet_address.clone(),
             persistence: None,
         }
     }
@@ -422,6 +425,10 @@ impl Session {
                 .get("tenant_id")
                 .and_then(|v| v.as_str())
                 .map(std::string::ToString::to_string),
+            web3_wallet_address: object
+                .get("web3_wallet_address")
+                .and_then(|v| v.as_str())
+                .map(std::string::ToString::to_string),
             persistence: None,
         })
     }
@@ -518,6 +525,7 @@ impl Session {
             prompt_history,
             user_jwt: None,
             tenant_id: None,
+            web3_wallet_address: None,
             persistence: None,
         })
     }

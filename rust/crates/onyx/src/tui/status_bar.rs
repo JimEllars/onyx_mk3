@@ -19,6 +19,7 @@ pub fn render_status_bar_text(
     worker_status: Option<&runtime::WorkerStatus>,
     playbook_status: Option<&Vec<(String, String, String)>>,
     focus_state: Option<&crate::app::FocusState>,
+    web3_wallet_address: Option<&str>,
 ) -> String {
     let mut has_executing = false;
     let mut has_pending = false;
@@ -40,6 +41,15 @@ pub fn render_status_bar_text(
         String::new()
     };
 
+    let identity_str = if let Some(addr) = web3_wallet_address {
+        if addr.len() >= 42 {
+            format!("{}...{}", &addr[0..6], &addr[38..42])
+        } else {
+            addr.to_string()
+        }
+    } else {
+        "Standard Auth".to_string()
+    };
     let mut text = format!(
         "⚡ Tx: Active ∥ Threads: {} ∥ Model: {} ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{}",
         std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
@@ -104,6 +114,7 @@ pub fn draw_status_bar(
     worker_status: Option<&runtime::WorkerStatus>,
     playbook_status: Option<&Vec<(String, String, String)>>,
     focus_state: Option<&crate::app::FocusState>,
+    web3_wallet_address: Option<&str>,
 ) {
     if let Ok((cols, rows)) = size() {
         if rows < 12 || cols < 45 {
@@ -141,6 +152,7 @@ pub fn draw_status_bar(
         worker_status,
         playbook_status,
         focus_state,
+        web3_wallet_address,
     );
 
     // Check queues if we can. A bit of a hack to get Swarm size,
@@ -182,8 +194,10 @@ pub fn draw_status_bar(
         let _ = out.queue(MoveTo(0, rows - 1));
 
         let pulse_active = telemetry::metrics::is_trace_pulse_active();
-        let (bg, fg) = if pulse_active {
-            (Color::DarkGreen, Color::White) // Trace Pulse
+        let (bg, fg) = if web3_wallet_address.is_some() {
+            (Color::DarkBlue, Color::Cyan)
+        } else if pulse_active {
+            (Color::DarkGreen, Color::White)
         } else if let Some(focus) = focus_state {
             match focus {
                 crate::app::FocusState::CommandPalette => (Color::DarkBlue, Color::White), // Vibrant Active
@@ -224,6 +238,7 @@ mod tests {
                 "test_session",
                 &usage,
                 0.0,
+                None,
                 None,
                 None,
                 None,
