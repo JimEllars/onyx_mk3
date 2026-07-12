@@ -51,6 +51,7 @@ pub fn process_log_telemetry(payload: Value) -> Result<(), String> {
             job_id: None,
             worker_id: None,
             reasoning_effort: None,
+            web3_wallet_address: None,
         };
 
         // Here we would push this task packet to the execution channel with Priority::Critical

@@ -271,6 +271,7 @@ pub fn route_webhook_payload_to_task(payload: AximWebhookPayload) -> Result<Task
         job_id: None,
         worker_id: None,
         reasoning_effort: None,
+        web3_wallet_address: None,
     })
 }
 

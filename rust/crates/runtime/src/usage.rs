@@ -250,6 +250,7 @@ impl UsageTracker {
             tokens_output: usage.output_tokens,
             cost_usd: cost,
             model: model.to_string(),
+            web3_wallet_address: None,
         });
     }
 }

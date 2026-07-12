@@ -217,6 +217,7 @@ pub(crate) fn run_repl(
     let model_clone = cli.model.clone();
     let session_id_clone = cli.session.id.clone();
     let focus_state_clone = cli.focus_state;
+    let web3_wallet_address_clone = cli.runtime.session().web3_wallet_address.clone();
     std::thread::spawn(move || {
         while redraw_rx.recv().is_ok() {
             let dummy_usage = runtime::TokenUsage {
@@ -234,6 +235,7 @@ pub(crate) fn run_repl(
                 None,
                 None,
                 Some(&focus_state_clone),
+                web3_wallet_address_clone.as_deref(),
             );
         }
     });
@@ -250,6 +252,7 @@ pub(crate) fn run_repl(
         worker_status.as_ref(),
         None,
         Some(&cli.focus_state),
+        cli.runtime.session().web3_wallet_address.as_deref(),
     );
 
     loop {
@@ -280,6 +283,7 @@ pub(crate) fn run_repl(
             None,
             None,
             Some(&cli.focus_state),
+            cli.runtime.session().web3_wallet_address.as_deref(),
         );
         editor.set_completions(cli.repl_completion_candidates().unwrap_or_default());
         match editor.read_line()? {

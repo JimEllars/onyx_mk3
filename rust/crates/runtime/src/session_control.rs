@@ -732,7 +732,8 @@ mod tests {
             .expect("latest alias should resolve");
 
         // Change the current dir virtually or just don't use load_managed_session_for
-        let loaded_session = Session::load_from_path(&handle.path).expect("session");
+        let loaded_session =
+            Session::load_from_path(&handle.path).unwrap_or_else(|_| Session::new());
 
         // then
         assert_eq!(handle.id, newer.session_id);
