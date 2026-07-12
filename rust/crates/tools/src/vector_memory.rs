@@ -119,3 +119,32 @@ pub async fn query_memory(query_text: &str, top_k: u32) -> Result<Vec<serde_json
 
     Ok(matches)
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, sqlx::FromRow)]
+pub struct MemoryBankRecord {
+    pub id: String,
+    pub content: String,
+    pub metadata: serde_json::Value,
+}
+
+// Stub for search_memory_banks
+pub async fn search_memory_banks(
+    pool: &sqlx::PgPool,
+    query_embedding: Vec<f32>,
+    limit: i64,
+) -> Result<Vec<MemoryBankRecord>, sqlx::Error> {
+    let records = sqlx::query_as::<_, MemoryBankRecord>(
+        r"
+        SELECT id::text as id, content, metadata
+        FROM memory_banks
+        ORDER BY embedding <=> $1::vector
+        LIMIT $2
+        ",
+    )
+    .bind(format!("{query_embedding:?}")) // passing as string to cast to vector
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(records)
+}

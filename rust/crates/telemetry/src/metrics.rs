@@ -7,6 +7,7 @@ use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
+use tokio::sync::broadcast;
 
 static LAST_TUI_RESIZE: LazyLock<Mutex<Option<Instant>>> = LazyLock::new(|| Mutex::new(None));
 
@@ -118,7 +119,13 @@ pub static EDGE_AUTH_MISMATCH_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
 
 pub enum MetricEvent {
     TuiResize(String),
+    AgentState(String),
 }
+
+pub static AGENT_STATE_TX: LazyLock<broadcast::Sender<String>> = LazyLock::new(|| {
+    let (tx, _) = broadcast::channel(100);
+    tx
+});
 
 pub static METRIC_TX: LazyLock<Mutex<Sender<MetricEvent>>> = LazyLock::new(|| {
     let (tx, rx): (Sender<MetricEvent>, Receiver<MetricEvent>) = mpsc::channel();
@@ -129,6 +136,12 @@ pub static METRIC_TX: LazyLock<Mutex<Sender<MetricEvent>>> = LazyLock::new(|| {
                     TUI_RESIZE_EVENTS_TOTAL
                         .with_label_values(&[&event_name])
                         .inc();
+                }
+                MetricEvent::AgentState(state_msg) => {
+                    // Send to a websocket channel or global state
+                    // We'll broadcast this using a tokio channel later
+                    // For now, we will just send it to a broadcast channel if available
+                    let _ = AGENT_STATE_TX.send(state_msg);
                 }
             }
         }
@@ -152,6 +165,7 @@ pub fn enqueue_metric_event(event: MetricEvent) {
                 return;
             }
         }
+        MetricEvent::AgentState(_) => {}
     }
 
     if let Ok(tx) = METRIC_TX.lock() {
