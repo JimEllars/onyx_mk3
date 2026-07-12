@@ -100,6 +100,7 @@ pub async fn handle_generate_nda(
         goal: "generate_nda".to_string(),
         expected_schema: serde_json::Value::Null,
         reasoning_effort: None,
+        web3_wallet_address: None,
     };
 
     if let Err(e) = state
@@ -184,6 +185,7 @@ pub async fn handle_generate_demand_letter(
         goal: "log_telemetry".to_string(),
         expected_schema: serde_json::Value::Null,
         reasoning_effort: None,
+        web3_wallet_address: None,
     };
 
     // Spawn task to background the telemetry dispatch so we don't block
@@ -275,6 +277,7 @@ pub async fn handle_generate_pay_stub(
         goal: "log_telemetry".to_string(),
         expected_schema: serde_json::Value::Null,
         reasoning_effort: None,
+        web3_wallet_address: None,
     };
 
     // Spawn task to background the telemetry dispatch so we don't block
@@ -448,6 +451,7 @@ pub async fn handle_dispatch(
         goal: payload.intent.clone(),
         expected_schema: serde_json::Value::Null,
         reasoning_effort: None,
+        web3_wallet_address: None,
     };
 
     if let Err(e) = state.dispatcher.dispatch(payload.priority, packet).await {

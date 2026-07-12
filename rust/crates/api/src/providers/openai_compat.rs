@@ -1427,6 +1427,7 @@ mod tests {
             reasoning_effort: None,
             budget_priority: None,
             response_format: None,
+            web3_wallet_address: None,
         };
         let payload = build_chat_completion_request(&request, OpenAiCompatConfig::openai());
         assert_eq!(payload["temperature"], 0.7);

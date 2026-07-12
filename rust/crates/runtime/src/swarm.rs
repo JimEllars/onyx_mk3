@@ -158,6 +158,7 @@ mod tests {
             goal: String::new(),
             expected_schema: serde_json::Value::Null,
             reasoning_effort: None,
+            web3_wallet_address: None,
         };
 
         let low_packet = TaskPacket {
@@ -175,6 +176,7 @@ mod tests {
             goal: String::new(),
             expected_schema: serde_json::Value::Null,
             reasoning_effort: None,
+            web3_wallet_address: None,
         };
 
         dispatcher
@@ -218,6 +220,7 @@ mod tests {
             goal: String::new(),
             expected_schema: serde_json::Value::Null,
             reasoning_effort: None,
+            web3_wallet_address: None,
         };
 
         dispatcher
@@ -256,6 +259,7 @@ async fn test_swarm_worker_handles_disconnect() {
         goal: String::new(),
         expected_schema: serde_json::Value::Null,
         reasoning_effort: None,
+        web3_wallet_address: None,
     };
 
     dispatcher

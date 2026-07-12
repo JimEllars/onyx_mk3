@@ -263,6 +263,7 @@ mod tests {
             goal: "goal".to_string(),
             expected_schema: serde_json::Value::Null,
             reasoning_effort: None,
+            web3_wallet_address: None,
             job_id: None,
             worker_id: None,
         };
