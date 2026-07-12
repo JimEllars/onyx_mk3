@@ -35,6 +35,7 @@ impl TelemetrySink for SupabaseTelemetrySink {
                 tokens_output,
                 cost_usd,
                 model,
+                web3_wallet_address: _,
             } => {
                 serde_json::json!({
                     "table": "api_usage_logs",

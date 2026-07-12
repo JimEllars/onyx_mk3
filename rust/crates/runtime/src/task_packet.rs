@@ -7,6 +7,8 @@ pub struct TaskPacket {
     pub job_id: Option<String>,
     #[serde(default)]
     pub worker_id: Option<String>,
+    #[serde(default)]
+    pub web3_wallet_address: Option<String>,
     pub objective: String,
     pub scope: String,
     pub repo: String,
@@ -120,6 +122,7 @@ mod tests {
             expected_schema: serde_json::Value::Null,
             job_id: Some("job-123".to_string()),
             worker_id: Some("worker-456".to_string()),
+            web3_wallet_address: None,
             reasoning_effort: None,
         }
     }
@@ -148,6 +151,7 @@ mod tests {
             expected_schema: serde_json::Value::Null,
             job_id: None,
             worker_id: None,
+            web3_wallet_address: None,
             reasoning_effort: None,
         };
 

@@ -172,6 +172,8 @@ pub struct SessionTraceRecord {
     pub sequence: u64,
     pub name: String,
     pub timestamp_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web3_wallet_address: Option<String>,
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub attributes: Map<String, Value>,
 }
@@ -182,6 +184,8 @@ pub enum TelemetryEvent {
     ApiUsageLog {
         session_id: String,
         job_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        web3_wallet_address: Option<String>,
         worker_id: String,
         tenant_id: String,
         event_type: String,
@@ -342,6 +346,7 @@ impl SessionTracer {
             sequence: self.sequence.fetch_add(1, Ordering::Relaxed),
             name: name.into(),
             timestamp_ms: current_timestamp_ms(),
+            web3_wallet_address: None,
             attributes,
         };
         self.sink.record(TelemetryEvent::SessionTrace(record));
