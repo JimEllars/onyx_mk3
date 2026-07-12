@@ -2233,8 +2233,18 @@ if let Some(sink) = telemetry::supabase::SupabaseTelemetrySink::new() {
                     Ok((mut ws_stream, _)) => {
                         tracing::info!("Connected to AXiM Core WebSocket Duplex Sync at {}", duplex_url);
 
+                        let mut state_rx = telemetry::metrics::AGENT_STATE_TX.subscribe();
+
                         loop {
                             tokio::select! {
+                                Ok(state_msg) = state_rx.recv() => {
+                                    if let Ok(json) = serde_json::to_string(&serde_json::json!({
+                                        "type": "agent_state_update",
+                                        "state": state_msg
+                                    })) {
+                                        let _ = futures_util::sink::SinkExt::send(&mut ws_stream, tokio_tungstenite::tungstenite::Message::Text(json.into())).await;
+                                    }
+                                }
                                 msg = futures_util::stream::StreamExt::next(&mut ws_stream) => {
                                     match msg {
                                         Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) => {
