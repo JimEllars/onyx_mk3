@@ -42,7 +42,10 @@ pub fn render_status_bar_text(
         String::new()
     };
 
-    let brand_str = brand_id.map_or_else(|| "UNASSIGNED TENANT - BLOCKED".to_string(), |b| format!("{b:?}"));
+    let brand_str = brand_id.map_or_else(
+        || "UNASSIGNED TENANT - BLOCKED".to_string(),
+        |b| format!("{b:?}"),
+    );
     let identity_str = if let Some(addr) = web3_wallet_address {
         if addr.len() >= 42 {
             format!("{}...{}", &addr[0..6], &addr[38..42])

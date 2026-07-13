@@ -302,7 +302,9 @@ where
         if let Some(brand) = &self.session.brand_id {
             for term in brand.forbidden_terms() {
                 if user_input.contains(term) {
-                    return Err(RuntimeError::new(format!("Input contains forbidden term for active persona: {term}")));
+                    return Err(RuntimeError::new(format!(
+                        "Input contains forbidden term for active persona: {term}"
+                    )));
                 }
             }
         }

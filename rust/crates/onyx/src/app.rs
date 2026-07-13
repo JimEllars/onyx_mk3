@@ -278,7 +278,7 @@ pub(crate) fn run_repl(
         }
         tui::status_bar::draw_status_bar(
             cli.runtime.session().brand_id.as_ref(),
-        &cli.model,
+            &cli.model,
             &cli.session.id,
             &cli.runtime.usage().cumulative_usage(),
             0.0,
