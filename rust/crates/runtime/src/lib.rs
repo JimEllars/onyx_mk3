@@ -57,6 +57,7 @@ pub use fleet_health::{
     AppStatus, FleetStatus, GlobalFleetStatus, ProposedAction,
 };
 pub mod playbook;
+pub mod persona;
 #[cfg(test)]
 mod trust_resolver;
 mod usage;

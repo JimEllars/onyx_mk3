@@ -99,6 +99,7 @@ pub struct Session {
     pub user_jwt: Option<String>,
     pub tenant_id: Option<String>,
     pub web3_wallet_address: Option<String>,
+    pub brand_id: Option<crate::persona::BrandId>,
     persistence: Option<SessionPersistence>,
 }
 
@@ -175,6 +176,7 @@ impl Session {
             tenant_id: None,
             web3_wallet_address: None,
             persistence: None,
+            brand_id: None,
         }
     }
 
@@ -295,6 +297,7 @@ impl Session {
                 branch_name: normalize_optional_string(branch_name),
             }),
             workspace_root: self.workspace_root.clone(),
+            brand_id: self.brand_id.clone(),
             prompt_history: self.prompt_history.clone(),
             user_jwt: self.user_jwt.clone(),
             tenant_id: self.tenant_id.clone(),
@@ -416,6 +419,7 @@ impl Session {
             compaction,
             fork,
             workspace_root,
+            brand_id: None,
             prompt_history,
             user_jwt: object
                 .get("user_jwt")
@@ -522,6 +526,7 @@ impl Session {
             compaction,
             fork,
             workspace_root,
+            brand_id: None,
             prompt_history,
             user_jwt: None,
             tenant_id: None,
