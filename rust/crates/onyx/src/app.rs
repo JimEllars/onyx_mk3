@@ -227,6 +227,7 @@ pub(crate) fn run_repl(
                 cache_read_input_tokens: 0,
             };
             tui::status_bar::draw_status_bar(
+                None,
                 &model_clone,
                 &session_id_clone,
                 &dummy_usage,
@@ -244,6 +245,7 @@ pub(crate) fn run_repl(
     print!("\x1b[0;{}r", rows.saturating_sub(2));
 
     tui::status_bar::draw_status_bar(
+        cli.runtime.session().brand_id.as_ref(),
         &cli.model,
         &cli.session.id,
         &cli.runtime.usage().cumulative_usage(),
@@ -275,6 +277,7 @@ pub(crate) fn run_repl(
             continue;
         }
         tui::status_bar::draw_status_bar(
+            cli.runtime.session().brand_id.as_ref(),
             &cli.model,
             &cli.session.id,
             &cli.runtime.usage().cumulative_usage(),

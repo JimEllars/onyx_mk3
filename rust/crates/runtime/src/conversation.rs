@@ -299,6 +299,15 @@ where
         mut prompter: Option<&mut dyn PermissionPrompter>,
     ) -> Result<TurnSummary, RuntimeError> {
         let user_input = user_input.into();
+        if let Some(brand) = &self.session.brand_id {
+            for term in brand.forbidden_terms() {
+                if user_input.contains(term) {
+                    return Err(RuntimeError::new(format!(
+                        "Input contains forbidden term for active persona: {term}"
+                    )));
+                }
+            }
+        }
         self.record_turn_started(&user_input);
         self.session
             .push_user_text(user_input)

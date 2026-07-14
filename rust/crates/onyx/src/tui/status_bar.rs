@@ -11,6 +11,7 @@ use std::io::{stdout, Write};
 
 #[allow(clippy::too_many_arguments)]
 pub fn render_status_bar_text(
+    brand_id: Option<&runtime::persona::BrandId>,
     model: &str,
     session_id: &str,
     usage: &TokenUsage,
@@ -41,6 +42,10 @@ pub fn render_status_bar_text(
         String::new()
     };
 
+    let brand_str = brand_id.map_or_else(
+        || "UNASSIGNED TENANT - BLOCKED".to_string(),
+        |b| format!("{b:?}"),
+    );
     let identity_str = if let Some(addr) = web3_wallet_address {
         if addr.len() >= 42 {
             format!("{}...{}", &addr[0..6], &addr[38..42])
@@ -51,8 +56,8 @@ pub fn render_status_bar_text(
         "Standard Auth".to_string()
     };
     let mut text = format!(
-        "⚡ Tx: Active ∥ Threads: {} ∥ Model: {} ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{}",
-        std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
+        "⚡ Tx: Active ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ Model: {} ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{}",
+        brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
         model, session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str
     );
 
@@ -106,6 +111,7 @@ pub fn render_status_bar_text(
 
 #[allow(clippy::too_many_arguments)]
 pub fn draw_status_bar(
+    brand_id: Option<&runtime::persona::BrandId>,
     model: &str,
     session_id: &str,
     usage: &TokenUsage,
@@ -144,6 +150,7 @@ pub fn draw_status_bar(
     }
 
     let text = render_status_bar_text(
+        brand_id,
         model,
         session_id,
         usage,
@@ -234,6 +241,7 @@ mod tests {
         };
         for _ in 0..100 {
             draw_status_bar(
+                None,
                 "test_model",
                 "test_session",
                 &usage,
