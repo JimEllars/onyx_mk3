@@ -11,6 +11,23 @@ use tokio::sync::broadcast;
 
 static LAST_TUI_RESIZE: LazyLock<Mutex<Option<Instant>>> = LazyLock::new(|| Mutex::new(None));
 
+static LAST_PULSE_SYNC: LazyLock<Mutex<Option<Instant>>> = LazyLock::new(|| Mutex::new(None));
+
+pub fn update_last_pulse_sync() {
+    if let Ok(mut last) = LAST_PULSE_SYNC.lock() {
+        *last = Some(Instant::now());
+    }
+}
+
+pub fn get_last_pulse_sync_elapsed() -> Option<Duration> {
+    if let Ok(last) = LAST_PULSE_SYNC.lock() {
+        if let Some(instant) = *last {
+            return Some(instant.elapsed());
+        }
+    }
+    None
+}
+
 pub static HTTP_REQUESTS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
     register_counter_vec!(
         "onyx_http_requests_total",

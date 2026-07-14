@@ -89,7 +89,21 @@ pub fn render_status_bar_text(
     if let Some(node_id) = delegated {
         text = format!("{text} ∥ ⠼ Onyx delegating to [{node_id}]");
     }
-    text = format!("{text}{playbook_str}");
+
+    let pulse_sync_str = if let Some(elapsed) = telemetry::metrics::get_last_pulse_sync_elapsed() {
+        let secs = elapsed.as_secs();
+        if secs < 60 {
+            format!(" ∥ Last Pulse Sync: {secs}s ago")
+        } else if secs < 3600 {
+            format!(" ∥ Last Pulse Sync: {}m ago", secs / 60)
+        } else {
+            format!(" ∥ Last Pulse Sync: {}h ago", secs / 3600)
+        }
+    } else {
+        " ∥ Last Pulse Sync: Never".to_string()
+    };
+
+    text = format!("{text}{playbook_str}{pulse_sync_str}");
 
     let edge_status_val = telemetry::metrics::EDGE_KV_STATUS.get();
     let edge_state_str = if (edge_status_val - 1.0).abs() < f64::EPSILON {

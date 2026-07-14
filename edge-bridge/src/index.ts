@@ -168,7 +168,7 @@ async function verifyAximSignature(request: Request, env: Env, bodyText: string)
 }
 
 export default {
-	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+		async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
 		try {
 			// Execute a low-overhead heartbeat sanity evaluation across active KV stores
 			console.log(`Cron triggered at ${new Date().toISOString()}`);
@@ -178,6 +178,47 @@ export default {
 			if (env.ONYX_SESSION_STATE) {
 				await env.ONYX_SESSION_STATE.put("heartbeat_sanity", new Date().toISOString(), { expirationTtl: 3600 });
 			}
+
+			// Pulse Sync: Fetch external social data and forward to Rust backend
+			const mockedThreadsPayload = {
+				source: "threads_api_stub",
+				type: "content_engine_daily",
+				posts: [
+					{ id: "post_1", content: "Exploring the new AXiM Core update!", timestamp: new Date().toISOString() },
+					{ id: "post_2", content: "The future of automation is here.", timestamp: new Date().toISOString() }
+				]
+			};
+
+			const payloadString = JSON.stringify(mockedThreadsPayload);
+			const secret = env.GITHUB_WEBHOOK_SECRET || "default_secret";
+			const encoder = new TextEncoder();
+			const key = await crypto.subtle.importKey(
+				"raw",
+				encoder.encode(secret),
+				{ name: "HMAC", hash: "SHA-256" },
+				false,
+				["sign"]
+			);
+
+			const signatureBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(payloadString));
+			const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+			const signatureHex = signatureArray.map(b => b.toString(16).padStart(2, '0')).join('');
+			const expectedSignature = `sha256=${signatureHex}`;
+
+			const coreUrl = env.CORE_INGEST_URL ? env.CORE_INGEST_URL.replace('/v1/functions/telemetry-ingest', '/v1/events/ingress') : "http://localhost:3000/v1/events/ingress";
+			// Wait until telemetry ingest sends it
+			ctx.waitUntil(
+				fetch(coreUrl, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						"x-hub-signature-256": expectedSignature,
+						"x-onyx-cron-event": "content_engine_daily"
+					},
+					body: payloadString
+				}).then(res => res.text()).then(t => console.log("Pulse sync forwarded", t)).catch(e => console.error("Pulse sync forwarding failed", e))
+			);
+
 		} catch (e) {
 			console.error("Scheduled task error:", e);
 		}
