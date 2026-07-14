@@ -327,9 +327,37 @@ where
                 self.record_turn_failed(iterations, &error);
                 return Err(error);
             }
+            let mut current_system_prompt = self.system_prompt.clone();
+
+            // Append Vector Memory Context if a Brand Persona is active
+            if let Some(brand) = &self.session.brand_id {
+                let memory_store = crate::vector_memory::global_memory().read().unwrap();
+                let recent_context = memory_store.get_recent_context(brand, 5); // Fetch last 5
+                if !recent_context.is_empty() {
+                    let mut memory_section = String::from(
+                        "# Localized Historical Context
+",
+                    );
+                    memory_section.push_str(
+                        "The following are recent historical interactions for this persona:
+",
+                    );
+                    for (i, snapshot) in recent_context.iter().enumerate() {
+                        let _ = std::fmt::Write::write_fmt(
+                            &mut memory_section,
+                            format_args!(
+                                "\n--- Historical Snapshot {} ---\n{}\n",
+                                i + 1,
+                                snapshot.content
+                            ),
+                        );
+                    }
+                    current_system_prompt.push(memory_section);
+                }
+            }
 
             let request = ApiRequest {
-                system_prompt: self.system_prompt.clone(),
+                system_prompt: current_system_prompt,
                 messages: self.session.messages.clone(),
             };
 
@@ -379,11 +407,26 @@ where
                 &assistant_message,
                 pending_tool_uses.len(),
             );
-
             self.session
                 .push_message(assistant_message.clone())
                 .map_err(|error| RuntimeError::new(error.to_string()))?;
-            assistant_messages.push(assistant_message);
+            assistant_messages.push(assistant_message.clone());
+
+            // Store the newly generated assistant message into the localized vector memory
+            if let Some(brand) = &self.session.brand_id {
+                let mut content_to_store = String::new();
+                for block in &assistant_message.blocks {
+                    if let crate::session::ContentBlock::Text { text } = block {
+                        content_to_store.push_str(text);
+                        content_to_store.push('\n');
+                    }
+                }
+                let content_to_store = content_to_store.trim().to_string();
+                if !content_to_store.is_empty() {
+                    let mut memory_store = crate::vector_memory::global_memory().write().unwrap();
+                    memory_store.store_snapshot(brand, content_to_store);
+                }
+            }
 
             if pending_tool_uses.is_empty() {
                 break;

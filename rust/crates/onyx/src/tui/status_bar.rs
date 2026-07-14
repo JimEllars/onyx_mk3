@@ -115,10 +115,19 @@ pub fn render_status_bar_text(
     let cache_ttl = telemetry::metrics::EDGE_CACHE_TTL.get();
 
     let edge_latency = telemetry::metrics::EDGE_LATENCY_MS.get();
-
     text = format!(
         "{text} ∥ EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s · LATENCY: {edge_latency:.2}ms"
     );
+
+    let mem_count = if let Some(brand) = brand_id {
+        runtime::vector_memory::global_memory()
+            .read()
+            .unwrap()
+            .get_memory_count(brand)
+    } else {
+        0
+    };
+    text = format!("{text} ∥ Mem: {mem_count} Snapshots");
 
     text
 }

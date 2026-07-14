@@ -3,6 +3,7 @@ pub mod ecosystem_tools;
 pub mod support_triage;
 pub mod swarm;
 pub mod swarm_lock;
+pub mod vector_memory;
 // Core runtime primitives for the `onyx` CLI and supporting crates.
 //
 // This crate owns session persistence, permission evaluation, prompt assembly,
