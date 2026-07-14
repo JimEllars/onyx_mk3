@@ -3,7 +3,9 @@
   "name": "onyx-mk3",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-09",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "assets": {
     "directory": "../rust/crates/onyx/static",
     "binding": "ASSETS"
@@ -36,6 +38,8 @@
     }
   ],
   "triggers": {
-    "crons": ["0 * * * *"]
+    "crons": [
+      "0 0 * * *"
+    ]
   }
 }
