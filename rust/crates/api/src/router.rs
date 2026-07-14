@@ -499,12 +499,48 @@ pub async fn handle_event_ingress(
             // Update TUI Timestamp
             telemetry::metrics::update_last_pulse_sync();
 
-            // In a full implementation, pass the snapshot through LLM proxy mesh
-            let prompt_cache =
-                crate::prompt_cache::PromptCache::new("content_engine_daily_session");
-            // simulated caching functionality interaction
-            let _stats = prompt_cache.stats();
-            println!("Pulse payload successfully routed to Provider Mesh and Prompt Cache");
+            let payload_str = serde_json::to_string(&payload).unwrap_or_default();
+
+            tokio::spawn(async move {
+                // In a full implementation, pass the snapshot through LLM proxy mesh
+                let prompt_cache =
+                    crate::prompt_cache::PromptCache::new("content_engine_daily_session");
+
+                // Construct a message request
+                let request = crate::types::MessageRequest {
+                    model: "axim-default".to_string(),
+                    max_tokens: 1024,
+                    messages: vec![crate::types::InputMessage::user_text(format!(
+                        "Evaluate and structure this pulse payload: {payload_str}"
+                    ))],
+                    system: Some(
+                        "You are Onyx Mk3. Structure the incoming pulse payload.".to_string(),
+                    ),
+                    tools: None,
+                    tool_choice: None,
+                    stream: false,
+                    temperature: None,
+                    top_p: None,
+                    frequency_penalty: None,
+                    presence_penalty: None,
+                    stop: None,
+                    reasoning_effort: None,
+                    budget_priority: None,
+                    response_format: None,
+                    web3_wallet_address: None,
+                };
+
+                if let Ok(client) = crate::ProviderClient::from_model("axim-default") {
+                    let client = client.with_prompt_cache(prompt_cache);
+                    if let Ok(_response) = client.send_message(&request).await {
+                        println!(
+                            "Pulse payload successfully routed to Provider Mesh and Prompt Cache"
+                        );
+                    } else {
+                        println!("Failed to route pulse payload to Provider Mesh");
+                    }
+                }
+            });
 
             return (
                 StatusCode::OK,
