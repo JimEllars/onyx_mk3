@@ -6,6 +6,7 @@ pub struct SocialPost {
     pub platform: String,
     pub content: String,
     pub tags: Vec<String>,
+    pub media_urls: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
