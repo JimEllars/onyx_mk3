@@ -613,7 +613,16 @@ impl MarkdownStreamState {
         let split = find_stream_safe_boundary(&self.pending)?;
         let ready = self.pending[..split].to_string();
         self.pending.drain(..split);
-        Some(renderer.markdown_to_ansi(&ready))
+
+        let mut out_rendered = renderer.markdown_to_ansi(&ready);
+
+        if out_rendered.contains("[WARN] Schema mismatch, triggering correction prompt") {
+            out_rendered = format!("\x1b[33m{out_rendered}\x1b[0m"); // yellow for warn
+        } else if out_rendered.contains("[SCHEMA OK]") {
+            out_rendered = format!("\x1b[32m{out_rendered}\x1b[0m"); // green for ok
+        }
+
+        Some(out_rendered)
     }
 
     #[must_use]
@@ -623,7 +632,13 @@ impl MarkdownStreamState {
             None
         } else {
             let pending = std::mem::take(&mut self.pending);
-            Some(renderer.markdown_to_ansi(&pending))
+            let mut out_rendered = renderer.markdown_to_ansi(&pending);
+            if out_rendered.contains("[WARN] Schema mismatch, triggering correction prompt") {
+                out_rendered = format!("\x1b[33m{out_rendered}\x1b[0m");
+            } else if out_rendered.contains("[SCHEMA OK]") {
+                out_rendered = format!("\x1b[32m{out_rendered}\x1b[0m");
+            }
+            Some(out_rendered)
         }
     }
 }
