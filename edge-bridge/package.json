@@ -5,14 +5,17 @@
   "main": "src/index.ts",
   "scripts": {
     "typegen": "wrangler types ./src/worker-configuration.d.ts --config wrangler.jsonc",
-    "build": "npm run typegen && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typegen && npm run typecheck",
     "dev": "wrangler dev --config wrangler.jsonc",
+    "format": "prettier --write src/**/*.ts",
     "deploy": "wrangler deploy --config wrangler.jsonc",
     "deploy:dry-run": "wrangler deploy --dry-run --config wrangler.jsonc"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
     "miniflare": "^4.20260611.0",
+    "prettier": "^3.9.5",
     "typescript": "^5.9.3",
     "wrangler": "^4.100.0"
   }
