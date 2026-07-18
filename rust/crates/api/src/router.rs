@@ -583,7 +583,10 @@ pub async fn handle_onyx_summon(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     payload_result: Result<Json<serde_json::Value>, JsonRejection>,
-) -> Result<Sse<ReceiverStream<Result<AxumSseEvent, Infallible>>>, (StatusCode, axum::Json<serde_json::Value>)> {
+) -> Result<
+    Sse<ReceiverStream<Result<AxumSseEvent, Infallible>>>,
+    (StatusCode, axum::Json<serde_json::Value>),
+> {
     let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
     let expected_token = format!("Bearer {}", state.auth_token);
 
@@ -599,7 +602,9 @@ pub async fn handle_onyx_summon(
         Err(e) => {
             return Err((
                 StatusCode::BAD_REQUEST,
-                axum::Json(serde_json::json!({"error": "Malformed payload", "details": e.body_text()})),
+                axum::Json(
+                    serde_json::json!({"error": "Malformed payload", "details": e.body_text()}),
+                ),
             ));
         }
     };
@@ -610,13 +615,21 @@ pub async fn handle_onyx_summon(
         let mut buf = Vec::new();
         let payload1 = crate::sse::SsePayload::new("Summoning Onyx Mk3...", false);
         if payload1.emit(&mut buf).is_ok() {
-            let _ = tx.send(Ok::<_, Infallible>(AxumSseEvent::default().data(String::from_utf8_lossy(&buf)))).await;
+            let _ = tx
+                .send(Ok::<_, Infallible>(
+                    AxumSseEvent::default().data(String::from_utf8_lossy(&buf)),
+                ))
+                .await;
         }
 
         buf.clear();
         let payload2 = crate::sse::SsePayload::new("Context initialized.", true);
         if payload2.emit(&mut buf).is_ok() {
-            let _ = tx.send(Ok::<_, Infallible>(AxumSseEvent::default().data(String::from_utf8_lossy(&buf)))).await;
+            let _ = tx
+                .send(Ok::<_, Infallible>(
+                    AxumSseEvent::default().data(String::from_utf8_lossy(&buf)),
+                ))
+                .await;
         }
     });
 
