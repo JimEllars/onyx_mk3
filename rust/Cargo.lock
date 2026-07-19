@@ -52,6 +52,7 @@ dependencies = [
  "serde_json",
  "telemetry",
  "tokio",
+ "tokio-stream",
  "tower",
  "tracing",
 ]
