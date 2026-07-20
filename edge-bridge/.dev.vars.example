@@ -5,3 +5,4 @@ WP_WEBHOOK_SECRET=
 AXIM_INTERNAL_KEY=
 CORE_INGEST_URL=https://api.axim.us.com/v1/functions/telemetry-ingest
 CHAT_MODEL=claude-3-5-sonnet-20241022
+ONYX_CLIENT_SECRET=your_secure_secret_here
