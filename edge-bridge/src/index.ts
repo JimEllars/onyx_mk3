@@ -128,6 +128,11 @@ function getCorsHeaders(request: Request, env?: Env) {
       origin.endsWith(".workers.dev");
   }
 
+  if (!isAllowed && origin) {
+    const ip = request.headers.get("cf-connecting-ip") || "unknown";
+    console.warn(`[CORS Failed] Unauthorized Origin: ${origin}, IP: ${ip}`);
+  }
+
   return {
     "Access-Control-Allow-Origin": isAllowed
       ? origin
@@ -136,7 +141,6 @@ function getCorsHeaders(request: Request, env?: Env) {
         : "https://axim.us.com",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Expose-Headers": "X-Onyx-Edge-Health, X-Onyx-Cache-Status",
   };
 }
 
@@ -416,6 +420,98 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    if (request.method === "POST" && url.pathname === "/api/v1/onyx/summon") {
+      const authHeader = request.headers.get("Authorization");
+      const expectedToken = `Bearer ${env.ONYX_CLIENT_SECRET}`;
+      if (!authHeader || authHeader !== expectedToken) {
+        const origin = request.headers.get("Origin") || "unknown";
+        const ip = request.headers.get("cf-connecting-ip") || "unknown";
+        console.warn(
+          `[Summon Auth Failed] Unauthorized access attempt from Origin: ${origin}, IP: ${ip}`,
+        );
+        return new Response(JSON.stringify({ error: "Unauthorized Access" }), {
+          status: 401,
+          headers: addOnyxHeaders(
+            {
+              ...getCorsHeaders(request, env),
+              "Content-Type": "application/json",
+            },
+            edgeStatus,
+            cacheStatus,
+            traceId,
+          ),
+        });
+      }
+
+      // We pass the request directly to the core ingest since we authenticated successfully.
+      if (!env.CORE_INGEST_URL) {
+        return new Response(
+          JSON.stringify({
+            error: "Configuration error: CORE_INGEST_URL is missing",
+          }),
+          {
+            status: 500,
+            headers: addOnyxHeaders(
+              {
+                ...getCorsHeaders(request, env),
+                "Content-Type": "application/json",
+              },
+              edgeStatus,
+              cacheStatus,
+              traceId,
+            ),
+          },
+        );
+      }
+
+      const ingestUrl = env.CORE_INGEST_URL;
+
+      let payload = {};
+      try {
+        const rawBodyText = await request.clone().text();
+        if (rawBodyText) {
+          payload = JSON.parse(rawBodyText);
+        }
+      } catch (e) {
+        console.warn("Could not parse body in /api/v1/onyx/summon");
+      }
+
+      ctx.waitUntil(
+        fetchWithRetry(ingestUrl, {
+          method: "POST",
+          headers: addOnyxHeaders(
+            { "Content-Type": "application/json" },
+            edgeStatus,
+            cacheStatus,
+            traceId,
+          ),
+          body: JSON.stringify({
+            type: "onyx_summon",
+            payload,
+            timestamp: new Date().toISOString(),
+          }),
+        }).catch((e) => console.error("Onyx summon forward failed", e)),
+      );
+
+      return new Response(
+        JSON.stringify({
+          status: "success",
+          message: "Summon payload queued successfully.",
+        }),
+        {
+          headers: addOnyxHeaders(
+            {
+              ...getCorsHeaders(request, env),
+              "Content-Type": "application/json",
+            },
+            edgeStatus,
+            cacheStatus,
+            traceId,
+          ),
+        },
+      );
+    }
 
     // 3. Edge Caching for Stateless Requests (Schemas/Templates)
     if (

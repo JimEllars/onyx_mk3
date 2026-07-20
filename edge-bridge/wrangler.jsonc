@@ -17,7 +17,8 @@
     }
   ],
   "vars": {
-    "CORE_INGEST_URL": "https://api.axim.us.com/v1/functions/telemetry-ingest"
+    "CORE_INGEST_URL": "https://api.axim.us.com/v1/functions/telemetry-ingest",
+    "ALLOWED_ORIGIN": "tauri://localhost"
   },
   "kv_namespaces": [
     {
