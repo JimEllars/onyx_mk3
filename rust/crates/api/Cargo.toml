@@ -22,3 +22,6 @@ tokio-stream = "0.1.18"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+mock-anthropic-service = { path = "../mock-anthropic-service" }
