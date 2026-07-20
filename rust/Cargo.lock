@@ -46,6 +46,7 @@ dependencies = [
  "chrono",
  "commands",
  "http",
+ "mock-anthropic-service",
  "reqwest 0.12.28",
  "runtime",
  "serde",
