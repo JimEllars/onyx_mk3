@@ -169,3 +169,82 @@ impl Provider for CloudflareProvider {
         })
     }
 }
+
+impl CloudflareProvider {
+    pub async fn query_analytics(&self) -> Result<f64, ApiError> {
+        let url = "https://api.cloudflare.com/client/v4/graphql";
+
+        let query = r"
+            query {
+                viewer {
+                    accounts(filter: {accountTag: $accountId}) {
+                        workersInvocationsAdaptive(limit: 1, filter: {
+                            datetime_geq: $datetimeGeq
+                        }) {
+                            sum {
+                                executionTime
+                            }
+                            count
+                        }
+                    }
+                }
+            }
+        ";
+
+        let now = chrono::Utc::now();
+        let yesterday = now - chrono::Duration::hours(24);
+
+        let payload = json!({
+            "query": query,
+            "variables": {
+                "accountId": self.account_id,
+                "datetimeGeq": yesterday.to_rfc3339()
+            }
+        });
+
+        let res = self.http
+            .post(url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&payload)
+            .send()
+            .await
+            .map_err(ApiError::Http)?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_default();
+            return Err(ApiError::Api {
+                status,
+                error_type: None,
+                message: Some("GraphQL Query Failed".to_string()),
+                request_id: None,
+                body,
+                retryable: false,
+            });
+        }
+
+        let body_text = res.text().await.map_err(ApiError::Http)?;
+        let data: Value = serde_json::from_str(&body_text)
+            .map_err(|e| ApiError::json_deserialize("CloudflareGraphQL", "analytics", &body_text, e))?;
+
+        let invocations = data
+            .get("data")
+            .and_then(|d| d.get("viewer"))
+            .and_then(|v| v.get("accounts"))
+            .and_then(|a| a.as_array())
+            .and_then(|a| a.first())
+            .and_then(|a| a.get("workersInvocationsAdaptive"))
+            .and_then(|w| w.as_array())
+            .and_then(|w| w.first());
+
+        if let Some(inv) = invocations {
+            let total_time = inv.get("sum").and_then(|s| s.get("executionTime")).and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+            let count = inv.get("count").and_then(serde_json::Value::as_f64).unwrap_or(1.0);
+            if count > 0.0 {
+                return Ok(total_time / count);
+            }
+        }
+
+        Ok(0.0)
+    }
+}
