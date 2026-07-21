@@ -60,7 +60,13 @@ impl GeminiClient {
 
         let res = loop {
             attempts += 1;
-            let req_res = self.http.post(&url).json(&payload).send().await;
+            let req_res = self
+                .http
+                .post(&url)
+                .header("X-Request-ID", uuid::Uuid::new_v4().to_string())
+                .json(&payload)
+                .send()
+                .await;
 
             match req_res {
                 Ok(res) => {

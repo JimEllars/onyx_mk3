@@ -9,7 +9,7 @@ use runtime::TokenUsage;
 use std::fmt::Write as _;
 use std::io::{stdout, Write};
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub fn render_status_bar_text(
     brand_id: Option<&runtime::persona::BrandId>,
     model: &str,
@@ -55,10 +55,18 @@ pub fn render_status_bar_text(
     } else {
         "Standard Auth".to_string()
     };
+    let edge_status_val_conn = telemetry::metrics::EDGE_KV_STATUS.get();
+    let edge_conn_str = if (edge_status_val_conn - 1.0).abs() < f64::EPSILON {
+        "Connected (Cloudflare Edge)"
+    } else {
+        "Offline"
+    };
+    let edge_latency_val = telemetry::metrics::EDGE_LATENCY_MS.get();
+
     let mut text = format!(
-        "⚡ Tx: Active ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ Model: {} ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{}",
-        brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
-        model, session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str
+        "⚡ {} ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ Model: {} ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{} ∥ Latency: {:.2}ms",
+        edge_conn_str, brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
+        model, session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str, edge_latency_val
     );
 
     let mut playbook_str = String::new();
@@ -114,9 +122,8 @@ pub fn render_status_bar_text(
     let cache_hit_rate = telemetry::metrics::EDGE_CACHE_HIT_RATE.get();
     let cache_ttl = telemetry::metrics::EDGE_CACHE_TTL.get();
 
-    let edge_latency = telemetry::metrics::EDGE_LATENCY_MS.get();
     text = format!(
-        "{text} ∥ EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s · LATENCY: {edge_latency:.2}ms"
+        "{text} ∥ EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s"
     );
 
     let mem_count = if let Some(brand) = brand_id {
@@ -132,7 +139,7 @@ pub fn render_status_bar_text(
     text
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub fn draw_status_bar(
     brand_id: Option<&runtime::persona::BrandId>,
     model: &str,

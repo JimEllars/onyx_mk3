@@ -2,7 +2,7 @@ use axum::{
     extract::{rejection::JsonRejection, Json, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::post,
+    routing::{get, post},
     Router,
 };
 use chrono::Utc;
@@ -27,6 +27,7 @@ pub struct AppState {
 
 pub fn create_router(state: AppState) -> Router {
     Router::new()
+        .route("/health", get(handle_health_check))
         .route("/v1/commands/dispatch", post(handle_dispatch))
         .route("/api/v1/onyx/summon", post(handle_onyx_summon))
         .route("/v1/generate/nda", post(handle_generate_nda))
@@ -634,4 +635,13 @@ pub async fn handle_onyx_summon(
     });
 
     Ok(Sse::new(ReceiverStream::new(rx)))
+}
+
+#[axum::debug_handler]
+pub async fn handle_health_check() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        axum::Json(serde_json::json!({"status": "ok", "version": "3.7.0"})),
+    )
+        .into_response()
 }

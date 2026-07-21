@@ -92,6 +92,7 @@ impl Provider for CloudflareProvider {
         Box::pin(async move {
             let res = http
                 .post(&url)
+                .header("X-Request-ID", uuid::Uuid::new_v4().to_string())
                 .header("Authorization", format!("Bearer {api_key}"))
                 .header("cf-aig-gateway-id", "default")
                 .json(&payload)
