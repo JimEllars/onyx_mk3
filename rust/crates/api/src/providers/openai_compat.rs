@@ -249,7 +249,8 @@ impl OpenAiCompatClient {
         let request_url = chat_completions_endpoint(&self.base_url);
         self.http
             .post(&request_url)
-            .header("content-type", "application/json").header("X-Request-ID", uuid::Uuid::new_v4().to_string())
+            .header("content-type", "application/json")
+            .header("X-Request-ID", uuid::Uuid::new_v4().to_string())
             .bearer_auth(&self.api_key)
             .json(&build_chat_completion_request(request, self.config()))
             .send()
