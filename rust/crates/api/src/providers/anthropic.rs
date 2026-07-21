@@ -501,7 +501,7 @@ impl AnthropicClient {
         let request_builder = self
             .http
             .post(request_url)
-            .header("content-type", "application/json");
+            .header("content-type", "application/json").header("X-Request-ID", uuid::Uuid::new_v4().to_string());
         let mut request_builder = self.auth.apply(request_builder);
         for (header_name, header_value) in self.request_profile.header_pairs() {
             if header_name.starts_with("anthropic-") {

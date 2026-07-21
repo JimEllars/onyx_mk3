@@ -1,11 +1,25 @@
 use crate::error::ApiError;
 use crate::types::StreamEvent;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SseParser {
     buffer: Vec<u8>,
     provider: Option<String>,
     model: Option<String>,
+    start_time: Option<std::time::Instant>,
+    first_token_received: bool,
+}
+
+impl Default for SseParser {
+    fn default() -> Self {
+        Self {
+            buffer: Vec::new(),
+            provider: None,
+            model: None,
+            start_time: Some(std::time::Instant::now()),
+            first_token_received: false,
+        }
+    }
 }
 
 impl SseParser {
@@ -31,6 +45,18 @@ impl SseParser {
 
         while let Some(frame) = self.next_frame() {
             if let Some(event) = self.parse_frame_with_context(&frame)? {
+                if !self.first_token_received {
+                    if let Some(start) = self.start_time {
+                        let ttft = start.elapsed();
+                        tracing::info!(
+                            provider = self.provider.as_deref().unwrap_or("unknown"),
+                            model = self.model.as_deref().unwrap_or("unknown"),
+                            ttft_ms = ttft.as_millis(),
+                            "Time-To-First-Token recorded"
+                        );
+                    }
+                    self.first_token_received = true;
+                }
                 events.push(event);
             }
         }

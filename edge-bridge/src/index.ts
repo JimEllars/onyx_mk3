@@ -153,6 +153,7 @@ function addOnyxHeaders(
   const h = new Headers(headers);
   if (traceId) {
     h.set("X-Onyx-Trace-Id", traceId);
+    h.set("X-Request-ID", traceId);
   }
   h.set("X-Onyx-Edge-Health", status.degraded ? "DEGRADED" : "OK");
   h.set("X-Onyx-Cache-Status", cacheStatus);
@@ -345,14 +346,16 @@ export default {
 
       const response = await this._fetch(request, env, ctx);
       const duration = performance.now() - startTime;
+      const traceId = request.headers.get("X-Request-ID") || request.headers.get("cf-ray") || "unknown";
       console.log(
-        `[Edge Telemetry] Path: ${new URL(request.url).pathname} | Method: ${request.method} | Latency: ${duration.toFixed(2)}ms`,
+        `[Edge Telemetry] [X-Request-ID: ${traceId}] Path: ${new URL(request.url).pathname} | Method: ${request.method} | Latency: ${duration.toFixed(2)}ms`,
       );
       return response;
     } catch (error) {
       const duration = performance.now() - startTime;
+      const traceId = request.headers.get("X-Request-ID") || request.headers.get("cf-ray") || "unknown";
       console.log(
-        `[Edge Telemetry] Path: ${new URL(request.url).pathname} | Method: ${request.method} | Latency: ${duration.toFixed(2)}ms`,
+        `[Edge Telemetry] [X-Request-ID: ${traceId}] Path: ${new URL(request.url).pathname} | Method: ${request.method} | Latency: ${duration.toFixed(2)}ms`,
       );
       throw error;
     }
@@ -363,7 +366,7 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
-    const traceId = request.headers.get("cf-ray") || crypto.randomUUID();
+    const traceId = request.headers.get("X-Request-ID") || request.headers.get("cf-ray") || crypto.randomUUID();
     const edgeStatus = { degraded: false };
     let cacheStatus = "MISS";
 
