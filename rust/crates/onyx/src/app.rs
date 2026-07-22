@@ -327,6 +327,7 @@ pub(crate) fn run_repl(
     Ok(())
 }
 pub(crate) struct LiveCli {
+    pub(crate) db: std::sync::Arc<std::sync::Mutex<crate::db::Database>>,
     pub(crate) model: String,
     pub(crate) allowed_tools: Option<AllowedToolSet>,
     pub(crate) permission_mode: PermissionMode,
@@ -354,6 +355,8 @@ impl LiveCli {
         allowed_tools: Option<AllowedToolSet>,
         permission_mode: PermissionMode,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        let db = std::sync::Arc::new(std::sync::Mutex::new(crate::db::Database::new().expect("Failed to initialize database")));
+
         let system_prompt = build_system_prompt()?;
         let session_state = Session::new().with_workspace_root(env::current_dir()?);
         let session = create_managed_session_handle(&session_state.session_id)?;
@@ -369,6 +372,7 @@ impl LiveCli {
             None,
         )?;
         let cli = Self {
+            db,
             model,
             allowed_tools,
             permission_mode,
@@ -775,7 +779,38 @@ impl LiveCli {
     }
 
     fn persist_session(&self) -> Result<(), Box<dyn std::error::Error>> {
-        self.runtime.session().save_to_path(&self.session.path)?;
+        let session = self.runtime.session();
+        session.save_to_path(&self.session.path)?;
+
+        let title = session.messages.first().map_or_else(|| "Session".to_string(), |m| match &m.blocks[0] {
+            ContentBlock::Text { text } => text.clone(),
+            _ => "Session".to_string()
+        });
+
+        let _ = self.db.lock().unwrap().save_session(&session.session_id, &title);
+
+        for (i, msg) in session.messages.iter().enumerate() {
+            let role = match msg.role {
+                MessageRole::User => "user",
+                MessageRole::Assistant => "assistant",
+                MessageRole::System => "system",
+                MessageRole::Tool => "tool",
+            };
+
+            let text = match &msg.blocks[0] {
+                ContentBlock::Text { text } => text.clone(),
+                ContentBlock::ToolResult { .. } => "ToolResult".to_string(),
+                ContentBlock::ToolUse { .. } => "ToolUse".to_string(),
+            };
+
+            let _ = self.db.lock().unwrap().save_message(
+                &format!("{}-{}", session.session_id, i),
+                &session.session_id,
+                role,
+                &text,
+            );
+        }
+
         Ok(())
     }
 

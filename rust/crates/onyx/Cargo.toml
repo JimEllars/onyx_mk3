@@ -10,6 +10,7 @@ name = "onyx"
 path = "src/main.rs"
 
 [dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
 telemetry = { path = "../telemetry" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

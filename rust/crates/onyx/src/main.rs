@@ -8,6 +8,7 @@
 )]
 pub(crate) mod app;
 mod init;
+pub(crate) mod db;
 use crate::app::{run_repl, LiveCli, PromptHistoryEntry, RuntimePluginState};
 mod input;
 mod render;
