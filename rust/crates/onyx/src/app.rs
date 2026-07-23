@@ -355,7 +355,9 @@ impl LiveCli {
         allowed_tools: Option<AllowedToolSet>,
         permission_mode: PermissionMode,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let db = std::sync::Arc::new(std::sync::Mutex::new(crate::db::Database::new().expect("Failed to initialize database")));
+        let db = std::sync::Arc::new(std::sync::Mutex::new(
+            crate::db::Database::new().expect("Failed to initialize database"),
+        ));
 
         let system_prompt = build_system_prompt()?;
         let session_state = Session::new().with_workspace_root(env::current_dir()?);
@@ -782,12 +784,19 @@ impl LiveCli {
         let session = self.runtime.session();
         session.save_to_path(&self.session.path)?;
 
-        let title = session.messages.first().map_or_else(|| "Session".to_string(), |m| match &m.blocks[0] {
-            ContentBlock::Text { text } => text.clone(),
-            _ => "Session".to_string()
-        });
+        let title = session.messages.first().map_or_else(
+            || "Session".to_string(),
+            |m| match &m.blocks[0] {
+                ContentBlock::Text { text } => text.clone(),
+                _ => "Session".to_string(),
+            },
+        );
 
-        let _ = self.db.lock().unwrap().save_session(&session.session_id, &title);
+        let _ = self
+            .db
+            .lock()
+            .unwrap()
+            .save_session(&session.session_id, &title);
 
         for (i, msg) in session.messages.iter().enumerate() {
             let role = match msg.role {

@@ -66,17 +66,20 @@ pub fn dispatch_to_axim_ingress(envelope: AximTelemetryEnvelope) {
         let client = reqwest::Client::new();
         tokio::spawn(async move {
             let request_id = uuid::Uuid::new_v4().to_string();
-            let req = client.post(&endpoint)
+            let req = client
+                .post(&endpoint)
                 .header("X-Request-ID", request_id)
                 .json(&envelope);
 
             match req.send().await {
                 Err(e) => {
                     tracing::warn!("Failed to dispatch telemetry to AXiM ingress: {}", e);
-                    metrics::LAST_TELEMETRY_DISPATCH_SUCCESS.store(false, std::sync::atomic::Ordering::Relaxed);
+                    metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
+                        .store(false, std::sync::atomic::Ordering::Relaxed);
                 }
                 Ok(_) => {
-                    metrics::LAST_TELEMETRY_DISPATCH_SUCCESS.store(true, std::sync::atomic::Ordering::Relaxed);
+                    metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
                 }
             }
         });

@@ -111,7 +111,8 @@ pub fn render_status_bar_text(
         " ∥ Last Pulse Sync: Never".to_string()
     };
 
-    let axim_sync_ok = telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS.load(std::sync::atomic::Ordering::Relaxed);
+    let axim_sync_ok = telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
+        .load(std::sync::atomic::Ordering::Relaxed);
     let axim_sync_str = if axim_sync_ok {
         " ∥ AXiM Sync: OK"
     } else {

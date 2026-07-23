@@ -202,7 +202,8 @@ impl CloudflareProvider {
             }
         });
 
-        let res = self.http
+        let res = self
+            .http
             .post(url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&payload)
@@ -224,8 +225,9 @@ impl CloudflareProvider {
         }
 
         let body_text = res.text().await.map_err(ApiError::Http)?;
-        let data: Value = serde_json::from_str(&body_text)
-            .map_err(|e| ApiError::json_deserialize("CloudflareGraphQL", "analytics", &body_text, e))?;
+        let data: Value = serde_json::from_str(&body_text).map_err(|e| {
+            ApiError::json_deserialize("CloudflareGraphQL", "analytics", &body_text, e)
+        })?;
 
         let invocations = data
             .get("data")
@@ -238,8 +240,15 @@ impl CloudflareProvider {
             .and_then(|w| w.first());
 
         if let Some(inv) = invocations {
-            let total_time = inv.get("sum").and_then(|s| s.get("executionTime")).and_then(serde_json::Value::as_f64).unwrap_or(0.0);
-            let count = inv.get("count").and_then(serde_json::Value::as_f64).unwrap_or(1.0);
+            let total_time = inv
+                .get("sum")
+                .and_then(|s| s.get("executionTime"))
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0);
+            let count = inv
+                .get("count")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(1.0);
             if count > 0.0 {
                 return Ok(total_time / count);
             }

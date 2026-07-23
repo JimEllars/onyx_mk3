@@ -287,4 +287,5 @@ pub fn is_trace_pulse_active() -> bool {
 }
 
 use std::sync::atomic::AtomicBool;
-pub static LAST_TELEMETRY_DISPATCH_SUCCESS: LazyLock<AtomicBool> = LazyLock::new(|| AtomicBool::new(true));
+pub static LAST_TELEMETRY_DISPATCH_SUCCESS: LazyLock<AtomicBool> =
+    LazyLock::new(|| AtomicBool::new(true));
