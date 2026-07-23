@@ -7,8 +7,8 @@
     clippy::unused_self
 )]
 pub(crate) mod app;
-mod init;
 pub(crate) mod db;
+mod init;
 use crate::app::{run_repl, LiveCli, PromptHistoryEntry, RuntimePluginState};
 mod input;
 mod render;

@@ -111,7 +111,15 @@ pub fn render_status_bar_text(
         " ∥ Last Pulse Sync: Never".to_string()
     };
 
-    text = format!("{text}{playbook_str}{pulse_sync_str}");
+    let axim_sync_ok = telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let axim_sync_str = if axim_sync_ok {
+        " ∥ AXiM Sync: OK"
+    } else {
+        " ∥ AXiM Sync: FAIL"
+    };
+
+    text = format!("{text}{playbook_str}{pulse_sync_str}{axim_sync_str}");
 
     let edge_status_val = telemetry::metrics::EDGE_KV_STATUS.get();
     let edge_state_str = if (edge_status_val - 1.0).abs() < f64::EPSILON {

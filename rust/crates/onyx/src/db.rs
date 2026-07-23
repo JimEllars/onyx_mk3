@@ -11,11 +11,12 @@ impl Database {
         let db_dir = PathBuf::from(home_dir).join(".onyx");
 
         if !db_dir.exists() {
-            std::fs::create_dir_all(&db_dir)
-                .map_err(|e| rusqlite::Error::SqliteFailure(
+            std::fs::create_dir_all(&db_dir).map_err(|e| {
+                rusqlite::Error::SqliteFailure(
                     rusqlite::ffi::Error::new(0),
-                    Some(format!("Failed to create db dir: {e}"))
-                ))?;
+                    Some(format!("Failed to create db dir: {e}")),
+                )
+            })?;
         }
 
         let db_path = db_dir.join("sessions.db");
@@ -60,7 +61,13 @@ impl Database {
         Ok(())
     }
 
-    pub fn save_message(&self, msg_id: &str, session_id: &str, role: &str, content: &str) -> Result<()> {
+    pub fn save_message(
+        &self,
+        msg_id: &str,
+        session_id: &str,
+        role: &str,
+        content: &str,
+    ) -> Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
         self.conn.execute(
             "INSERT INTO messages (id, session_id, role, content, timestamp)
