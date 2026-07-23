@@ -22,6 +22,66 @@ pub struct AximTelemetryPayload {
     pub error_rate_percent: f32,
     pub server_status: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TelemetryStatus {
+    Healthy,
+    Degraded,
+    Critical,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelemetryMetrics {
+    pub ttft: f64,
+    pub latency: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AximTelemetryEnvelope {
+    pub timestamp: u64,
+    pub service_name: String,
+    pub status: TelemetryStatus,
+    pub metrics: TelemetryMetrics,
+    pub anomalies: Vec<String>,
+}
+
+impl Default for AximTelemetryEnvelope {
+    fn default() -> Self {
+        Self {
+            timestamp: current_timestamp_ms(),
+            service_name: "onyx_mk3_core".to_string(),
+            status: TelemetryStatus::Healthy,
+            metrics: TelemetryMetrics {
+                ttft: 0.0,
+                latency: 0.0,
+            },
+            anomalies: vec![],
+        }
+    }
+}
+
+pub fn dispatch_to_axim_ingress(envelope: AximTelemetryEnvelope) {
+    if let Ok(url) = std::env::var("CORE_INGEST_URL") {
+        let endpoint = format!("{url}/functions/v1/telemetry-ingress");
+        let client = reqwest::Client::new();
+        tokio::spawn(async move {
+            let request_id = uuid::Uuid::new_v4().to_string();
+            let req = client.post(&endpoint)
+                .header("X-Request-ID", request_id)
+                .json(&envelope);
+
+            match req.send().await {
+                Err(e) => {
+                    tracing::warn!("Failed to dispatch telemetry to AXiM ingress: {}", e);
+                    metrics::LAST_TELEMETRY_DISPATCH_SUCCESS.store(false, std::sync::atomic::Ordering::Relaxed);
+                }
+                Ok(_) => {
+                    metrics::LAST_TELEMETRY_DISPATCH_SUCCESS.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+        });
+    }
+}
 pub const DEFAULT_AGENTIC_BETA: &str = "claude-code-20250219";
 pub const DEFAULT_PROMPT_CACHING_SCOPE_BETA: &str = "prompt-caching-scope-2026-01-05";
 
