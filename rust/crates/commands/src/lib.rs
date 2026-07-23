@@ -5568,13 +5568,13 @@ pub mod extensions;
 pub mod micro_program;
 
 pub async fn dispatch_email(to: &str, subject: &str, html_body: &str) -> Result<bool, String> {
-    let edge_url = std::env::var("AXIM_ONYX_EDGE_URL")
-        .unwrap_or_else(|_| "http://localhost:8787".to_string());
+    let edge_url =
+        std::env::var("AXIM_ONYX_EDGE_URL").unwrap_or_else(|_| "http://localhost:8787".to_string());
 
     let url = format!("{edge_url}/api/v1/email/send");
 
-    let axim_onyx_secret = std::env::var("AXIM_ONYX_SECRET")
-        .unwrap_or_else(|_| "default_secret".to_string());
+    let axim_onyx_secret =
+        std::env::var("AXIM_ONYX_SECRET").unwrap_or_else(|_| "default_secret".to_string());
 
     let client = reqwest::Client::new();
 
@@ -5584,7 +5584,8 @@ pub async fn dispatch_email(to: &str, subject: &str, html_body: &str) -> Result<
         "html_body": html_body
     });
 
-    let res = client.post(&url)
+    let res = client
+        .post(&url)
         .header("Authorization", format!("Bearer {axim_onyx_secret}"))
         .json(&payload)
         .send()

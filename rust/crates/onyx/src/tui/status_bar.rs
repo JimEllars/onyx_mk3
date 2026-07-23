@@ -134,7 +134,9 @@ pub fn render_status_bar_text(
         "{text} ∥ EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s"
     );
 
-    if telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS.load(std::sync::atomic::Ordering::Relaxed) {
+    if telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
         text = format!("{text} ∥ [Email Dispatched: success]");
     }
 
