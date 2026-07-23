@@ -9,6 +9,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+telemetry = { path = "../telemetry" }
 plugins = { path = "../plugins" }
 reqwest = { version = "0.13.2", features = ["json"] }
 runtime = { path = "../runtime" }
