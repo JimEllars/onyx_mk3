@@ -52,7 +52,7 @@ impl MicroProgram for BillingFallback {
         Ok(None)
     }
 
-    async fn execute(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
+    async fn execute_internal(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
         // Retrieve transaction hash from payload
         let req: BillingFallbackRequest =
             serde_json::from_value(payload.meta_data.clone()).unwrap_or_default();

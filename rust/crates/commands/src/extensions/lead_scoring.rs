@@ -56,7 +56,7 @@ impl MicroProgram for PredictiveLeadScoring {
         Ok(None)
     }
 
-    async fn execute(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
+    async fn execute_internal(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
         // Parse payload meta_data with Default fallbacks for missing/malformed fields
         let req: LeadScoringRequest =
             serde_json::from_value(payload.meta_data.clone()).unwrap_or_default();

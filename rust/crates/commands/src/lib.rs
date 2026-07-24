@@ -5657,3 +5657,63 @@ pub async fn check_email_status(email_id: &str) -> Result<String, String> {
         Err(format!("Status check returned error: {err_text}"))
     }
 }
+
+pub async fn log_command_execution(
+    user_id: &str,
+    command_type: &str,
+    status: &str,
+    execution_time_ms: u64,
+    details: &str,
+) {
+    let edge_url =
+        std::env::var("AXIM_ONYX_EDGE_URL").unwrap_or_else(|_| "http://localhost:8787".to_string());
+    let url = format!("{edge_url}/api/v1/commands/log");
+
+    let axim_onyx_secret =
+        std::env::var("AXIM_ONYX_SECRET").unwrap_or_else(|_| "default_secret".to_string());
+
+    let payload = serde_json::json!({
+        "id": uuid::Uuid::new_v4().to_string(),
+        "user_id": user_id,
+        "command_type": command_type,
+        "status": status,
+        "execution_time_ms": execution_time_ms,
+        "details": details,
+        "created_at": u64::try_from(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()).unwrap_or(0)
+    });
+
+    let client = reqwest::Client::new();
+    let res = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {axim_onyx_secret}"))
+        .json(&payload)
+        .send()
+        .await;
+
+    match res {
+        Ok(r) if r.status().is_success() => {
+            // Logged successfully
+        }
+        _ => {
+            // Failed to log to edge, dispatch degraded telemetry
+            telemetry::dispatch_to_axim_ingress(telemetry::AximTelemetryEnvelope {
+                timestamp: u64::try_from(
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis()
+                ).unwrap_or(0),
+                service_name: "onyx-command-audit".to_string(),
+                status: telemetry::TelemetryStatus::Degraded,
+                metrics: telemetry::TelemetryMetrics {
+                    ttft: 0.0,
+                    latency: 0.0,
+                },
+                anomalies: vec![format!(
+                    "Failed to log command execution for {} - {}",
+                    user_id, command_type
+                )],
+            });
+        }
+    }
+}

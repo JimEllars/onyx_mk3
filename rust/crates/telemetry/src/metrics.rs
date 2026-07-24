@@ -232,6 +232,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub static WORKER_QUEUE_DEPTH: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
 pub static WORKER_PROCESSED_TOTAL: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
+pub static COMMAND_EXECUTION_COUNT: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
+
+pub fn increment_command_execution() {
+    COMMAND_EXECUTION_COUNT.fetch_add(1, Ordering::Relaxed);
+}
+
+pub fn get_command_execution_total() -> usize {
+    COMMAND_EXECUTION_COUNT.load(Ordering::Relaxed)
+}
+
 pub static DLQ_DEPTH: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
 pub static POOL_EXHAUSTION_EVENTS: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
 

@@ -59,7 +59,7 @@ impl MicroProgram for NDAGenerator {
         Ok(None)
     }
 
-    async fn execute(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
+    async fn execute_internal(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
         let req: NDARequest = serde_json::from_value(payload.meta_data.clone()).unwrap_or_default();
 
         let mut missing_fields = Vec::new();

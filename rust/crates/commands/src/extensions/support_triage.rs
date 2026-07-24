@@ -233,7 +233,7 @@ impl MicroProgram for SupportTriage {
         Ok(None)
     }
 
-    async fn execute(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
+    async fn execute_internal(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
         let diagnostic_log: DiagnosticLog = serde_json::from_value(payload.meta_data.clone())
             .map_err(|e| format!("Failed to parse diagnostic log: {e}"))?;
 

@@ -61,7 +61,7 @@ impl MicroProgram for DemandLetterGenerator {
         Ok(None)
     }
 
-    async fn execute(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
+    async fn execute_internal(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
         // Attempt to parse payload into DemandLetterRequest, using Default for missing or malformed JSON
         let req: DemandLetterRequest =
             serde_json::from_value(payload.meta_data.clone()).unwrap_or_default();
