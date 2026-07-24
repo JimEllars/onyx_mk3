@@ -134,6 +134,12 @@ pub fn render_status_bar_text(
         "{text} ∥ EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s"
     );
 
+    if telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
+        text = format!("{text} ∥ [Email Dispatched: success]");
+    }
+
     let mem_count = if let Some(brand) = brand_id {
         runtime::vector_memory::global_memory()
             .read()

@@ -21,6 +21,7 @@ export interface Env {
   GITHUB_WEBHOOK_SECRET: string;
   WP_WEBHOOK_SECRET: string;
   AXIM_INTERNAL_KEY: string;
+  EMAILIT_API_KEY?: string;
 }
 
 const ALLOWED_ORIGINS = [
@@ -931,7 +932,57 @@ export default {
             traceId,
           ),
         });
-      } else if (request.method === "POST" && url.pathname === "/api/v1/chat") {
+      } else if (request.method === "POST" && url.pathname === "/api/v1/email/send") {
+        const authError = await checkAuth(request, env);
+        if (authError) return authError;
+
+        if (!env.EMAILIT_API_KEY) {
+          return new Response(JSON.stringify({ error: "EMAILIT_API_KEY is not configured" }), {
+            status: 500,
+            headers: addOnyxHeaders({
+              ...getCorsHeaders(request, env),
+              "Content-Type": "application/json"
+            }, edgeStatus, cacheStatus, traceId)
+          });
+        }
+
+        try {
+          const { to, subject, html_body } = await request.clone().json() as { to: string, subject: string, html_body: string };
+
+          const emailitRes = await fetch("https://api.emailit.com/v1/emails", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${env.EMAILIT_API_KEY}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              to,
+              subject,
+              html: html_body
+            })
+          });
+
+          if (!emailitRes.ok) {
+            const errText = await emailitRes.text();
+            throw new Error(`EmailIt API failed with status ${emailitRes.status}: ${errText}`);
+          }
+
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: addOnyxHeaders({
+              ...getCorsHeaders(request, env),
+              "Content-Type": "application/json"
+            }, edgeStatus, cacheStatus, traceId)
+          });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ error: e.message || "Failed to dispatch email" }), {
+            status: 500,
+            headers: addOnyxHeaders({
+              ...getCorsHeaders(request, env),
+              "Content-Type": "application/json"
+            }, edgeStatus, cacheStatus, traceId)
+          });
+        } } else if (request.method === "POST" && url.pathname === "/api/v1/chat") {
         const authError = await checkAuth(request, env);
         if (authError) return authError;
         // 3. Parse command and context

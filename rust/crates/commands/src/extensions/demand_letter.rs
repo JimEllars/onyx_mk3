@@ -98,6 +98,20 @@ impl MicroProgram for DemandLetterGenerator {
             )
         };
 
+        if status == "Generated" {
+            if let Some(ref url) = document_url {
+                let body = format!(
+                    "Your demand letter has been generated. You can download it here: {url}"
+                );
+                if crate::dispatch_email("client@example.com", "Your Demand Letter is Ready", &body)
+                    .await
+                    .is_ok()
+                {
+                    telemetry::dispatch_to_axim_ingress(telemetry::AximTelemetryEnvelope::default());
+                }
+            }
+        }
+
         let res = DemandLetterResponse {
             document_url,
             status,

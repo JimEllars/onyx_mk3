@@ -5566,3 +5566,36 @@ mod tests {
 }
 pub mod extensions;
 pub mod micro_program;
+
+pub async fn dispatch_email(to: &str, subject: &str, html_body: &str) -> Result<bool, String> {
+    let edge_url =
+        std::env::var("AXIM_ONYX_EDGE_URL").unwrap_or_else(|_| "http://localhost:8787".to_string());
+
+    let url = format!("{edge_url}/api/v1/email/send");
+
+    let axim_onyx_secret =
+        std::env::var("AXIM_ONYX_SECRET").unwrap_or_else(|_| "default_secret".to_string());
+
+    let client = reqwest::Client::new();
+
+    let payload = serde_json::json!({
+        "to": to,
+        "subject": subject,
+        "html_body": html_body
+    });
+
+    let res = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {axim_onyx_secret}"))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {e}"))?;
+
+    if res.status().is_success() {
+        Ok(true)
+    } else {
+        let err_text = res.text().await.unwrap_or_default();
+        Err(format!("Email dispatch returned error: {err_text}"))
+    }
+}
