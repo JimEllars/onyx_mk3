@@ -114,7 +114,10 @@ pub fn render_status_bar_text(
     let axim_sync_ok = telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
         .load(std::sync::atomic::Ordering::Relaxed);
     let axim_sync_str = if axim_sync_ok {
-        format!(" ∥ AXiM Sync: OK [Telemetry Q:{}]", telemetry::get_telemetry_queue_depth())
+        format!(
+            " ∥ AXiM Sync: OK [Telemetry Q:{}]",
+            telemetry::get_telemetry_queue_depth()
+        )
     } else {
         let q_depth = telemetry::get_telemetry_queue_depth();
         format!(" ∥ AXiM Sync: FAIL [Telemetry Q:{q_depth}]")
