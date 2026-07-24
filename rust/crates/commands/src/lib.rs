@@ -5593,7 +5593,10 @@ pub async fn dispatch_email(to: &str, subject: &str, html_body: &str) -> Result<
         .map_err(|e| format!("Network error: {e}"))?;
 
     if res.status().is_success() {
-        let resp_json: serde_json::Value = res.json().await.map_err(|e| format!("Failed to parse response: {e}"))?;
+        let resp_json: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {e}"))?;
         if let Some(email_id) = resp_json.get("email_id").and_then(|v| v.as_str()) {
             Ok(email_id.to_string())
         } else {
@@ -5620,18 +5623,29 @@ pub async fn check_email_status(email_id: &str) -> Result<String, String> {
         .map_err(|e| format!("Network error: {e}"))?;
 
     if res.status().is_success() {
-        let resp_json: serde_json::Value = res.json().await.map_err(|e| format!("Failed to parse response: {e}"))?;
+        let resp_json: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {e}"))?;
         if let Some(status) = resp_json.get("status").and_then(|v| v.as_str()) {
             if status == "bounced" || status == "failed" {
                 telemetry::dispatch_to_axim_ingress(telemetry::AximTelemetryEnvelope {
-                    timestamp: u64::try_from(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()).unwrap_or_default(),
+                    timestamp: u64::try_from(
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis(),
+                    )
+                    .unwrap_or_default(),
                     service_name: "onyx-email".to_string(),
                     status: telemetry::TelemetryStatus::Degraded,
                     metrics: telemetry::TelemetryMetrics {
                         ttft: 0.0,
                         latency: 0.0,
                     },
-                    anomalies: vec![format!("Email delivery failed for id {email_id} with status {status}")],
+                    anomalies: vec![format!(
+                        "Email delivery failed for id {email_id} with status {status}"
+                    )],
                 });
             }
             Ok(status.to_string())
