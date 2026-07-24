@@ -250,6 +250,14 @@ async function bootstrapDatabase(env: Env) {
         status TEXT, -- 'sent', 'delivered', 'bounced', 'failed'
         updated_at INTEGER
       );
+      CREATE TABLE IF NOT EXISTS TelemetryLogs (
+        id TEXT PRIMARY KEY,
+        session_id TEXT,
+        status TEXT, -- 'healthy', 'degraded', 'critical'
+        payload TEXT,
+        synced INTEGER DEFAULT 0,
+        created_at INTEGER
+      );
     `).run();
   }
 }
@@ -441,7 +449,68 @@ export default {
 
     const url = new URL(request.url);
 
-    if (request.method === "POST" && url.pathname === "/api/v1/onyx/summon") {
+    if (request.method === "POST" && url.pathname === "/functions/v1/telemetry-ingress") {
+      ctx.waitUntil(bootstrapDatabase(env));
+      try {
+        const payload = await request.clone().json() as { session_id?: string, status?: string };
+        const id = Date.now().toString() + "_" + Math.random().toString(36).substring(7);
+        const payloadStr = JSON.stringify(payload);
+
+        if (env.ONYX_DB) {
+          ctx.waitUntil(env.ONYX_DB.prepare(
+            "INSERT INTO TelemetryLogs (id, session_id, status, payload, synced, created_at) VALUES (?, ?, ?, ?, 0, ?)"
+          ).bind(id, payload.session_id || "unknown", payload.status || "healthy", payloadStr, Date.now()).run());
+        }
+
+        if (!env.CORE_INGEST_URL) {
+          return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), {
+            status: 500,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        }
+        const ingestUrl = env.CORE_INGEST_URL.replace(/\/$/, "") + "/functions/v1/telemetry-ingress";
+        ctx.waitUntil(
+          fetchWithRetry(ingestUrl, {
+            method: "POST",
+            headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId),
+            body: payloadStr
+          }).catch(e => console.error("Telemetry forward failed", e))
+        );
+        return new Response(JSON.stringify({ success: true, message: "Telemetry ingested" }), {
+          headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+        });
+      } catch (e: any) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId) });
+      }
+    } else if (request.method === "POST" && url.pathname === "/api/v1/telemetry/flush") {
+      ctx.waitUntil(bootstrapDatabase(env));
+      if (!env.CORE_INGEST_URL) {
+        return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), { status: 500, headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId) });
+      }
+      try {
+        if (env.ONYX_DB) {
+          const result = await env.ONYX_DB.prepare("SELECT * FROM TelemetryLogs WHERE synced = 0 LIMIT 100").all();
+          const rows = result.results;
+          if (rows && rows.length > 0) {
+            const ingestUrl = env.CORE_INGEST_URL.replace(/\/$/, "") + "/functions/v1/telemetry-ingress";
+            for (const row of rows) {
+               await fetchWithRetry(ingestUrl, {
+                 method: "POST",
+                 headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId),
+                 body: String(row.payload)
+               });
+               await env.ONYX_DB.prepare("UPDATE TelemetryLogs SET synced = 1 WHERE id = ?").bind(row.id).run();
+            }
+          }
+          return new Response(JSON.stringify({ success: true, flushed: rows ? rows.length : 0 }), {
+            headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        }
+        return new Response(JSON.stringify({ success: false, message: "No DB" }), { headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId) });
+      } catch (e: any) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId) });
+      }
+    } else if (request.method === "POST" && url.pathname === "/api/v1/onyx/summon") {
       const authHeader = request.headers.get("Authorization");
       const expectedToken = `Bearer ${env.ONYX_CLIENT_SECRET}`;
       if (!authHeader || authHeader !== expectedToken) {

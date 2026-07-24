@@ -60,29 +60,104 @@ impl Default for AximTelemetryEnvelope {
     }
 }
 
+
+pub static QUEUED_TELEMETRY: std::sync::LazyLock<Arc<Mutex<Vec<AximTelemetryEnvelope>>>> = std::sync::LazyLock::new(|| Arc::new(Mutex::new(Vec::new())));
+
 pub fn dispatch_to_axim_ingress(envelope: AximTelemetryEnvelope) {
     if let Ok(url) = std::env::var("CORE_INGEST_URL") {
         let endpoint = format!("{url}/functions/v1/telemetry-ingress");
         let client = reqwest::Client::new();
         tokio::spawn(async move {
             let request_id = uuid::Uuid::new_v4().to_string();
-            let req = client
-                .post(&endpoint)
-                .header("X-Request-ID", request_id)
-                .json(&envelope);
 
-            match req.send().await {
-                Err(e) => {
-                    tracing::warn!("Failed to dispatch telemetry to AXiM ingress: {}", e);
-                    metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
-                        .store(false, std::sync::atomic::Ordering::Relaxed);
+            let mut retries = 0;
+            let mut backoff = 200;
+            let mut success = false;
+
+            while retries < 3 {
+                let req = client
+                    .post(&endpoint)
+                    .header("X-Request-ID", request_id.clone())
+                    .json(&envelope);
+
+                if let Err(e) = req.send().await {
+                    tracing::warn!("Failed to dispatch telemetry to AXiM ingress (attempt {}): {}", retries + 1, e);
+                    retries += 1;
+                    if retries < 3 {
+                        tokio::time::sleep(std::time::Duration::from_millis(backoff)).await;
+                        backoff *= 2;
+                    }
+                } else {
+                    success = true;
+                    break;
                 }
-                Ok(_) => {
-                    metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+
+            if success {
+                metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+            } else {
+                tracing::error!("All retries failed for telemetry dispatch. Queuing internally.");
+                metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
+                    .store(false, std::sync::atomic::Ordering::Relaxed);
+                if let Ok(mut queue) = QUEUED_TELEMETRY.lock() {
+                    queue.push(envelope);
                 }
             }
         });
+    }
+}
+
+pub async fn flush_queued_telemetry() {
+    let mut envelopes = {
+        let Ok(mut queue) = QUEUED_TELEMETRY.lock() else { return };
+        if queue.is_empty() { return }
+        let elements = queue.clone();
+        queue.clear();
+        elements
+    };
+
+    // First try AXiM ingress directly
+    if let Ok(url) = std::env::var("CORE_INGEST_URL") {
+        let endpoint = format!("{url}/functions/v1/telemetry-ingress");
+        let client = reqwest::Client::new();
+
+        let mut failed = Vec::new();
+        for env in envelopes {
+            let request_id = uuid::Uuid::new_v4().to_string();
+            let req = client
+                .post(&endpoint)
+                .header("X-Request-ID", request_id)
+                .json(&env);
+
+            if let Err(e) = req.send().await {
+                tracing::warn!("Failed to flush queued telemetry directly: {}", e);
+                failed.push(env);
+            }
+        }
+        envelopes = failed;
+    }
+
+    if envelopes.is_empty() { return; }
+
+    // Fallback: try edge bridge
+    let edge_url = std::env::var("AXIM_ONYX_EDGE_URL").unwrap_or_else(|_| "http://localhost:8787".to_string());
+    let endpoint = format!("{edge_url}/api/v1/telemetry/flush");
+    let secret = std::env::var("AXIM_ONYX_SECRET").unwrap_or_else(|_| "default_secret".to_string());
+
+    let client = reqwest::Client::new();
+    let request_id = uuid::Uuid::new_v4().to_string();
+
+    let req = client
+        .post(&endpoint)
+        .header("Authorization", format!("Bearer {secret}"))
+        .header("X-Request-ID", request_id);
+
+    if let Err(e) = req.send().await {
+        tracing::warn!("Failed to flush queued telemetry via edge bridge: {}", e);
+        if let Ok(mut queue) = QUEUED_TELEMETRY.lock() {
+            queue.extend(envelopes);
+        }
     }
 }
 pub const DEFAULT_AGENTIC_BETA: &str = "claude-code-20250219";
@@ -641,3 +716,11 @@ pub struct EdgeBridgeStatus {
     pub pending_webhooks: u32,
 }
 pub mod dlq;
+
+pub fn get_telemetry_queue_depth() -> usize {
+    if let Ok(queue) = QUEUED_TELEMETRY.lock() {
+        queue.len()
+    } else {
+        0
+    }
+}

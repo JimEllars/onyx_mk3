@@ -2901,6 +2901,7 @@ name = "telemetry"
 version = "0.1.0"
 dependencies = [
  "lazy_static",
+ "once_cell",
  "prometheus",
  "reqwest 0.13.2",
  "serde",
