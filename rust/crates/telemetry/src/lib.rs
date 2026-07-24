@@ -80,11 +80,27 @@ pub fn dispatch_to_axim_ingress(envelope: AximTelemetryEnvelope) {
                     .header("X-Request-ID", request_id.clone())
                     .json(&envelope);
 
-                if let Err(e) = req.send().await {
+                let mut should_retry = false;
+                let mut err_msg = String::new();
+
+                match req.send().await {
+                    Ok(resp) => {
+                        if !resp.status().is_success() {
+                            should_retry = true;
+                            err_msg = format!("HTTP error: {}", resp.status());
+                        }
+                    }
+                    Err(e) => {
+                        should_retry = true;
+                        err_msg = e.to_string();
+                    }
+                }
+
+                if should_retry {
                     tracing::warn!(
                         "Failed to dispatch telemetry to AXiM ingress (attempt {}): {}",
                         retries + 1,
-                        e
+                        err_msg
                     );
                     retries += 1;
                     if retries < 3 {
