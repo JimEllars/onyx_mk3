@@ -114,14 +114,13 @@ pub fn render_status_bar_text(
     let axim_sync_ok = telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
         .load(std::sync::atomic::Ordering::Relaxed);
     let axim_sync_str = if axim_sync_ok {
-        " ∥ AXiM Sync: OK".to_string()
+        format!(
+            " ∥ AXiM Sync: OK [Telemetry Q:{}]",
+            telemetry::get_telemetry_queue_depth()
+        )
     } else {
         let q_depth = telemetry::get_telemetry_queue_depth();
-        if q_depth > 0 {
-            format!(" ∥ AXiM Sync: FAIL [Telemetry: Q:{q_depth}]")
-        } else {
-            " ∥ AXiM Sync: FAIL".to_string()
-        }
+        format!(" ∥ AXiM Sync: FAIL [Telemetry Q:{q_depth}]")
     };
 
     text = format!("{text}{playbook_str}{pulse_sync_str}{axim_sync_str}");
@@ -261,10 +260,7 @@ pub fn draw_status_bar(
 
         let pulse_active = telemetry::metrics::is_trace_pulse_active();
         let q_depth = telemetry::get_telemetry_queue_depth();
-        let (bg, fg) = if q_depth > 0
-            && !telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
-                .load(std::sync::atomic::Ordering::Relaxed)
-        {
+        let (bg, fg) = if q_depth > 0 {
             (Color::Yellow, Color::Black)
         } else if web3_wallet_address.is_some() {
             (Color::DarkBlue, Color::Cyan)
