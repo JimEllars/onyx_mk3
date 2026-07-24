@@ -5,6 +5,7 @@
  */
 
 export interface Env {
+  ONYX_DB?: D1Database;
   ALLOWED_ORIGIN?: string;
   ONYX_CLIENT_SECRET?: string;
   CHAT_MODEL?: string;
@@ -236,6 +237,21 @@ async function verifyAximSignature(
   }
 
   return null;
+}
+
+
+async function bootstrapDatabase(env: Env) {
+  if (env.ONYX_DB) {
+    await env.ONYX_DB.prepare(`
+      CREATE TABLE IF NOT EXISTS EmailLogs (
+        id TEXT PRIMARY KEY,
+        to_email TEXT,
+        subject TEXT,
+        status TEXT, -- 'sent', 'delivered', 'bounced', 'failed'
+        updated_at INTEGER
+      );
+    `).run();
+  }
 }
 
 export default {
@@ -933,7 +949,8 @@ export default {
           ),
         });
       } else if (request.method === "POST" && url.pathname === "/api/v1/email/send") {
-        const authError = await checkAuth(request, env);
+        ctx.waitUntil(bootstrapDatabase(env));
+      const authError = await checkAuth(request, env);
         if (authError) return authError;
 
         if (!env.EMAILIT_API_KEY) {
@@ -947,6 +964,7 @@ export default {
         }
 
         try {
+
           const { to, subject, html_body } = await request.clone().json() as { to: string, subject: string, html_body: string };
 
           const emailitRes = await fetch("https://api.emailit.com/v1/emails", {
@@ -967,7 +985,17 @@ export default {
             throw new Error(`EmailIt API failed with status ${emailitRes.status}: ${errText}`);
           }
 
-          return new Response(JSON.stringify({ success: true }), {
+          const email_id = crypto.randomUUID();
+          if (env.ONYX_DB) {
+            ctx.waitUntil(
+              env.ONYX_DB.prepare(
+                "INSERT INTO EmailLogs (id, to_email, subject, status, updated_at) VALUES (?, ?, ?, 'sent', ?)"
+              ).bind(email_id, to, subject, Date.now()).run()
+            );
+          }
+
+          return new Response(JSON.stringify({ success: true, email_id }), {
+
             status: 200,
             headers: addOnyxHeaders({
               ...getCorsHeaders(request, env),
@@ -982,7 +1010,53 @@ export default {
               "Content-Type": "application/json"
             }, edgeStatus, cacheStatus, traceId)
           });
-        } } else if (request.method === "POST" && url.pathname === "/api/v1/chat") {
+        }
+      } else if (request.method === "POST" && url.pathname === "/api/v1/email/webhook") {
+        try {
+          ctx.waitUntil(bootstrapDatabase(env));
+          const payload = await request.json() as { email_id: string, event_type: string };
+          if (!payload.email_id || !payload.event_type) {
+            return new Response(JSON.stringify({ error: "Missing email_id or event_type" }), {
+              status: 400,
+              headers: { ...getCorsHeaders(request, env), "Content-Type": "application/json" }
+            });
+          }
+          if (env.ONYX_DB) {
+            await env.ONYX_DB.prepare(
+              "UPDATE EmailLogs SET status = ?, updated_at = ? WHERE id = ?"
+            ).bind(payload.event_type, Date.now(), payload.email_id).run();
+          }
+          return new Response(JSON.stringify({ success: true }), {
+            headers: { ...getCorsHeaders(request, env), "Content-Type": "application/json" }
+          });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { ...getCorsHeaders(request, env), "Content-Type": "application/json" } });
+        }
+      } else if (request.method === "GET" && url.pathname.startsWith("/api/v1/email/status/")) {
+        try {
+          ctx.waitUntil(bootstrapDatabase(env));
+          const authError = await checkAuth(request, env);
+          if (authError) return authError;
+
+          const email_id = url.pathname.split("/").pop();
+          if (!email_id) {
+            return new Response(JSON.stringify({ error: "Missing email_id" }), { status: 400, headers: { ...getCorsHeaders(request, env), "Content-Type": "application/json" } });
+          }
+
+          let status = "unknown";
+          if (env.ONYX_DB) {
+            const row: any = await env.ONYX_DB.prepare("SELECT status FROM EmailLogs WHERE id = ?").bind(email_id).first();
+            if (row) {
+              status = row.status;
+            }
+          }
+          return new Response(JSON.stringify({ success: true, status }), {
+            headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId) });
+        }
+} else if (request.method === "POST" && url.pathname === "/api/v1/chat") {
         const authError = await checkAuth(request, env);
         if (authError) return authError;
         // 3. Parse command and context

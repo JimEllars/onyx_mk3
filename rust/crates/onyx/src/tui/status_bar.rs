@@ -134,7 +134,17 @@ pub fn render_status_bar_text(
         "{text} ∥ EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s"
     );
 
-    if telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
+    let email_status = telemetry::metrics::get_last_email_status();
+    if !email_status.is_empty() {
+        let display_status = match email_status.as_str() {
+            "sent" => "Sent",
+            "delivered" => "Delivered",
+            "bounced" => "Bounced",
+            "failed" => "Failed",
+            _ => &email_status,
+        };
+        text = format!("{text} ∥ [Email: {display_status}]");
+    } else if telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
         .load(std::sync::atomic::Ordering::Relaxed)
     {
         text = format!("{text} ∥ [Email Dispatched: success]");
