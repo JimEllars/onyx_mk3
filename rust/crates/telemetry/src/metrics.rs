@@ -289,3 +289,22 @@ pub fn is_trace_pulse_active() -> bool {
 use std::sync::atomic::AtomicBool;
 pub static LAST_TELEMETRY_DISPATCH_SUCCESS: LazyLock<AtomicBool> =
     LazyLock::new(|| AtomicBool::new(true));
+
+use std::sync::RwLock;
+
+pub static LAST_EMAIL_STATUS: LazyLock<RwLock<String>> =
+    LazyLock::new(|| RwLock::new(String::new()));
+
+pub fn update_last_email_status(status: &str) {
+    if let Ok(mut lock) = LAST_EMAIL_STATUS.write() {
+        *lock = status.to_string();
+    }
+}
+
+pub fn get_last_email_status() -> String {
+    if let Ok(lock) = LAST_EMAIL_STATUS.read() {
+        lock.clone()
+    } else {
+        String::new()
+    }
+}

@@ -103,10 +103,22 @@ impl MicroProgram for DemandLetterGenerator {
                 let body = format!(
                     "Your demand letter has been generated. You can download it here: {url}"
                 );
-                if crate::dispatch_email("client@example.com", "Your Demand Letter is Ready", &body)
-                    .await
-                    .is_ok()
+                if let Ok(email_id) = crate::dispatch_email(
+                    "client@example.com",
+                    "Your Demand Letter is Ready",
+                    &body,
+                )
+                .await
                 {
+                    telemetry::metrics::update_last_email_status("sent");
+
+                    // Spawn a background task to check email status
+                    tokio::spawn(async move {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                        if let Ok(status) = crate::check_email_status(&email_id).await {
+                            telemetry::metrics::update_last_email_status(&status);
+                        }
+                    });
                     telemetry::dispatch_to_axim_ingress(telemetry::AximTelemetryEnvelope::default());
                 }
             }

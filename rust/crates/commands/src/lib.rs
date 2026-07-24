@@ -5567,7 +5567,7 @@ mod tests {
 pub mod extensions;
 pub mod micro_program;
 
-pub async fn dispatch_email(to: &str, subject: &str, html_body: &str) -> Result<bool, String> {
+pub async fn dispatch_email(to: &str, subject: &str, html_body: &str) -> Result<String, String> {
     let edge_url =
         std::env::var("AXIM_ONYX_EDGE_URL").unwrap_or_else(|_| "http://localhost:8787".to_string());
 
@@ -5593,9 +5593,67 @@ pub async fn dispatch_email(to: &str, subject: &str, html_body: &str) -> Result<
         .map_err(|e| format!("Network error: {e}"))?;
 
     if res.status().is_success() {
-        Ok(true)
+        let resp_json: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {e}"))?;
+        if let Some(email_id) = resp_json.get("email_id").and_then(|v| v.as_str()) {
+            Ok(email_id.to_string())
+        } else {
+            Err("Email dispatched successfully but no email_id returned".to_string())
+        }
     } else {
         let err_text = res.text().await.unwrap_or_default();
         Err(format!("Email dispatch returned error: {err_text}"))
+    }
+}
+
+pub async fn check_email_status(email_id: &str) -> Result<String, String> {
+    let edge_url =
+        std::env::var("AXIM_ONYX_EDGE_URL").unwrap_or_else(|_| "http://localhost:8787".to_string());
+    let url = format!("{edge_url}/api/v1/email/status/{email_id}");
+    let axim_onyx_secret =
+        std::env::var("AXIM_ONYX_SECRET").unwrap_or_else(|_| "default_secret".to_string());
+    let client = reqwest::Client::new();
+    let res = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {axim_onyx_secret}"))
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {e}"))?;
+
+    if res.status().is_success() {
+        let resp_json: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {e}"))?;
+        if let Some(status) = resp_json.get("status").and_then(|v| v.as_str()) {
+            if status == "bounced" || status == "failed" {
+                telemetry::dispatch_to_axim_ingress(telemetry::AximTelemetryEnvelope {
+                    timestamp: u64::try_from(
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis(),
+                    )
+                    .unwrap_or_default(),
+                    service_name: "onyx-email".to_string(),
+                    status: telemetry::TelemetryStatus::Degraded,
+                    metrics: telemetry::TelemetryMetrics {
+                        ttft: 0.0,
+                        latency: 0.0,
+                    },
+                    anomalies: vec![format!(
+                        "Email delivery failed for id {email_id} with status {status}"
+                    )],
+                });
+            }
+            Ok(status.to_string())
+        } else {
+            Err("No status returned in response".to_string())
+        }
+    } else {
+        let err_text = res.text().await.unwrap_or_default();
+        Err(format!("Status check returned error: {err_text}"))
     }
 }
