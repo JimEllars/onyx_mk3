@@ -60,8 +60,8 @@ impl Default for AximTelemetryEnvelope {
     }
 }
 
-
-pub static QUEUED_TELEMETRY: std::sync::LazyLock<Arc<Mutex<Vec<AximTelemetryEnvelope>>>> = std::sync::LazyLock::new(|| Arc::new(Mutex::new(Vec::new())));
+pub static QUEUED_TELEMETRY: std::sync::LazyLock<Arc<Mutex<Vec<AximTelemetryEnvelope>>>> =
+    std::sync::LazyLock::new(|| Arc::new(Mutex::new(Vec::new())));
 
 pub fn dispatch_to_axim_ingress(envelope: AximTelemetryEnvelope) {
     if let Ok(url) = std::env::var("CORE_INGEST_URL") {
@@ -81,7 +81,11 @@ pub fn dispatch_to_axim_ingress(envelope: AximTelemetryEnvelope) {
                     .json(&envelope);
 
                 if let Err(e) = req.send().await {
-                    tracing::warn!("Failed to dispatch telemetry to AXiM ingress (attempt {}): {}", retries + 1, e);
+                    tracing::warn!(
+                        "Failed to dispatch telemetry to AXiM ingress (attempt {}): {}",
+                        retries + 1,
+                        e
+                    );
                     retries += 1;
                     if retries < 3 {
                         tokio::time::sleep(std::time::Duration::from_millis(backoff)).await;
@@ -110,8 +114,12 @@ pub fn dispatch_to_axim_ingress(envelope: AximTelemetryEnvelope) {
 
 pub async fn flush_queued_telemetry() {
     let mut envelopes = {
-        let Ok(mut queue) = QUEUED_TELEMETRY.lock() else { return };
-        if queue.is_empty() { return }
+        let Ok(mut queue) = QUEUED_TELEMETRY.lock() else {
+            return;
+        };
+        if queue.is_empty() {
+            return;
+        }
         let elements = queue.clone();
         queue.clear();
         elements
@@ -138,10 +146,13 @@ pub async fn flush_queued_telemetry() {
         envelopes = failed;
     }
 
-    if envelopes.is_empty() { return; }
+    if envelopes.is_empty() {
+        return;
+    }
 
     // Fallback: try edge bridge
-    let edge_url = std::env::var("AXIM_ONYX_EDGE_URL").unwrap_or_else(|_| "http://localhost:8787".to_string());
+    let edge_url =
+        std::env::var("AXIM_ONYX_EDGE_URL").unwrap_or_else(|_| "http://localhost:8787".to_string());
     let endpoint = format!("{edge_url}/api/v1/telemetry/flush");
     let secret = std::env::var("AXIM_ONYX_SECRET").unwrap_or_else(|_| "default_secret".to_string());
 

@@ -261,7 +261,10 @@ pub fn draw_status_bar(
 
         let pulse_active = telemetry::metrics::is_trace_pulse_active();
         let q_depth = telemetry::get_telemetry_queue_depth();
-        let (bg, fg) = if q_depth > 0 && !telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS.load(std::sync::atomic::Ordering::Relaxed) {
+        let (bg, fg) = if q_depth > 0
+            && !telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
+                .load(std::sync::atomic::Ordering::Relaxed)
+        {
             (Color::Yellow, Color::Black)
         } else if web3_wallet_address.is_some() {
             (Color::DarkBlue, Color::Cyan)
