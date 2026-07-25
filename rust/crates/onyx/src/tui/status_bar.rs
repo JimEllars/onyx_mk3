@@ -98,6 +98,18 @@ pub fn render_status_bar_text(
         text = format!("{text} ∥ ⠼ Onyx delegating to [{node_id}]");
     }
 
+    let session_active = telemetry::metrics::SESSION_HEARTBEAT_ATTEMPTED.load(std::sync::atomic::Ordering::Relaxed);
+    let session_success = telemetry::metrics::LAST_SESSION_HEARTBEAT_SUCCESS.load(std::sync::atomic::Ordering::Relaxed);
+    let session_indicator = if session_active {
+        if session_success {
+            " ∥ [Session: Active]"
+        } else {
+            " ∥ [Session: Retrying]"
+        }
+    } else {
+        ""
+    };
+
     let pulse_sync_str = if let Some(elapsed) = telemetry::metrics::get_last_pulse_sync_elapsed() {
         let secs = elapsed.as_secs();
         if secs < 60 {
@@ -110,6 +122,8 @@ pub fn render_status_bar_text(
     } else {
         " ∥ Last Pulse Sync: Never".to_string()
     };
+
+    let pulse_sync_str = format!("{session_indicator}{pulse_sync_str}");
 
     let axim_sync_ok = telemetry::metrics::LAST_TELEMETRY_DISPATCH_SUCCESS
         .load(std::sync::atomic::Ordering::Relaxed);
@@ -261,7 +275,15 @@ pub fn draw_status_bar(
 
         let pulse_active = telemetry::metrics::is_trace_pulse_active();
         let q_depth = telemetry::get_telemetry_queue_depth();
-        let (bg, fg) = if q_depth > 0 {
+
+        let session_active = telemetry::metrics::SESSION_HEARTBEAT_ATTEMPTED.load(std::sync::atomic::Ordering::Relaxed);
+        let session_success = telemetry::metrics::LAST_SESSION_HEARTBEAT_SUCCESS.load(std::sync::atomic::Ordering::Relaxed);
+
+        let (bg, fg) = if session_active && !session_success {
+            (Color::Yellow, Color::Black)
+        } else if session_active && session_success {
+            (Color::DarkGreen, Color::White)
+        } else if q_depth > 0 {
             (Color::Yellow, Color::Black)
         } else if web3_wallet_address.is_some() {
             (Color::DarkBlue, Color::Cyan)

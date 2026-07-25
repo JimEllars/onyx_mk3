@@ -267,6 +267,12 @@ async function bootstrapDatabase(env: Env) {
         details TEXT,
         created_at INTEGER
       );
+      CREATE TABLE IF NOT EXISTS UserSessions (
+        session_id TEXT PRIMARY KEY,
+        user_id TEXT,
+        client_version TEXT,
+        last_seen INTEGER
+      );
     `).run();
   }
 }
@@ -280,6 +286,15 @@ export default {
     try {
       // Execute a low-overhead heartbeat sanity evaluation across active KV stores
       console.log(`Cron triggered at ${new Date().toISOString()}`);
+      const thirtyDaysAgo = Math.floor(Date.now() / 1000) - (30 * 24 * 60 * 60);
+      if (env.ONYX_DB) {
+        ctx.waitUntil(
+          env.ONYX_DB.batch([
+            env.ONYX_DB.prepare("DELETE FROM TelemetryLogs WHERE created_at < ?").bind(thirtyDaysAgo),
+            env.ONYX_DB.prepare("DELETE FROM CommandAuditLogs WHERE created_at < ?").bind(thirtyDaysAgo),
+          ])
+        );
+      }
       if (env.ONYX_PROMPT_CACHE) {
         await env.ONYX_PROMPT_CACHE.put(
           "heartbeat_sanity",
@@ -1026,6 +1041,42 @@ export default {
             traceId,
           ),
         });
+
+      } else if (request.method === "POST" && url.pathname === "/api/v1/session/heartbeat") {
+        const authError = await checkAuth(request, env);
+        if (authError) return authError;
+
+        try {
+          const body: any = await request.clone().json();
+          if (!body.session_id) {
+            return new Response(JSON.stringify({ error: "Missing session_id" }), {
+              status: 400,
+              headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+            });
+          }
+
+          if (env.ONYX_DB) {
+            const now = Math.floor(Date.now() / 1000);
+            await env.ONYX_DB.prepare(
+              `INSERT INTO UserSessions (session_id, user_id, client_version, last_seen)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(session_id) DO UPDATE SET
+                 user_id=excluded.user_id,
+                 client_version=excluded.client_version,
+                 last_seen=excluded.last_seen`
+            ).bind(body.session_id, body.user_id || null, body.client_version || null, now).run();
+          }
+
+          return new Response(JSON.stringify({ status: "success", session_id: body.session_id }), {
+             headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        } catch (e: any) {
+          console.error("Error processing heartbeat", e);
+          return new Response(JSON.stringify({ error: "Internal error" }), {
+             status: 500,
+             headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        }
       } else if (request.method === "POST" && url.pathname === "/api/v1/email/send") {
         ctx.waitUntil(bootstrapDatabase(env));
       const authError = await checkAuth(request, env);
