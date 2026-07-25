@@ -98,8 +98,10 @@ pub fn render_status_bar_text(
         text = format!("{text} ∥ ⠼ Onyx delegating to [{node_id}]");
     }
 
-    let session_active = telemetry::metrics::SESSION_HEARTBEAT_ATTEMPTED.load(std::sync::atomic::Ordering::Relaxed);
-    let session_success = telemetry::metrics::LAST_SESSION_HEARTBEAT_SUCCESS.load(std::sync::atomic::Ordering::Relaxed);
+    let session_active =
+        telemetry::metrics::SESSION_HEARTBEAT_ATTEMPTED.load(std::sync::atomic::Ordering::Relaxed);
+    let session_success = telemetry::metrics::LAST_SESSION_HEARTBEAT_SUCCESS
+        .load(std::sync::atomic::Ordering::Relaxed);
     let session_indicator = if session_active {
         if session_success {
             " ∥ [Session: Active]"
@@ -276,8 +278,10 @@ pub fn draw_status_bar(
         let pulse_active = telemetry::metrics::is_trace_pulse_active();
         let q_depth = telemetry::get_telemetry_queue_depth();
 
-        let session_active = telemetry::metrics::SESSION_HEARTBEAT_ATTEMPTED.load(std::sync::atomic::Ordering::Relaxed);
-        let session_success = telemetry::metrics::LAST_SESSION_HEARTBEAT_SUCCESS.load(std::sync::atomic::Ordering::Relaxed);
+        let session_active = telemetry::metrics::SESSION_HEARTBEAT_ATTEMPTED
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let session_success = telemetry::metrics::LAST_SESSION_HEARTBEAT_SUCCESS
+            .load(std::sync::atomic::Ordering::Relaxed);
 
         let (bg, fg) = if session_active && !session_success {
             (Color::Yellow, Color::Black)

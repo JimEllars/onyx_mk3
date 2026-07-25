@@ -23,7 +23,11 @@ pub trait MicroProgram: Send + Sync + Debug {
             Err(e) => e.clone(),
         };
 
-        let user_id = payload.meta_data.get("user_id").and_then(|v| v.as_str()).unwrap_or("system");
+        let user_id = payload
+            .meta_data
+            .get("user_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("system");
         crate::log_command_execution(user_id, self.signature(), status, elapsed_ms, &details).await;
 
         result

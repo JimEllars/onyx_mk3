@@ -5701,8 +5701,9 @@ pub async fn log_command_execution(
                     std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
-                        .as_millis()
-                ).unwrap_or(0),
+                        .as_millis(),
+                )
+                .unwrap_or(0),
                 service_name: "onyx-command-audit".to_string(),
                 status: telemetry::TelemetryStatus::Degraded,
                 metrics: telemetry::TelemetryMetrics {
