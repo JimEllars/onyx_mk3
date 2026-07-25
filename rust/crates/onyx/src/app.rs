@@ -386,6 +386,33 @@ impl LiveCli {
         };
         cli.persist_session()?;
 
+        // Start background session heartbeat task
+        let session_id_clone = cli.session.id.clone();
+        std::thread::spawn(move || {
+            if let Ok(rt) = tokio::runtime::Runtime::new() {
+                rt.block_on(async {
+                    let user_id =
+                        std::env::var("USER").unwrap_or_else(|_| "unknown_user".to_string());
+                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+                    loop {
+                        interval.tick().await;
+                        telemetry::metrics::SESSION_HEARTBEAT_ATTEMPTED
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                        match telemetry::send_session_heartbeat(&session_id_clone, &user_id).await {
+                            Ok(()) => {
+                                telemetry::metrics::LAST_SESSION_HEARTBEAT_SUCCESS
+                                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                            }
+                            Err(_) => {
+                                telemetry::metrics::LAST_SESSION_HEARTBEAT_SUCCESS
+                                    .store(false, std::sync::atomic::Ordering::Relaxed);
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
         // Start the background metrics server
         std::thread::spawn(move || {
             if let Ok(rt) = tokio::runtime::Runtime::new() {

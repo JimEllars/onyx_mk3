@@ -228,7 +228,12 @@ pub static EDGE_CACHE_TTL: LazyLock<Gauge> = LazyLock::new(|| {
     gauge
 });
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+pub static LAST_SESSION_HEARTBEAT_SUCCESS: LazyLock<AtomicBool> =
+    LazyLock::new(|| AtomicBool::new(false));
+pub static SESSION_HEARTBEAT_ATTEMPTED: LazyLock<AtomicBool> =
+    LazyLock::new(|| AtomicBool::new(false));
 
 pub static WORKER_QUEUE_DEPTH: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
 pub static WORKER_PROCESSED_TOTAL: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
@@ -296,7 +301,6 @@ pub fn is_trace_pulse_active() -> bool {
     false
 }
 
-use std::sync::atomic::AtomicBool;
 pub static LAST_TELEMETRY_DISPATCH_SUCCESS: LazyLock<AtomicBool> =
     LazyLock::new(|| AtomicBool::new(true));
 

@@ -744,6 +744,40 @@ pub struct EdgeBridgeStatus {
 }
 pub mod dlq;
 
+#[derive(Debug, thiserror::Error)]
+pub enum TelemetryError {
+    #[error("HTTP client error: {0}")]
+    Reqwest(#[from] reqwest::Error),
+    #[error("Failed to parse edge bridge URL")]
+    UrlParseError,
+}
+
+pub async fn send_session_heartbeat(session_id: &str, user_id: &str) -> Result<(), TelemetryError> {
+    let bridge_url =
+        std::env::var("AXIM_ONYX_EDGE_URL").unwrap_or_else(|_| "http://127.0.0.1:8787".to_string());
+    let token = std::env::var("AXIM_ONYX_SECRET").unwrap_or_default();
+    let url = format!(
+        "{}/api/v1/session/heartbeat",
+        bridge_url.trim_end_matches('/')
+    );
+
+    let client = reqwest::Client::new();
+    let payload = serde_json::json!({
+        "session_id": session_id,
+        "user_id": user_id,
+        "client_version": env!("CARGO_PKG_VERSION")
+    });
+
+    let _ = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .json(&payload)
+        .send()
+        .await?;
+
+    Ok(())
+}
+
 pub fn get_telemetry_queue_depth() -> usize {
     if let Ok(queue) = QUEUED_TELEMETRY.lock() {
         queue.len()

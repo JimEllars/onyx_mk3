@@ -2906,6 +2906,7 @@ dependencies = [
  "reqwest 0.13.2",
  "serde",
  "serde_json",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
  "uuid",
