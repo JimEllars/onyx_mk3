@@ -306,12 +306,10 @@ pub static LAST_TELEMETRY_DISPATCH_SUCCESS: LazyLock<AtomicBool> =
 
 use std::sync::RwLock;
 
-
 pub static LAST_EMAIL_STATUS: LazyLock<RwLock<String>> =
     LazyLock::new(|| RwLock::new(String::new()));
 
 pub static RATE_LIMIT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
 
 pub fn update_last_email_status(status: &str) {
     if let Ok(mut lock) = LAST_EMAIL_STATUS.write() {

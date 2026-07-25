@@ -1,10 +1,10 @@
 use crate::dispatch::SwarmQueues;
+use crate::mcp_stdio::McpServerManager;
+use crate::mcp_tool_bridge::{execute_mcp_tool, McpToolRegistry};
 use crate::task_packet::TaskPacket;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
-use std::sync::{Arc, Mutex};
-use crate::mcp_stdio::McpServerManager;
-use crate::mcp_tool_bridge::{McpToolRegistry, execute_mcp_tool};
 
 #[derive(Debug)]
 pub struct SwarmWorker {
@@ -16,11 +16,19 @@ pub struct SwarmWorker {
 impl SwarmWorker {
     #[must_use]
     pub fn new(queues: SwarmQueues) -> Self {
-        Self { queues, manager: None, registry: None }
+        Self {
+            queues,
+            manager: None,
+            registry: None,
+        }
     }
 
     #[must_use]
-    pub fn with_mcp(mut self, manager: Arc<Mutex<McpServerManager>>, registry: McpToolRegistry) -> Self {
+    pub fn with_mcp(
+        mut self,
+        manager: Arc<Mutex<McpServerManager>>,
+        registry: McpToolRegistry,
+    ) -> Self {
         self.manager = Some(manager);
         self.registry = Some(registry);
         self
@@ -100,9 +108,6 @@ impl SwarmWorker {
         })
         .await;
 
-
-
-
         // Execute called tools through mcp_tool_bridge::execute_mcp_tool
         if let Some(registry) = &self.registry {
             let servers = registry.list_servers();
@@ -110,13 +115,16 @@ impl SwarmWorker {
             for server in servers {
                 if let Ok(tools) = registry.list_tools(&server.server_name) {
                     for tool in tools {
-                        let _ = execute_mcp_tool(registry, &server.server_name, &tool.name, &serde_json::json!({}));
+                        let _ = execute_mcp_tool(
+                            registry,
+                            &server.server_name,
+                            &tool.name,
+                            &serde_json::json!({}),
+                        );
                     }
                 }
             }
         }
-
-
 
         // In a real execution, dispatch to playbook or MCP tools
 
@@ -309,7 +317,7 @@ async fn test_swarm_worker_handles_disconnect() {
 mod additional_tests {
     use super::*;
     use crate::dispatch::{Dispatcher, TaskPriority};
-    use crate::mcp_tool_bridge::{McpToolRegistry, McpConnectionStatus, McpToolInfo};
+    use crate::mcp_tool_bridge::{McpConnectionStatus, McpToolInfo, McpToolRegistry};
 
     #[tokio::test]
     async fn test_swarm_worker_mcp_invocation() {
@@ -329,7 +337,14 @@ mod additional_tests {
         );
 
         let worker = SwarmWorker::new(queues);
-        let worker = worker.with_mcp(Arc::new(Mutex::new(crate::mcp_stdio::McpServerManager::from_servers(&std::collections::BTreeMap::default()))), registry);
+        let worker = worker.with_mcp(
+            Arc::new(Mutex::new(
+                crate::mcp_stdio::McpServerManager::from_servers(
+                    &std::collections::BTreeMap::default(),
+                ),
+            )),
+            registry,
+        );
 
         let packet = TaskPacket {
             objective: "Test MCP execution".to_string(),

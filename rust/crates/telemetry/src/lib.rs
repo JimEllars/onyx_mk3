@@ -539,7 +539,6 @@ impl SessionTracer {
         );
     }
 
-
     pub fn record_http_request_succeeded(
         &self,
         attempt: u32,
@@ -555,7 +554,6 @@ impl SessionTracer {
             crate::metrics::RATE_LIMIT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         self.sink.record(TelemetryEvent::HttpRequestSucceeded {
-
             session_id: self.session_id.clone(),
             attempt,
             method: method.clone(),

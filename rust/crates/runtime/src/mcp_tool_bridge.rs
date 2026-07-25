@@ -353,8 +353,6 @@ impl McpToolRegistry {
     }
 }
 
-
-
 pub fn execute_mcp_tool(
     registry: &McpToolRegistry,
     server_name: &str,
