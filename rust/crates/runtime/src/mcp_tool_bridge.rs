@@ -961,3 +961,12 @@ mod tests {
         assert!(registry.is_empty());
     }
 }
+
+pub fn execute_mcp_tool(
+    registry: &McpToolRegistry,
+    server_name: &str,
+    tool_name: &str,
+    arguments: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    registry.call_tool(server_name, tool_name, arguments)
+}

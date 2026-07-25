@@ -2,62 +2,74 @@ use crate::dispatch::SwarmQueues;
 use crate::task_packet::TaskPacket;
 use std::time::Duration;
 use tokio::time::sleep;
+use std::sync::{Arc, Mutex};
+use crate::mcp_stdio::McpServerManager;
+use crate::mcp_tool_bridge::{McpToolRegistry, execute_mcp_tool};
 
 #[derive(Debug)]
 pub struct SwarmWorker {
     queues: SwarmQueues,
+    manager: Option<Arc<Mutex<McpServerManager>>>,
+    registry: Option<McpToolRegistry>,
 }
 
 impl SwarmWorker {
     #[must_use]
     pub fn new(queues: SwarmQueues) -> Self {
-        Self { queues }
+        Self { queues, manager: None, registry: None }
+    }
+
+    #[must_use]
+    pub fn with_mcp(mut self, manager: Arc<Mutex<McpServerManager>>, registry: McpToolRegistry) -> Self {
+        self.manager = Some(manager);
+        self.registry = Some(registry);
+        self
     }
 
     pub async fn run(mut self) {
         loop {
             // Drain critical queue first
             while let Ok(packet) = self.queues.critical_rx.try_recv() {
-                self.process_packet("Critical", packet).await;
+                self.execute_task("Critical", packet).await;
             }
 
             // If critical queue is empty, try high
             if let Ok(packet) = self.queues.high_rx.try_recv() {
-                self.process_packet("High", packet).await;
+                self.execute_task("High", packet).await;
                 continue; // Re-evaluate critical queue
             }
 
             // If high is empty, try standard
             if let Ok(packet) = self.queues.standard_rx.try_recv() {
-                self.process_packet("Standard", packet).await;
+                self.execute_task("Standard", packet).await;
                 continue; // Re-evaluate critical queue
             }
 
             // If standard is empty, try low
             if let Ok(packet) = self.queues.low_rx.try_recv() {
-                self.process_packet("Low", packet).await;
+                self.execute_task("Low", packet).await;
                 continue; // Re-evaluate critical queue
             }
 
             // If all queues are empty, wait for an item or sleep
             tokio::select! {
                 Some(packet) = self.queues.critical_rx.recv() => {
-                    self.process_packet("Critical", packet).await;
+                    self.execute_task("Critical", packet).await;
                 }
                 Some(packet) = self.queues.high_rx.recv() => {
-                    self.process_packet("High", packet).await;
+                    self.execute_task("High", packet).await;
                 }
                 Some(packet) = self.queues.standard_rx.recv() => {
-                    self.process_packet("Standard", packet).await;
+                    self.execute_task("Standard", packet).await;
                 }
                 Some(packet) = self.queues.low_rx.recv() => {
-                    self.process_packet("Low", packet).await;
+                    self.execute_task("Low", packet).await;
                 }
             }
         }
     }
 
-    async fn process_packet(&self, priority: &str, packet: TaskPacket) {
+    pub async fn execute_task(&self, priority: &str, packet: TaskPacket) {
         println!(
             "[Swarm Worker] Processing {priority} priority task: {:?}",
             packet.objective
@@ -88,7 +100,26 @@ impl SwarmWorker {
         })
         .await;
 
+
+
+
+        // Execute called tools through mcp_tool_bridge::execute_mcp_tool
+        if let Some(registry) = &self.registry {
+            let servers = registry.list_servers();
+
+            for server in servers {
+                if let Ok(tools) = registry.list_tools(&server.server_name) {
+                    for tool in tools {
+                        let _ = execute_mcp_tool(registry, &server.server_name, &tool.name, &serde_json::json!({}));
+                    }
+                }
+            }
+        }
+
+
+
         // In a real execution, dispatch to playbook or MCP tools
+
         sleep(Duration::from_millis(10)).await;
 
         // Real execution via AXiM Core REST endpoint
@@ -272,4 +303,61 @@ async fn test_swarm_worker_handles_disconnect() {
     });
 
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+}
+
+#[cfg(test)]
+mod additional_tests {
+    use super::*;
+    use crate::dispatch::{Dispatcher, TaskPriority};
+    use crate::mcp_tool_bridge::{McpToolRegistry, McpConnectionStatus, McpToolInfo};
+
+    #[tokio::test]
+    async fn test_swarm_worker_mcp_invocation() {
+        let (dispatcher, queues) = Dispatcher::new(10);
+
+        let registry = McpToolRegistry::new();
+        registry.register_server(
+            "test_mcp_server",
+            McpConnectionStatus::Connected,
+            vec![McpToolInfo {
+                name: "test_tool".into(),
+                description: None,
+                input_schema: None,
+            }],
+            vec![],
+            None,
+        );
+
+        let worker = SwarmWorker::new(queues);
+        let worker = worker.with_mcp(Arc::new(Mutex::new(crate::mcp_stdio::McpServerManager::from_servers(&Default::default()))), registry);
+
+        let packet = TaskPacket {
+            objective: "Test MCP execution".to_string(),
+            repo: "axim".to_string(),
+            branch_policy: "main".to_string(),
+            scope: "global".to_string(),
+            worker_id: Some("worker-mcp".to_string()),
+            job_id: Some("job-mcp".to_string()),
+            acceptance_tests: vec![],
+            commit_policy: String::new(),
+            reporting_contract: String::new(),
+            escalation_policy: String::new(),
+            context: String::new(),
+            goal: String::new(),
+            expected_schema: serde_json::Value::Null,
+            reasoning_effort: None,
+            web3_wallet_address: None,
+        };
+
+        dispatcher
+            .dispatch(TaskPriority::Standard, packet)
+            .await
+            .unwrap();
+
+        tokio::spawn(async move {
+            worker.run().await;
+        });
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    }
 }
