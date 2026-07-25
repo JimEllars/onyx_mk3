@@ -506,7 +506,43 @@ export default {
       } catch (e: any) {
         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId) });
       }
-    } else if (request.method === "POST" && url.pathname === "/api/v1/telemetry/flush") {
+
+      } else if (request.method === "POST" && url.pathname === "/api/v1/dlq-drain") {
+        const authError = await checkAuth(request, env);
+        if (authError) return authError;
+
+        if (!env.ONYX_STATE || !env.CORE_INGEST_URL) {
+          return new Response(JSON.stringify({ error: "Missing config for DLQ drain" }), { status: 500, headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId) });
+        }
+
+        const listRes = await env.ONYX_STATE.list({ prefix: "dlq:ingest:" });
+        let replayed = 0;
+        const coreUrl = new URL(env.CORE_INGEST_URL).origin;
+
+        for (const key of listRes.keys) {
+          const payload = await env.ONYX_STATE.get(key.name);
+          if (payload) {
+            try {
+              const res = await fetch(`${coreUrl}/v1/llm-proxy`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: payload,
+              });
+              if (res.ok) {
+                await env.ONYX_STATE.delete(key.name);
+                replayed++;
+              }
+            } catch (e) {
+              console.error("DLQ drain failed for key", key.name, e);
+            }
+          }
+        }
+
+        return new Response(JSON.stringify({ status: "success", replayed }), {
+          headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+        });
+      } else if (request.method === "POST" && url.pathname === "/api/v1/telemetry/flush") {
+
       ctx.waitUntil(bootstrapDatabase(env));
       if (!env.CORE_INGEST_URL) {
         return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), { status: 500, headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId) });
@@ -1278,31 +1314,66 @@ export default {
             .join("");
         }
 
-        const claudeResponse = await fetch(`${coreUrl}/v1/llm-proxy`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-axim-signature": `sha256=${signatureHex}`,
-          },
-          body: proxyBody,
-        });
 
-        if (!claudeResponse.ok) {
-          const errorData = await claudeResponse.text();
-          console.error("Anthropic API Error:", errorData);
-          return new Response(JSON.stringify({ error: "Upstream API error" }), {
-            status: 502,
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
+        let claudeResponse: Response | null = null;
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+          claudeResponse = await fetch(`${coreUrl}/v1/llm-proxy`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-axim-signature": `sha256=${signatureHex}`,
+            },
+            body: proxyBody,
+            signal: controller.signal
           });
+          clearTimeout(timeoutId);
+
+          if (!claudeResponse.ok) {
+            if (claudeResponse.status >= 500) {
+              throw new Error(`Upstream API error ${claudeResponse.status}`);
+            } else {
+              const errorData = await claudeResponse.text();
+              console.error("Anthropic API Error:", errorData);
+              return new Response(JSON.stringify({ error: "Upstream API error" }), {
+                status: 502,
+                headers: addOnyxHeaders(
+                  {
+                    ...getCorsHeaders(request, env),
+                    "Content-Type": "application/json",
+                  },
+                  edgeStatus,
+                  cacheStatus,
+                  traceId,
+                ),
+              });
+            }
+          }
+        } catch (error) {
+          console.error("AXiM Core ingest dropped or timed out:", error);
+          if (env.ONYX_STATE) {
+            const dlqKey = `dlq:ingest:${Date.now()}:${crypto.randomUUID()}`;
+            ctx.waitUntil(env.ONYX_STATE.put(dlqKey, proxyBody));
+          }
+          return new Response(
+            JSON.stringify({ status: "QUEUED_EDGE_DLQ", message: "Payload buffered at edge for Core retry." }),
+            {
+              status: 202,
+              headers: addOnyxHeaders(
+                {
+                  ...getCorsHeaders(request, env),
+                  "Content-Type": "application/json",
+                },
+                edgeStatus,
+                cacheStatus,
+                traceId,
+              ),
+            }
+          );
         }
+
 
         // If streaming, we need to intercept the response chunks to cache the complete response
         // However, since we return the stream immediately, it's easiest to create a TransformStream
