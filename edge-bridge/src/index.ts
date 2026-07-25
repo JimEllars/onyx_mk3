@@ -267,6 +267,13 @@ async function bootstrapDatabase(env: Env) {
         details TEXT,
         created_at INTEGER
       );
+      CREATE TABLE IF NOT EXISTS RateLimitLogs (
+        id TEXT PRIMARY KEY,
+        ip_address TEXT,
+        endpoint TEXT,
+        user_id TEXT,
+        blocked_at INTEGER
+      );
       CREATE TABLE IF NOT EXISTS UserSessions (
         session_id TEXT PRIMARY KEY,
         user_id TEXT,
@@ -292,6 +299,7 @@ export default {
           env.ONYX_DB.batch([
             env.ONYX_DB.prepare("DELETE FROM TelemetryLogs WHERE created_at < ?").bind(thirtyDaysAgo),
             env.ONYX_DB.prepare("DELETE FROM CommandAuditLogs WHERE created_at < ?").bind(thirtyDaysAgo),
+            env.ONYX_DB.prepare("DELETE FROM RateLimitLogs WHERE blocked_at < ?").bind(thirtyDaysAgo),
           ])
         );
       }
@@ -731,7 +739,21 @@ export default {
         const currentHits = parseInt(currentHitsStr || "0", 10);
 
         // Limit: 10 requests per window (simulated with 60s TTL)
+
         if (currentHits >= 10) {
+          if (env.ONYX_DB) {
+            ctx.waitUntil(
+              env.ONYX_DB.prepare(
+                "INSERT INTO RateLimitLogs (id, ip_address, endpoint, user_id, blocked_at) VALUES (?, ?, ?, ?, ?)"
+              ).bind(
+                crypto.randomUUID(),
+                ip,
+                url.pathname,
+                "anonymous",
+                Math.floor(Date.now() / 1000)
+              ).run()
+            );
+          }
           return new Response(JSON.stringify({ error: "Too Many Requests" }), {
             status: 429,
             headers: addOnyxHeaders(

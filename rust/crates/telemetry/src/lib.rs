@@ -550,6 +550,9 @@ impl SessionTracer {
     ) {
         let method = method.into();
         let path = path.into();
+        if status == 429 {
+            crate::metrics::RATE_LIMIT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
         self.sink.record(TelemetryEvent::HttpRequestSucceeded {
             session_id: self.session_id.clone(),
             attempt,
