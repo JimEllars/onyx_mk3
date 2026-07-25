@@ -234,7 +234,8 @@ pub fn draw_status_bar(
         .map(|m| m.get())
         .unwrap_or(0.0) as usize;
 
-    let text = format!("{text} ∥ Worker Load: {swarm_queue_depth} · DLQ Depth: {dlq_depth} ∥ Blocked Ingress: {blocked_ingress}");
+    let cmds = telemetry::metrics::get_command_execution_total();
+    let text = format!("{text} ∥ [Cmds: {cmds}] ∥ Worker Load: {swarm_queue_depth} · DLQ Depth: {dlq_depth} ∥ Blocked Ingress: {blocked_ingress}");
 
     if let Ok((cols, rows)) = size() {
         let mut out = stdout();

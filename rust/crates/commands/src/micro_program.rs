@@ -8,7 +8,26 @@ use runtime::api_specs::webhook_payload::AximWebhookPayload;
 pub trait MicroProgram: Send + Sync + Debug {
     fn name(&self) -> &'static str;
     fn signature(&self) -> &'static str;
-    async fn execute(&self, _payload: &AximWebhookPayload) -> Result<Value, String>;
+    async fn execute_internal(&self, _payload: &AximWebhookPayload) -> Result<Value, String> {
+        Ok(Value::Null)
+    }
+
+    async fn execute(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
+        let start_time = std::time::Instant::now();
+        let result = self.execute_internal(payload).await;
+        let elapsed_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(0);
+
+        let status = if result.is_ok() { "success" } else { "failed" };
+        let details = match &result {
+            Ok(_) => "Success".to_string(),
+            Err(e) => e.clone(),
+        };
+
+        let user_id = payload.meta_data.get("user_id").and_then(|v| v.as_str()).unwrap_or("system");
+        crate::log_command_execution(user_id, self.signature(), status, elapsed_ms, &details).await;
+
+        result
+    }
 
     /// Check if the payload has already been executed based on its idempotency key.
     /// By default, it returns None (not implemented). Extensions can override this

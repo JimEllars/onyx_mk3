@@ -258,6 +258,15 @@ async function bootstrapDatabase(env: Env) {
         synced INTEGER DEFAULT 0,
         created_at INTEGER
       );
+      CREATE TABLE IF NOT EXISTS CommandAuditLogs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        command_type TEXT,
+        status TEXT,
+        execution_time_ms INTEGER,
+        details TEXT,
+        created_at INTEGER
+      );
     `).run();
   }
 }
@@ -1621,7 +1630,74 @@ export default {
             ),
           },
         );
-      } else if (
+      } else if (request.method === "POST" && url.pathname === "/api/v1/commands/log") {
+        const authError = await checkAuth(request, env);
+        if (authError) return authError;
+
+        try {
+          const payload = parsedBody || {};
+          const { id, user_id, command_type, status, execution_time_ms, details, created_at } = payload;
+
+          if (!id || !user_id || !command_type || !status) {
+            return new Response(JSON.stringify({ error: "Missing required fields" }), {
+              status: 400,
+              headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+            });
+          }
+
+          if (env.ONYX_DB) {
+            const stmt = env.ONYX_DB.prepare(
+              `INSERT INTO CommandAuditLogs (id, user_id, command_type, status, execution_time_ms, details, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`
+            ).bind(id, user_id, command_type, status, execution_time_ms || 0, details || "", created_at || Date.now());
+
+            ctx.waitUntil(stmt.run().catch(e => console.error("Failed to insert CommandAuditLog:", e)));
+          } else {
+             console.warn("ONYX_DB is not configured");
+          }
+
+          return new Response(JSON.stringify({ status: "success" }), {
+            headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        } catch (e) {
+          console.error("Error logging command", e);
+          return new Response(JSON.stringify({ error: "Internal error" }), {
+             status: 500,
+             headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        }
+      } else if (request.method === "GET" && url.pathname.startsWith("/api/v1/commands/history/")) {
+        const authError = await checkAuth(request, env);
+        if (authError) return authError;
+
+        const userId = url.pathname.split("/").pop();
+        if (!userId) {
+           return new Response(JSON.stringify({ error: "Missing user_id" }), {
+              status: 400,
+              headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+           });
+        }
+
+        try {
+          let logs: any[] = [];
+          if (env.ONYX_DB) {
+            const result = await env.ONYX_DB.prepare(
+              `SELECT * FROM CommandAuditLogs WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`
+            ).bind(userId).all();
+            logs = result.results || [];
+          }
+
+          return new Response(JSON.stringify({ status: "success", logs }), {
+             headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        } catch (e) {
+          console.error("Error fetching command history", e);
+          return new Response(JSON.stringify({ error: "Internal error" }), {
+             status: 500,
+             headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        }
+} else if (
         url.pathname === "/api/approvals" &&
         request.method === "GET"
       ) {
