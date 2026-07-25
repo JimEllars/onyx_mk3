@@ -141,7 +141,12 @@ pub fn render_status_bar_text(
 
     text = format!("{text}{playbook_str}{pulse_sync_str}{axim_sync_str}");
 
+
+    let rate_limit_val = telemetry::metrics::RATE_LIMIT_COUNT.load(std::sync::atomic::Ordering::Relaxed);
+    text = format!("{text} ∥ [RL: {rate_limit_val}]");
+
     let edge_status_val = telemetry::metrics::EDGE_KV_STATUS.get();
+
     let edge_state_str = if (edge_status_val - 1.0).abs() < f64::EPSILON {
         "HEALTHY"
     } else {
@@ -283,7 +288,8 @@ pub fn draw_status_bar(
         let session_success = telemetry::metrics::LAST_SESSION_HEARTBEAT_SUCCESS
             .load(std::sync::atomic::Ordering::Relaxed);
 
-        let (bg, fg) = if session_active && !session_success {
+        let rl_val = telemetry::metrics::RATE_LIMIT_COUNT.load(std::sync::atomic::Ordering::Relaxed);
+        let (bg, fg) = if (session_active && !session_success) || rl_val > 0 {
             (Color::Yellow, Color::Black)
         } else if session_active && session_success {
             (Color::DarkGreen, Color::White)

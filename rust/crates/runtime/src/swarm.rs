@@ -329,7 +329,7 @@ mod additional_tests {
         );
 
         let worker = SwarmWorker::new(queues);
-        let worker = worker.with_mcp(Arc::new(Mutex::new(crate::mcp_stdio::McpServerManager::from_servers(&Default::default()))), registry);
+        let worker = worker.with_mcp(Arc::new(Mutex::new(crate::mcp_stdio::McpServerManager::from_servers(&std::collections::BTreeMap::default()))), registry);
 
         let packet = TaskPacket {
             objective: "Test MCP execution".to_string(),
