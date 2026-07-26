@@ -246,6 +246,7 @@ pub fn build_http_client_with(config: &ProxyConfig) -> Result<reqwest::Client, A
 
 #[allow(dead_code)]
 #[allow(clippy::too_many_lines)]
+#[allow(clippy::cast_possible_wrap)]
 pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Response, String> {
     let endpoint = request
         .try_clone()
@@ -332,12 +333,24 @@ pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Respon
                     }
                 }
 
-                if res.status().is_server_error() {
+                if res.status() == 502 || res.status() == 503 || res.status() == 504 {
                     if attempt < 3 {
-                        let backoff = 2_u64.pow(attempt - 1);
-                        tokio::time::sleep(Duration::from_secs(backoff)).await;
+                        // Jittered exponential backoff
+                        let base_backoff = 2_f64.powi((attempt as i32) - 1);
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+                        let jitter = (std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis()
+                            % 1000) as f64
+                            / 1000.0;
+                        let backoff = base_backoff + jitter;
+                        tokio::time::sleep(Duration::from_secs_f64(backoff)).await;
                         continue;
                     }
+                    GLOBAL_CIRCUIT_BREAKER.record_failure();
+                    return Ok(res);
+                } else if res.status().is_server_error() {
                     GLOBAL_CIRCUIT_BREAKER.record_failure();
                     return Ok(res);
                 }

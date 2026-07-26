@@ -69,6 +69,15 @@ pub fn render_status_bar_text(
         model, session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str, edge_latency_val
     );
 
+    if let Ok((cols, _)) = size() {
+        if cols < 80 {
+            // Collapse non-essential widgets
+            text = format!(
+                "⚡ {edge_conn_str} ∥ {model} ∥ {session_id} ∥ Cost: ${cost:.4} ∥ Lat: {edge_latency_val:.2}ms"
+            );
+        }
+    }
+
     let mut playbook_str = String::new();
     if let Some(tasks) = playbook_status {
         if !tasks.is_empty() {
@@ -216,7 +225,7 @@ pub fn draw_status_bar(
 
     let should_paint = LAST_PAINT.with(|last_paint| {
         let mut lp = last_paint.borrow_mut();
-        if lp.elapsed() >= std::time::Duration::from_millis(100) {
+        if lp.elapsed() >= std::time::Duration::from_millis(33) {
             *lp = std::time::Instant::now();
             true
         } else {

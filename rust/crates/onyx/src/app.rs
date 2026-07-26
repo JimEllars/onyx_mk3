@@ -808,44 +808,47 @@ impl LiveCli {
     }
 
     fn persist_session(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let session = self.runtime.session();
-        session.save_to_path(&self.session.path)?;
+        let session = self.runtime.session().clone();
+        let path = self.session.path.clone();
+        let db_arc = self.db.clone();
 
-        let title = session.messages.first().map_or_else(
-            || "Session".to_string(),
-            |m| match &m.blocks[0] {
-                ContentBlock::Text { text } => text.clone(),
-                _ => "Session".to_string(),
-            },
-        );
+        std::thread::spawn(move || {
+            let _ = session.save_to_path(&path);
 
-        let _ = self
-            .db
-            .lock()
-            .unwrap()
-            .save_session(&session.session_id, &title);
-
-        for (i, msg) in session.messages.iter().enumerate() {
-            let role = match msg.role {
-                MessageRole::User => "user",
-                MessageRole::Assistant => "assistant",
-                MessageRole::System => "system",
-                MessageRole::Tool => "tool",
-            };
-
-            let text = match &msg.blocks[0] {
-                ContentBlock::Text { text } => text.clone(),
-                ContentBlock::ToolResult { .. } => "ToolResult".to_string(),
-                ContentBlock::ToolUse { .. } => "ToolUse".to_string(),
-            };
-
-            let _ = self.db.lock().unwrap().save_message(
-                &format!("{}-{}", session.session_id, i),
-                &session.session_id,
-                role,
-                &text,
+            let title = session.messages.first().map_or_else(
+                || "Session".to_string(),
+                |m| match &m.blocks[0] {
+                    ContentBlock::Text { text } => text.clone(),
+                    _ => "Session".to_string(),
+                },
             );
-        }
+
+            if let Ok(db_guard) = db_arc.lock() {
+                let _ = db_guard.save_session(&session.session_id, &title);
+
+                for (i, msg) in session.messages.iter().enumerate() {
+                    let role = match msg.role {
+                        MessageRole::User => "user",
+                        MessageRole::Assistant => "assistant",
+                        MessageRole::System => "system",
+                        MessageRole::Tool => "tool",
+                    };
+
+                    let text = match &msg.blocks[0] {
+                        ContentBlock::Text { text } => text.clone(),
+                        ContentBlock::ToolResult { .. } => "ToolResult".to_string(),
+                        ContentBlock::ToolUse { .. } => "ToolUse".to_string(),
+                    };
+
+                    let _ = db_guard.save_message(
+                        &format!("{}-{}", session.session_id, i),
+                        &session.session_id,
+                        role,
+                        &text,
+                    );
+                }
+            }
+        });
 
         Ok(())
     }
