@@ -148,14 +148,22 @@ function getCorsHeaders(request: Request, env?: Env) {
 
 function addOnyxHeaders(
   headers: HeadersInit,
-  status: { degraded: boolean },
+  status: { degraded: boolean, startTime?: number },
   cacheStatus: string = "MISS",
   traceId?: string,
+  rayId?: string,
 ): Headers {
   const h = new Headers(headers);
   if (traceId) {
     h.set("X-Onyx-Trace-Id", traceId);
     h.set("X-Request-ID", traceId);
+  }
+  if (rayId) {
+    h.set("X-Onyx-Ray-ID", rayId);
+  }
+  if (status.startTime) {
+    const latency = Date.now() - status.startTime;
+    h.set("X-Onyx-Edge-Latency", `${latency}ms`);
   }
   h.set("X-Onyx-Edge-Health", status.degraded ? "DEGRADED" : "OK");
   h.set("X-Onyx-Cache-Status", cacheStatus);
@@ -424,7 +432,8 @@ export default {
     ctx: ExecutionContext,
   ): Promise<Response> {
     const traceId = request.headers.get("X-Request-ID") || request.headers.get("cf-ray") || crypto.randomUUID();
-    const edgeStatus = { degraded: false };
+    const edgeStatus = { degraded: false, startTime: Date.now() };
+      const rayId = request.headers.get("cf-ray") || "unknown";
     let cacheStatus = "MISS";
 
     if (
@@ -504,7 +513,7 @@ export default {
         ctx.waitUntil(
           fetchWithRetry(ingestUrl, {
             method: "POST",
-            headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId),
+            headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId, rayId),
             body: payloadStr
           }).catch(e => console.error("Telemetry forward failed", e))
         );
@@ -564,7 +573,7 @@ export default {
             for (const row of rows) {
                await fetchWithRetry(ingestUrl, {
                  method: "POST",
-                 headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId),
+                 headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId, rayId),
                  body: String(row.payload)
                });
                await env.ONYX_DB.prepare("UPDATE TelemetryLogs SET synced = 1 WHERE id = ?").bind(row.id).run();

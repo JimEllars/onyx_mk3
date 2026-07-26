@@ -101,6 +101,7 @@ const CLI_OPTION_SUGGESTIONS: &[&str] = &[
     "--allowed-tools",
     "--resume",
     "--print",
+    "--json-logs",
     "--compact",
     "--base-commit",
     "-p",
@@ -114,6 +115,32 @@ type RuntimePluginStateBuildOutput = (
 
 #[allow(clippy::too_many_lines)]
 fn main() {
+    let mut wants_json_logs = false;
+    for arg in std::env::args() {
+        if arg == "--json-logs" {
+            wants_json_logs = true;
+        }
+    }
+
+    if wants_json_logs {
+        tracing_subscriber::fmt()
+            .json()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .init();
+    } else {
+        // Direct to file if not json logs (or simple stdout if preferred, but instructions say: "If the interactive TUI is active, direct tracing events to a log file (or suppress stdout rendering) so structured JSON logs do not corrupt the active terminal screen.")
+        // For simplicity and safety, suppress stdout rendering to terminal by using a null writer or log file.
+        let file_appender = tracing_subscriber::fmt::writer::MakeWriterExt::with_max_level(
+            tracing_appender::rolling::never(".claw", "onyx.log"),
+            tracing::Level::INFO
+        );
+        tracing_subscriber::fmt()
+            .with_writer(file_appender)
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .init();
+    }
+
+
     let env_map: std::collections::HashMap<String, String> = std::env::vars().collect();
     if let Err(e) = runtime::config_validate::validate_proxy_mode_secrets(&env_map) {
         eprintln!("[Boot Error]: {e}");
@@ -870,6 +897,7 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliAction, String> {
                 permission_mode_override = Some(PermissionMode::DangerFullAccess);
                 index += 1;
             }
+            "--json-logs" => { index += 1; }
             "--compact" => {
                 compact = true;
                 index += 1;
@@ -8494,7 +8522,8 @@ mod tests {
         // given
         let prompt = "Review this";
         let piped = "#[allow(clippy::too_many_lines)]
-fn main() { println!(\"hi\"); }\n";
+fn main() {
+    let mut wants_json_logs = false; println!(\"hi\"); }\n";
 
         // when
         let merged = merge_prompt_with_stdin(prompt, Some(piped));
@@ -8503,7 +8532,8 @@ fn main() { println!(\"hi\"); }\n";
         assert_eq!(
             merged,
             "Review this\n\n#[allow(clippy::too_many_lines)]
-fn main() { println!(\"hi\"); }"
+fn main() {
+    let mut wants_json_logs = false; println!(\"hi\"); }"
         );
     }
 
