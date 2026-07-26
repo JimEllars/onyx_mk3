@@ -6,10 +6,10 @@ use axum::{
     Router,
 };
 use chrono::Utc;
-use commands::extensions::demand_letter::{DemandLetterGenerator};
+use commands::extensions::demand_letter::DemandLetterGenerator;
 use commands::extensions::lead_scoring::PredictiveLeadScoring;
 use commands::extensions::nda::NDAGenerator;
-use commands::extensions::pay_stub::{PayStubGenerator};
+use commands::extensions::pay_stub::PayStubGenerator;
 use commands::extensions::support_triage::SupportTriage;
 use commands::micro_program::MicroProgram;
 use runtime::api_specs::webhook_payload::AximWebhookPayload;
@@ -125,7 +125,8 @@ pub async fn handle_generate_nda(
             axum::Json(json!({"status": "Success", "message": "NDA task dispatched"})),
         )
             .into_response()
-    }.await;
+    }
+    .await;
 
     let duration = start_time.elapsed();
     tracing::info!(
@@ -204,12 +205,11 @@ pub async fn handle_generate_demand_letter(
 
         (
             StatusCode::OK,
-            axum::Json(
-                json!({"status": "Success", "message": "Demand letter task dispatched"}),
-            ),
+            axum::Json(json!({"status": "Success", "message": "Demand letter task dispatched"})),
         )
             .into_response()
-    }.await;
+    }
+    .await;
 
     let duration = start_time.elapsed();
     tracing::info!(
@@ -291,7 +291,8 @@ pub async fn handle_generate_pay_stub(
             axum::Json(json!({"status": "Success", "message": "Pay stub task dispatched"})),
         )
             .into_response()
-    }.await;
+    }
+    .await;
 
     let duration = start_time.elapsed();
     tracing::info!(
@@ -432,7 +433,8 @@ pub async fn handle_dispatch(
             axum::Json(json!({"status": "Success", "message": "Task dispatched"})),
         )
             .into_response()
-    }.await;
+    }
+    .await;
 
     let duration = start_time.elapsed();
     tracing::info!(

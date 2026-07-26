@@ -132,14 +132,13 @@ fn main() {
         // For simplicity and safety, suppress stdout rendering to terminal by using a null writer or log file.
         let file_appender = tracing_subscriber::fmt::writer::MakeWriterExt::with_max_level(
             tracing_appender::rolling::never(".claw", "onyx.log"),
-            tracing::Level::INFO
+            tracing::Level::INFO,
         );
         tracing_subscriber::fmt()
             .with_writer(file_appender)
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .init();
     }
-
 
     let env_map: std::collections::HashMap<String, String> = std::env::vars().collect();
     if let Err(e) = runtime::config_validate::validate_proxy_mode_secrets(&env_map) {
@@ -897,7 +896,9 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliAction, String> {
                 permission_mode_override = Some(PermissionMode::DangerFullAccess);
                 index += 1;
             }
-            "--json-logs" => { index += 1; }
+            "--json-logs" => {
+                index += 1;
+            }
             "--compact" => {
                 compact = true;
                 index += 1;

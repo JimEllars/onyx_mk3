@@ -338,7 +338,12 @@ pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Respon
                         // Jittered exponential backoff
                         let base_backoff = 2_f64.powi((attempt as i32) - 1);
                         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-                        let jitter = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() % 1000) as f64 / 1000.0;
+                        let jitter = (std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis()
+                            % 1000) as f64
+                            / 1000.0;
                         let backoff = base_backoff + jitter;
                         tokio::time::sleep(Duration::from_secs_f64(backoff)).await;
                         continue;
