@@ -5,24 +5,21 @@
  */
 
 export interface Env {
-  ONYX_DB?: D1Database;
-  ALLOWED_ORIGIN?: string;
-  ONYX_CLIENT_SECRET?: string;
-  CHAT_MODEL?: string;
-  ONYX_STATE?: KVNamespace;
-  ONYX_SESSION_STATE?: KVNamespace;
-  ONYX_DISPATCH_LOCKS?: KVNamespace;
-  ONYX_PROMPT_CACHE?: KVNamespace;
-  CORE_CRYPTO_KEY?: string;
+  ONYX_DB: D1Database;
+  ONYX_STATE: KVNamespace;
+  ONYX_SESSION_STATE: KVNamespace;
+  ONYX_DISPATCH_LOCKS: KVNamespace;
+  ONYX_PROMPT_CACHE: KVNamespace;
   AXIM_ONYX_SECRET: string;
   ANTHROPIC_API_KEY: string;
-  CLOUDFLARE_API_TOKEN?: string;
-  CLOUDFLARE_ACCOUNT_ID?: string;
   CORE_INGEST_URL: string;
   GITHUB_WEBHOOK_SECRET: string;
   WP_WEBHOOK_SECRET: string;
   AXIM_INTERNAL_KEY: string;
   EMAILIT_API_KEY?: string;
+  ALLOWED_ORIGIN?: string;
+  ONYX_CLIENT_SECRET?: string;
+  CHAT_MODEL?: string;
 }
 
 const ALLOWED_ORIGINS = [
@@ -40,7 +37,7 @@ const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
 async function kvWriteWithTimeout<T>(
   promise: Promise<T>,
   timeoutMs = 500,
-  status: { degraded: boolean },
+  status?: { degraded: boolean },
 ): Promise<T | null> {
   try {
     const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
@@ -49,16 +46,17 @@ async function kvWriteWithTimeout<T>(
     const result = await Promise.race([promise, timeout]);
     if (result === TIMEOUT_SYMBOL) {
       console.warn("KV write timed out");
-      status.degraded = true;
+      if (status) status.degraded = true;
       return null;
     }
     return result as T;
   } catch (e) {
     console.error("KV write error:", e);
-    status.degraded = true;
+    if (status) status.degraded = true;
     return null;
   }
 }
+
 
 async function kvReadWithTimeout<T>(
   promise: Promise<T>,
@@ -124,6 +122,32 @@ function getCorsHeaders(request: Request, env?: Env) {
       "https://ellars.us.com",
       "https://piratefederation.org",
     ];
+
+const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
+
+async function kvWriteWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs = 500,
+  status?: { degraded: boolean },
+): Promise<T | null> {
+  try {
+    const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
+      setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
+    );
+    const result = await Promise.race([promise, timeout]);
+    if (result === TIMEOUT_SYMBOL) {
+      console.warn("KV write timed out");
+      if (status) status.degraded = true;
+      return null;
+    }
+    return result as T;
+  } catch (e) {
+    console.error("KV write error:", e);
+    if (status) status.degraded = true;
+    return null;
+  }
+}
+
     isAllowed =
       ALLOWED_ORIGINS.includes(origin) ||
       origin.endsWith(".axim.us.com") ||
@@ -293,9 +317,9 @@ async function bootstrapDatabase(env: Env) {
   }
 }
 
-export default {
+const onyx_handler: any = {
   async scheduled(
-    event: ScheduledEvent,
+    controller: any,
     env: Env,
     ctx: ExecutionContext,
   ): Promise<void> {
@@ -2196,6 +2220,32 @@ export default {
 
         try {
           let logs: any[] = [];
+
+const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
+
+async function kvWriteWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs = 500,
+  status?: { degraded: boolean },
+): Promise<T | null> {
+  try {
+    const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
+      setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
+    );
+    const result = await Promise.race([promise, timeout]);
+    if (result === TIMEOUT_SYMBOL) {
+      console.warn("KV write timed out");
+      if (status) status.degraded = true;
+      return null;
+    }
+    return result as T;
+  } catch (e) {
+    console.error("KV write error:", e);
+    if (status) status.degraded = true;
+    return null;
+  }
+}
+
           if (env.ONYX_DB) {
             const result = await env.ONYX_DB.prepare(
               `SELECT * FROM CommandAuditLogs WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
@@ -2203,6 +2253,32 @@ export default {
               .bind(userId)
               .all();
             logs = result.results || [];
+
+const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
+
+async function kvWriteWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs = 500,
+  status?: { degraded: boolean },
+): Promise<T | null> {
+  try {
+    const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
+      setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
+    );
+    const result = await Promise.race([promise, timeout]);
+    if (result === TIMEOUT_SYMBOL) {
+      console.warn("KV write timed out");
+      if (status) status.degraded = true;
+      return null;
+    }
+    return result as T;
+  } catch (e) {
+    console.error("KV write error:", e);
+    if (status) status.degraded = true;
+    return null;
+  }
+}
+
           }
 
           return new Response(JSON.stringify({ status: "success", logs }), {
@@ -2239,6 +2315,32 @@ export default {
         if (authError) return authError;
         // Read approvals from KV store
         const approvals: any[] = [];
+
+const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
+
+async function kvWriteWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs = 500,
+  status?: { degraded: boolean },
+): Promise<T | null> {
+  try {
+    const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
+      setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
+    );
+    const result = await Promise.race([promise, timeout]);
+    if (result === TIMEOUT_SYMBOL) {
+      console.warn("KV write timed out");
+      if (status) status.degraded = true;
+      return null;
+    }
+    return result as T;
+  } catch (e) {
+    console.error("KV write error:", e);
+    if (status) status.degraded = true;
+    return null;
+  }
+}
+
         if (env.ONYX_STATE) {
           const listed = await kvReadWithTimeout(
             env.ONYX_STATE.list({ prefix: "approval:" }),
@@ -2507,4 +2609,13 @@ export default {
       });
     }
   },
+};
+
+export default {
+  async fetch(request: any, env: Env, ctx: any): Promise<Response> {
+    return onyx_handler._fetch(request, env, ctx);
+  },
+  async scheduled(controller: any, env: Env, ctx: any): Promise<void> {
+    return onyx_handler.scheduled(controller, env, ctx);
+  }
 };
