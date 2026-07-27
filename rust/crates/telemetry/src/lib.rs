@@ -86,7 +86,8 @@ pub fn dispatch_to_axim_ingress(envelope: AximTelemetryEnvelope) {
                 match req.send().await {
                     Ok(resp) => {
                         if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                            crate::metrics::RATE_LIMIT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            crate::metrics::RATE_LIMIT_COUNT
+                                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         }
                         if !resp.status().is_success() {
                             should_retry = true;

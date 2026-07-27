@@ -1,1 +1,1 @@
-This folder contains the built output assets for the worker "onyx-mk3" generated at 2026-07-09T16:44:44.273Z.
+This folder contains the built output assets for the worker "onyx-edge-bridge" generated at 2026-07-27T20:13:17.624Z.
