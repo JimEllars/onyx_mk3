@@ -2612,10 +2612,10 @@ async function kvWriteWithTimeout<T>(
 };
 
 export default {
-  async fetch(request: any, env: Env, ctx: any): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     return onyx_handler._fetch(request, env, ctx);
   },
-  async scheduled(controller: any, env: Env, ctx: any): Promise<void> {
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     return onyx_handler.scheduled(controller, env, ctx);
   }
-};
+} satisfies ExportedHandler<Env>;
