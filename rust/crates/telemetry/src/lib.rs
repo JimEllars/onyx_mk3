@@ -85,6 +85,9 @@ pub fn dispatch_to_axim_ingress(envelope: AximTelemetryEnvelope) {
 
                 match req.send().await {
                     Ok(resp) => {
+                        if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                            crate::metrics::RATE_LIMIT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        }
                         if !resp.status().is_success() {
                             should_retry = true;
                             err_msg = format!("HTTP error: {}", resp.status());
@@ -180,10 +183,17 @@ pub async fn flush_queued_telemetry() {
         .header("Authorization", format!("Bearer {secret}"))
         .header("X-Request-ID", request_id);
 
-    if let Err(e) = req.send().await {
-        tracing::warn!("Failed to flush queued telemetry via edge bridge: {}", e);
-        if let Ok(mut queue) = QUEUED_TELEMETRY.lock() {
-            queue.extend(envelopes);
+    match req.send().await {
+        Err(e) => {
+            tracing::warn!("Failed to flush queued telemetry via edge bridge: {}", e);
+            if let Ok(mut queue) = QUEUED_TELEMETRY.lock() {
+                queue.extend(envelopes);
+            }
+        }
+        Ok(resp) => {
+            if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                crate::metrics::RATE_LIMIT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
         }
     }
 }
