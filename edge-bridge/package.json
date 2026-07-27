@@ -1,5 +1,5 @@
 {
-  "name": "onyx-mk3",
+  "name": "onyx-edge-bridge",
   "version": "1.0.0",
   "description": "Cloudflare Worker Edge Bridge for Onyx mk3 and AXiM Core",
   "main": "src/index.ts",
