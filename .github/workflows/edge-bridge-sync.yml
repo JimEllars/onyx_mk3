@@ -31,7 +31,7 @@ jobs:
 
       - name: Typecheck
         working-directory: edge-bridge
-        run: npm run build
+        run: npm run typecheck && npm run build
 
       - name: Deploy to Cloudflare
         working-directory: edge-bridge

@@ -165,7 +165,7 @@ pub fn render_status_bar_text(
     let cache_ttl = telemetry::metrics::EDGE_CACHE_TTL.get();
 
     text = format!(
-        "{text} ∥ EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s"
+        "{text} ∥ [Edge: OK] · EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s"
     );
 
     let email_status = telemetry::metrics::get_last_email_status();
