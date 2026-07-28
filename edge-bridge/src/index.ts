@@ -290,6 +290,13 @@ async function bootstrapDatabase(env: Env) {
         synced INTEGER DEFAULT 0,
         created_at INTEGER
       );
+      CREATE TABLE IF NOT EXISTS RateLimitLogs (
+        id TEXT PRIMARY KEY,
+        ip_address TEXT,
+        endpoint TEXT,
+        user_id TEXT,
+        blocked_at INTEGER
+      );
       CREATE TABLE IF NOT EXISTS CommandAuditLogs (
         id TEXT PRIMARY KEY,
         user_id TEXT,
@@ -1189,6 +1196,59 @@ const onyx_handler: any = {
               ),
             },
           );
+        }
+      } else if (
+        request.method === "GET" &&
+        url.pathname === "/api/v1/rate-limit/metrics"
+      ) {
+        const authError = await checkAuth(request, env);
+        if (authError) return authError;
+
+        if (!env.ONYX_DB) {
+          return new Response(JSON.stringify({ error: "Database not configured" }), {
+            status: 500,
+            headers: addOnyxHeaders(
+              {
+                ...getCorsHeaders(request, env),
+                "Content-Type": "application/json",
+              },
+              edgeStatus,
+              cacheStatus,
+              traceId,
+            ),
+          });
+        }
+
+        try {
+          const { results } = await env.ONYX_DB.prepare(
+            "SELECT endpoint, COUNT(*) as breach_count FROM RateLimitLogs GROUP BY endpoint"
+          ).all();
+
+          return new Response(JSON.stringify({ status: "success", metrics: results || [] }), {
+            headers: addOnyxHeaders(
+              {
+                ...getCorsHeaders(request, env),
+                "Content-Type": "application/json",
+              },
+              edgeStatus,
+              cacheStatus,
+              traceId,
+            ),
+          });
+        } catch (e) {
+          console.error("Error fetching rate-limit metrics", e);
+          return new Response(JSON.stringify({ error: "Internal error" }), {
+            status: 500,
+            headers: addOnyxHeaders(
+              {
+                ...getCorsHeaders(request, env),
+                "Content-Type": "application/json",
+              },
+              edgeStatus,
+              cacheStatus,
+              traceId,
+            ),
+          });
         }
       } else if (
         request.method === "POST" &&
@@ -2612,9 +2672,32 @@ async function kvWriteWithTimeout<T>(
 };
 
 export default {
+
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    return onyx_handler._fetch(request, env, ctx);
+    const response = await onyx_handler._fetch(request, env, ctx);
+    if (response.status === 429) {
+      if (env.ONYX_DB) {
+        const ip = request.headers.get("cf-connecting-ip") || "unknown";
+        const url = new URL(request.url);
+        ctx.waitUntil(
+          env.ONYX_DB.prepare(
+            "INSERT INTO RateLimitLogs (id, ip_address, endpoint, user_id, blocked_at) VALUES (?, ?, ?, ?, ?)"
+          )
+          .bind(
+            crypto.randomUUID(),
+            ip,
+            url.pathname,
+            "anonymous",
+            Math.floor(Date.now() / 1000)
+          )
+          .run()
+          .catch(e => console.error("Failed to log rate limit breach", e))
+        );
+      }
+    }
+    return response;
   },
+
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     return onyx_handler.scheduled(controller, env, ctx);
   }
