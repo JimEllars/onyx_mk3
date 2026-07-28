@@ -27,7 +27,7 @@ jobs:
 
       - name: Install Dependencies
         working-directory: edge-bridge
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: Typecheck
         working-directory: edge-bridge
