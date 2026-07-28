@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "npm --prefix edge-bridge install && npm --prefix edge-bridge run build",
+    "build": "npm --prefix edge-bridge install --legacy-peer-deps && npm --prefix edge-bridge run build",
     "deploy": "cd edge-bridge && npm install && npx wrangler deploy",
     "deploy:dry-run": "cd edge-bridge && npm install && npx wrangler deploy --dry-run"
   }
