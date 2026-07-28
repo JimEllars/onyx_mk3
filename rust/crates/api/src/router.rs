@@ -36,7 +36,6 @@ pub async fn ingest_telemetry(Json(payload): Json<TelemetryPayload>) -> StatusCo
     StatusCode::ACCEPTED
 }
 
-
 #[derive(Clone)]
 pub struct AppState {
     pub dispatcher: Arc<Dispatcher>,

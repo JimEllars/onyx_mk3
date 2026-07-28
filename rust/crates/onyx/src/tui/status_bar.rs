@@ -154,7 +154,8 @@ pub fn render_status_bar_text(
         telemetry::metrics::RATE_LIMIT_COUNT.load(std::sync::atomic::Ordering::Relaxed);
     text = format!("{text} ∥ [RL: {rate_limit_val}]");
 
-    let d1_timeout_count = telemetry::metrics::D1_TIMEOUT_COUNT.load(std::sync::atomic::Ordering::Relaxed);
+    let d1_timeout_count =
+        telemetry::metrics::D1_TIMEOUT_COUNT.load(std::sync::atomic::Ordering::Relaxed);
     if d1_timeout_count > 0 {
         text = format!("{text} ∥ [DB: DEGRADED]");
     }
@@ -304,7 +305,8 @@ pub fn draw_status_bar(
 
         let rl_val =
             telemetry::metrics::RATE_LIMIT_COUNT.load(std::sync::atomic::Ordering::Relaxed);
-        let d1_timeout_count = telemetry::metrics::D1_TIMEOUT_COUNT.load(std::sync::atomic::Ordering::Relaxed);
+        let d1_timeout_count =
+            telemetry::metrics::D1_TIMEOUT_COUNT.load(std::sync::atomic::Ordering::Relaxed);
         let (bg, fg) = if d1_timeout_count > 0 {
             (Color::Magenta, Color::White)
         } else if (session_active && !session_success) || rl_val > 0 {
