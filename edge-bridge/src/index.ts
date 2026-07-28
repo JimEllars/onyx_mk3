@@ -57,7 +57,6 @@ async function kvWriteWithTimeout<T>(
   }
 }
 
-
 async function kvReadWithTimeout<T>(
   promise: Promise<T>,
   timeoutMs = 500,
@@ -123,30 +122,30 @@ function getCorsHeaders(request: Request, env?: Env) {
       "https://piratefederation.org",
     ];
 
-const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
+    const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
 
-async function kvWriteWithTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs = 500,
-  status?: { degraded: boolean },
-): Promise<T | null> {
-  try {
-    const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
-      setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
-    );
-    const result = await Promise.race([promise, timeout]);
-    if (result === TIMEOUT_SYMBOL) {
-      console.warn("KV write timed out");
-      if (status) status.degraded = true;
-      return null;
+    async function kvWriteWithTimeout<T>(
+      promise: Promise<T>,
+      timeoutMs = 500,
+      status?: { degraded: boolean },
+    ): Promise<T | null> {
+      try {
+        const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
+          setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
+        );
+        const result = await Promise.race([promise, timeout]);
+        if (result === TIMEOUT_SYMBOL) {
+          console.warn("KV write timed out");
+          if (status) status.degraded = true;
+          return null;
+        }
+        return result as T;
+      } catch (e) {
+        console.error("KV write error:", e);
+        if (status) status.degraded = true;
+        return null;
+      }
     }
-    return result as T;
-  } catch (e) {
-    console.error("KV write error:", e);
-    if (status) status.degraded = true;
-    return null;
-  }
-}
 
     isAllowed =
       ALLOWED_ORIGINS.includes(origin) ||
@@ -1205,36 +1204,42 @@ const onyx_handler: any = {
         if (authError) return authError;
 
         if (!env.ONYX_DB) {
-          return new Response(JSON.stringify({ error: "Database not configured" }), {
-            status: 500,
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          });
+          return new Response(
+            JSON.stringify({ error: "Database not configured" }),
+            {
+              status: 500,
+              headers: addOnyxHeaders(
+                {
+                  ...getCorsHeaders(request, env),
+                  "Content-Type": "application/json",
+                },
+                edgeStatus,
+                cacheStatus,
+                traceId,
+              ),
+            },
+          );
         }
 
         try {
           const { results } = await env.ONYX_DB.prepare(
-            "SELECT endpoint, COUNT(*) as breach_count FROM RateLimitLogs GROUP BY endpoint"
+            "SELECT endpoint, COUNT(*) as breach_count FROM RateLimitLogs GROUP BY endpoint",
           ).all();
 
-          return new Response(JSON.stringify({ status: "success", metrics: results || [] }), {
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          });
+          return new Response(
+            JSON.stringify({ status: "success", metrics: results || [] }),
+            {
+              headers: addOnyxHeaders(
+                {
+                  ...getCorsHeaders(request, env),
+                  "Content-Type": "application/json",
+                },
+                edgeStatus,
+                cacheStatus,
+                traceId,
+              ),
+            },
+          );
         } catch (e) {
           console.error("Error fetching rate-limit metrics", e);
           return new Response(JSON.stringify({ error: "Internal error" }), {
@@ -2281,30 +2286,30 @@ const onyx_handler: any = {
         try {
           let logs: any[] = [];
 
-const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
+          const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
 
-async function kvWriteWithTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs = 500,
-  status?: { degraded: boolean },
-): Promise<T | null> {
-  try {
-    const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
-      setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
-    );
-    const result = await Promise.race([promise, timeout]);
-    if (result === TIMEOUT_SYMBOL) {
-      console.warn("KV write timed out");
-      if (status) status.degraded = true;
-      return null;
-    }
-    return result as T;
-  } catch (e) {
-    console.error("KV write error:", e);
-    if (status) status.degraded = true;
-    return null;
-  }
-}
+          async function kvWriteWithTimeout<T>(
+            promise: Promise<T>,
+            timeoutMs = 500,
+            status?: { degraded: boolean },
+          ): Promise<T | null> {
+            try {
+              const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
+                setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
+              );
+              const result = await Promise.race([promise, timeout]);
+              if (result === TIMEOUT_SYMBOL) {
+                console.warn("KV write timed out");
+                if (status) status.degraded = true;
+                return null;
+              }
+              return result as T;
+            } catch (e) {
+              console.error("KV write error:", e);
+              if (status) status.degraded = true;
+              return null;
+            }
+          }
 
           if (env.ONYX_DB) {
             const result = await env.ONYX_DB.prepare(
@@ -2314,31 +2319,30 @@ async function kvWriteWithTimeout<T>(
               .all();
             logs = result.results || [];
 
-const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
+            const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
 
-async function kvWriteWithTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs = 500,
-  status?: { degraded: boolean },
-): Promise<T | null> {
-  try {
-    const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
-      setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
-    );
-    const result = await Promise.race([promise, timeout]);
-    if (result === TIMEOUT_SYMBOL) {
-      console.warn("KV write timed out");
-      if (status) status.degraded = true;
-      return null;
-    }
-    return result as T;
-  } catch (e) {
-    console.error("KV write error:", e);
-    if (status) status.degraded = true;
-    return null;
-  }
-}
-
+            async function kvWriteWithTimeout<T>(
+              promise: Promise<T>,
+              timeoutMs = 500,
+              status?: { degraded: boolean },
+            ): Promise<T | null> {
+              try {
+                const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
+                  setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
+                );
+                const result = await Promise.race([promise, timeout]);
+                if (result === TIMEOUT_SYMBOL) {
+                  console.warn("KV write timed out");
+                  if (status) status.degraded = true;
+                  return null;
+                }
+                return result as T;
+              } catch (e) {
+                console.error("KV write error:", e);
+                if (status) status.degraded = true;
+                return null;
+              }
+            }
           }
 
           return new Response(JSON.stringify({ status: "success", logs }), {
@@ -2376,30 +2380,30 @@ async function kvWriteWithTimeout<T>(
         // Read approvals from KV store
         const approvals: any[] = [];
 
-const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
+        const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
 
-async function kvWriteWithTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs = 500,
-  status?: { degraded: boolean },
-): Promise<T | null> {
-  try {
-    const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
-      setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
-    );
-    const result = await Promise.race([promise, timeout]);
-    if (result === TIMEOUT_SYMBOL) {
-      console.warn("KV write timed out");
-      if (status) status.degraded = true;
-      return null;
-    }
-    return result as T;
-  } catch (e) {
-    console.error("KV write error:", e);
-    if (status) status.degraded = true;
-    return null;
-  }
-}
+        async function kvWriteWithTimeout<T>(
+          promise: Promise<T>,
+          timeoutMs = 500,
+          status?: { degraded: boolean },
+        ): Promise<T | null> {
+          try {
+            const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
+              setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
+            );
+            const result = await Promise.race([promise, timeout]);
+            if (result === TIMEOUT_SYMBOL) {
+              console.warn("KV write timed out");
+              if (status) status.degraded = true;
+              return null;
+            }
+            return result as T;
+          } catch (e) {
+            console.error("KV write error:", e);
+            if (status) status.degraded = true;
+            return null;
+          }
+        }
 
         if (env.ONYX_STATE) {
           const listed = await kvReadWithTimeout(
@@ -2672,8 +2676,11 @@ async function kvWriteWithTimeout<T>(
 };
 
 export default {
-
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const response = await onyx_handler._fetch(request, env, ctx);
     if (response.status === 429) {
       if (env.ONYX_DB) {
@@ -2681,24 +2688,28 @@ export default {
         const url = new URL(request.url);
         ctx.waitUntil(
           env.ONYX_DB.prepare(
-            "INSERT INTO RateLimitLogs (id, ip_address, endpoint, user_id, blocked_at) VALUES (?, ?, ?, ?, ?)"
+            "INSERT INTO RateLimitLogs (id, ip_address, endpoint, user_id, blocked_at) VALUES (?, ?, ?, ?, ?)",
           )
-          .bind(
-            crypto.randomUUID(),
-            ip,
-            url.pathname,
-            "anonymous",
-            Math.floor(Date.now() / 1000)
-          )
-          .run()
-          .catch(e => console.error("Failed to log rate limit breach", e))
+            .bind(
+              crypto.randomUUID(),
+              ip,
+              url.pathname,
+              "anonymous",
+              Math.floor(Date.now() / 1000),
+            )
+            .run()
+            .catch((e) => console.error("Failed to log rate limit breach", e)),
         );
       }
     }
     return response;
   },
 
-  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(
+    controller: ScheduledController,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<void> {
     return onyx_handler.scheduled(controller, env, ctx);
-  }
+  },
 } satisfies ExportedHandler<Env>;
