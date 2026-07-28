@@ -160,6 +160,12 @@ pub fn render_status_bar_text(
         text = format!("{text} ∥ [DB: DEGRADED]");
     }
 
+    let edge_heartbeat_intercepts =
+        telemetry::metrics::EDGE_HEARTBEAT_INTERCEPTS.load(std::sync::atomic::Ordering::Relaxed);
+    if edge_heartbeat_intercepts > 0 {
+        text = format!("{text} ∥ [Sessions: EDGE-CACHED]");
+    }
+
     let edge_status_val = telemetry::metrics::EDGE_KV_STATUS.get();
 
     let edge_state_str = if (edge_status_val - 1.0).abs() < f64::EPSILON {
@@ -307,8 +313,12 @@ pub fn draw_status_bar(
             telemetry::metrics::RATE_LIMIT_COUNT.load(std::sync::atomic::Ordering::Relaxed);
         let d1_timeout_count =
             telemetry::metrics::D1_TIMEOUT_COUNT.load(std::sync::atomic::Ordering::Relaxed);
+        let edge_heartbeat_intercepts =
+            telemetry::metrics::EDGE_HEARTBEAT_INTERCEPTS.load(std::sync::atomic::Ordering::Relaxed);
         let (bg, fg) = if d1_timeout_count > 0 {
             (Color::Magenta, Color::White)
+        } else if edge_heartbeat_intercepts > 0 {
+            (Color::DarkCyan, Color::White)
         } else if (session_active && !session_success) || rl_val > 0 {
             (Color::Yellow, Color::Black)
         } else if session_active && session_success {

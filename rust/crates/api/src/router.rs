@@ -31,6 +31,8 @@ pub async fn ingest_telemetry(Json(payload): Json<TelemetryPayload>) -> StatusCo
     if let Some(warning) = payload.warning {
         if warning == "D1_QUERY_TIMEOUT" {
             telemetry::metrics::D1_TIMEOUT_COUNT.fetch_add(1, Ordering::Relaxed);
+        } else if warning == "INTERCEPTED_HEARTBEAT" {
+            telemetry::metrics::EDGE_HEARTBEAT_INTERCEPTS.fetch_add(1, Ordering::Relaxed);
         }
     }
     StatusCode::ACCEPTED
