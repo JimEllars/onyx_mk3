@@ -19,6 +19,24 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Arc;
 
+use serde::Deserialize;
+use std::sync::atomic::Ordering;
+
+#[derive(Deserialize)]
+pub struct TelemetryPayload {
+    pub warning: Option<String>,
+}
+
+pub async fn ingest_telemetry(Json(payload): Json<TelemetryPayload>) -> StatusCode {
+    if let Some(warning) = payload.warning {
+        if warning == "D1_QUERY_TIMEOUT" {
+            telemetry::metrics::D1_TIMEOUT_COUNT.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    StatusCode::ACCEPTED
+}
+
+
 #[derive(Clone)]
 pub struct AppState {
     pub dispatcher: Arc<Dispatcher>,
@@ -28,6 +46,7 @@ pub struct AppState {
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(handle_health_check))
+        .route("/api/v1/telemetry/ingest", post(ingest_telemetry))
         .route("/v1/commands/dispatch", post(handle_dispatch))
         .route("/api/v1/onyx/summon", post(handle_onyx_summon))
         .route("/v1/generate/nda", post(handle_generate_nda))

@@ -324,3 +324,6 @@ pub fn get_last_email_status() -> String {
         String::new()
     }
 }
+
+use std::sync::atomic::AtomicU64;
+pub static D1_TIMEOUT_COUNT: AtomicU64 = AtomicU64::new(0);
