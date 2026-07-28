@@ -2,7 +2,7 @@
   "$schema": "./edge-bridge/node_modules/wrangler/config-schema.json",
   // Mirror the Worker config at the repo root so Cloudflare's root-level
   // deploy command resolves the Worker instead of trying to deploy a Pages site.
-  "name": "onyx-mk3",
+  "name": "onyx-edge-bridge",
   "main": "./edge-bridge/src/index.ts",
   "compatibility_date": "2026-07-09",
   "compatibility_flags": ["nodejs_compat"],
