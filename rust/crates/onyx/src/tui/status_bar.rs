@@ -11,8 +11,10 @@ use std::io::{stdout, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-pub static CACHED_EDGE_BUFFER_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-pub static CACHED_CRON_STATUS_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static CACHED_EDGE_BUFFER_READY: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+pub static CACHED_CRON_STATUS_ACTIVE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 pub fn spawn_telemetry_polling_loop(port: u16) {
     std::thread::spawn(move || {
@@ -24,8 +26,14 @@ pub fn spawn_telemetry_polling_loop(port: u16) {
         loop {
             if let Ok(res) = client.get(&url).send() {
                 if let Ok(json) = res.json::<serde_json::Value>() {
-                    let edge_intercepts = json.get("edge_heartbeat_intercepts").and_then(serde_json::Value::as_u64).unwrap_or(0);
-                    let daily_cron = json.get("daily_cron_runs").and_then(serde_json::Value::as_u64).unwrap_or(0);
+                    let edge_intercepts = json
+                        .get("edge_heartbeat_intercepts")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0);
+                    let daily_cron = json
+                        .get("daily_cron_runs")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0);
                     CACHED_EDGE_BUFFER_READY.store(edge_intercepts > 0, Ordering::Relaxed);
                     CACHED_CRON_STATUS_ACTIVE.store(daily_cron > 0, Ordering::Relaxed);
                 }
