@@ -670,12 +670,10 @@ pub async fn handle_health_check() -> impl IntoResponse {
         .into_response()
 }
 
-
 #[axum::debug_handler]
-pub async fn handle_daily_cron(
-    headers: axum::http::HeaderMap,
-) -> impl IntoResponse {
-    let cron_secret = std::env::var("CRON_SECRET_KEY").unwrap_or_else(|_| "default_cron_secret".to_string());
+pub async fn handle_daily_cron(headers: axum::http::HeaderMap) -> impl IntoResponse {
+    let cron_secret =
+        std::env::var("CRON_SECRET_KEY").unwrap_or_else(|_| "default_cron_secret".to_string());
 
     let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
     let expected_token = format!("Bearer {cron_secret}");
@@ -697,5 +695,9 @@ pub async fn handle_daily_cron(
         println!("[Onyx Automation] Daily cron task executed successfully.");
     });
 
-    (StatusCode::ACCEPTED, axum::Json(json!({"status": "accepted"}))).into_response()
+    (
+        StatusCode::ACCEPTED,
+        axum::Json(json!({"status": "accepted"})),
+    )
+        .into_response()
 }
