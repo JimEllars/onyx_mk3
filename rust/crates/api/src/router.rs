@@ -51,6 +51,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/health", get(handle_health_check))
         .route("/api/v1/internal/cron/daily-run", post(handle_daily_cron))
         .route("/api/v1/telemetry/ingest", post(ingest_telemetry))
+        .route("/api/v1/telemetry/health", get(handle_telemetry_health))
         .route("/v1/commands/dispatch", post(handle_dispatch))
         .route("/api/v1/onyx/summon", post(handle_onyx_summon))
         .route("/v1/generate/nda", post(handle_generate_nda))
@@ -666,6 +667,29 @@ pub async fn handle_health_check() -> impl IntoResponse {
     (
         StatusCode::OK,
         axum::Json(serde_json::json!({"status": "ok", "version": "3.7.0"})),
+    )
+        .into_response()
+}
+
+#[axum::debug_handler]
+pub async fn handle_telemetry_health() -> impl IntoResponse {
+    let edge_heartbeat = telemetry::metrics::EDGE_HEARTBEAT_INTERCEPTS.load(Ordering::Relaxed);
+    let daily_cron = DAILY_CRON_RUNS.load(Ordering::Relaxed);
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("max-age=15"),
+    );
+
+    (
+        StatusCode::OK,
+        headers,
+        axum::Json(serde_json::json!({
+            "edge_heartbeat_intercepts": edge_heartbeat,
+            "daily_cron_runs": daily_cron,
+            "status": "healthy"
+        })),
     )
         .into_response()
 }
