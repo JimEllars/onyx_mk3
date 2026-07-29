@@ -1396,27 +1396,78 @@ const onyx_handler: any = {
             );
           }
 
-          if (env.ONYX_DB) {
-            const now = Math.floor(Date.now() / 1000);
-            await env.ONYX_DB.prepare(
-              `INSERT INTO UserSessions (session_id, user_id, client_version, last_seen)
-               VALUES (?, ?, ?, ?)
-               ON CONFLICT(session_id) DO UPDATE SET
-                 user_id=excluded.user_id,
-                 client_version=excluded.client_version,
-                 last_seen=excluded.last_seen`,
-            )
-              .bind(
-                body.session_id,
-                body.user_id || null,
-                body.client_version || null,
-                now,
+          // Try to forward heartbeat to backend with 800ms timeout
+          let backendSuccess = false;
+          if (env.CORE_INGEST_URL) {
+            const ingestUrl = env.CORE_INGEST_URL.replace(/\/$/, "") + "/api/v1/session/heartbeat";
+
+            try {
+              const fetchPromise = fetchWithRetry(ingestUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": request.headers.get("Authorization") || "" },
+                body: JSON.stringify(body)
+              });
+
+              const timeoutPromise = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
+                setTimeout(() => resolve(TIMEOUT_SYMBOL), 800)
+              );
+
+              const result = await Promise.race([fetchPromise, timeoutPromise]);
+              if (result !== TIMEOUT_SYMBOL && (result as Response).ok) {
+                backendSuccess = true;
+              }
+            } catch (backendError) {
+              console.error("Backend heartbeat error:", backendError);
+            }
+          }
+
+          if (!backendSuccess) {
+            // Synthetic response logic
+            if (env.ONYX_SESSION_STATE) {
+               ctx.waitUntil(
+                 kvWriteWithTimeout(
+                   env.ONYX_SESSION_STATE.put(body.session_id, Date.now().toString()),
+                   500,
+                   edgeStatus
+                 )
+               );
+            }
+
+            // Send warning telemetry to backend asynchronously
+            if (env.CORE_INGEST_URL) {
+              const telemetryUrl = env.CORE_INGEST_URL.replace(/\/$/, "") + "/api/v1/telemetry/ingest";
+              ctx.waitUntil(
+                fetch(telemetryUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ warning: "INTERCEPTED_HEARTBEAT" })
+                }).catch(() => {}) // Fire and forget
+              );
+            }
+          } else {
+            // Update local DB if backend was successful
+            if (env.ONYX_DB) {
+              const now = Math.floor(Date.now() / 1000);
+              await env.ONYX_DB.prepare(
+                `INSERT INTO UserSessions (session_id, user_id, client_version, last_seen)
+                 VALUES (?, ?, ?, ?)
+                 ON CONFLICT(session_id) DO UPDATE SET
+                   user_id=excluded.user_id,
+                   client_version=excluded.client_version,
+                   last_seen=excluded.last_seen`
               )
-              .run();
+                .bind(
+                  body.session_id,
+                  body.user_id || null,
+                  body.client_version || null,
+                  now,
+                )
+                .run().catch(() => {});
+            }
           }
 
           return new Response(
-            JSON.stringify({ status: "success", session_id: body.session_id }),
+            JSON.stringify({ status: "success", session_id: body.session_id, synthetic: !backendSuccess }),
             {
               headers: addOnyxHeaders(
                 {
