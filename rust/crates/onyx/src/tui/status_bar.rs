@@ -8,6 +8,32 @@ use runtime::fleet_health::{ActionStatus, GlobalFleetStatus};
 use runtime::TokenUsage;
 use std::fmt::Write as _;
 use std::io::{stdout, Write};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
+pub static CACHED_EDGE_BUFFER_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static CACHED_CRON_STATUS_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn spawn_telemetry_polling_loop(port: u16) {
+    std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap_or_default();
+        let url = format!("http://127.0.0.1:{port}/api/v1/telemetry/health");
+        loop {
+            if let Ok(res) = client.get(&url).send() {
+                if let Ok(json) = res.json::<serde_json::Value>() {
+                    let edge_intercepts = json.get("edge_heartbeat_intercepts").and_then(serde_json::Value::as_u64).unwrap_or(0);
+                    let daily_cron = json.get("daily_cron_runs").and_then(serde_json::Value::as_u64).unwrap_or(0);
+                    CACHED_EDGE_BUFFER_READY.store(edge_intercepts > 0, Ordering::Relaxed);
+                    CACHED_CRON_STATUS_ACTIVE.store(daily_cron > 0, Ordering::Relaxed);
+                }
+            }
+            std::thread::sleep(Duration::from_secs(15));
+        }
+    });
+}
 
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub fn render_status_bar_text(
@@ -166,6 +192,16 @@ pub fn render_status_bar_text(
         text = format!("{text} ∥ [Sessions: EDGE-CACHED]");
     }
 
+    let cron_active = CACHED_CRON_STATUS_ACTIVE.load(Ordering::Relaxed);
+    if cron_active {
+        text = format!("{text} ∥ [Cron Status: Active]");
+    }
+
+    let edge_ready = CACHED_EDGE_BUFFER_READY.load(Ordering::Relaxed);
+    if edge_ready {
+        text = format!("{text} ∥ [Edge Buffer: Ready]");
+    }
+
     let edge_status_val = telemetry::metrics::EDGE_KV_STATUS.get();
 
     let edge_state_str = if (edge_status_val - 1.0).abs() < f64::EPSILON {
@@ -315,8 +351,16 @@ pub fn draw_status_bar(
             telemetry::metrics::D1_TIMEOUT_COUNT.load(std::sync::atomic::Ordering::Relaxed);
         let edge_heartbeat_intercepts = telemetry::metrics::EDGE_HEARTBEAT_INTERCEPTS
             .load(std::sync::atomic::Ordering::Relaxed);
+
+        let cron_active = CACHED_CRON_STATUS_ACTIVE.load(Ordering::Relaxed);
+        let edge_ready = CACHED_EDGE_BUFFER_READY.load(Ordering::Relaxed);
+
         let (bg, fg) = if d1_timeout_count > 0 {
             (Color::Magenta, Color::White)
+        } else if cron_active {
+            (Color::DarkGreen, Color::White)
+        } else if edge_ready {
+            (Color::DarkBlue, Color::White)
         } else if edge_heartbeat_intercepts > 0 {
             (Color::DarkCyan, Color::White)
         } else if (session_active && !session_success) || rl_val > 0 {

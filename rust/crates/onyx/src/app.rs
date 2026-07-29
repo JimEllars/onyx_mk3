@@ -133,6 +133,7 @@ pub(crate) fn run_repl(
     permission_mode: PermissionMode,
     base_commit: Option<&String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    crate::tui::status_bar::spawn_telemetry_polling_loop(3141);
     run_stale_base_preflight(base_commit.map(String::as_str));
     let resolved_model = resolve_repl_model(model);
     let mut cli = LiveCli::new(resolved_model, true, allowed_tools, permission_mode)?;
