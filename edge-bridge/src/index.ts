@@ -20,6 +20,7 @@ export interface Env {
   ALLOWED_ORIGIN?: string;
   ONYX_CLIENT_SECRET?: string;
   CHAT_MODEL?: string;
+  CRON_SECRET_KEY?: string;
 }
 
 const ALLOWED_ORIGINS = [
@@ -362,6 +363,25 @@ const onyx_handler: any = {
           { expirationTtl: 3600 },
         );
       }
+
+
+      // Execute the Rust backend daily cron endpoint
+      const backendCronUrl = env.CORE_INGEST_URL
+        ? env.CORE_INGEST_URL.replace("/v1/functions/telemetry-ingest", "/api/v1/internal/cron/daily-run")
+        : "http://localhost:3000/api/v1/internal/cron/daily-run";
+      const cronSecret = env.CRON_SECRET_KEY || "default_cron_secret";
+
+      ctx.waitUntil(
+        fetch(backendCronUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${cronSecret}`
+          }
+        })
+          .then((res) => console.log(`Backend cron response: ${res.status}`))
+          .catch((e) => console.error("Failed to trigger backend cron", e))
+      );
 
       // Pulse Sync: Fetch external social data and forward to Rust backend
       const mockedThreadsPayload = {

@@ -27,6 +27,8 @@ pub struct TelemetryPayload {
     pub warning: Option<String>,
 }
 
+pub static DAILY_CRON_RUNS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub async fn ingest_telemetry(Json(payload): Json<TelemetryPayload>) -> StatusCode {
     if let Some(warning) = payload.warning {
         if warning == "D1_QUERY_TIMEOUT" {
@@ -47,6 +49,7 @@ pub struct AppState {
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(handle_health_check))
+        .route("/api/v1/internal/cron/daily-run", post(handle_daily_cron))
         .route("/api/v1/telemetry/ingest", post(ingest_telemetry))
         .route("/v1/commands/dispatch", post(handle_dispatch))
         .route("/api/v1/onyx/summon", post(handle_onyx_summon))
@@ -665,4 +668,34 @@ pub async fn handle_health_check() -> impl IntoResponse {
         axum::Json(serde_json::json!({"status": "ok", "version": "3.7.0"})),
     )
         .into_response()
+}
+
+
+#[axum::debug_handler]
+pub async fn handle_daily_cron(
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let cron_secret = std::env::var("CRON_SECRET_KEY").unwrap_or_else(|_| "default_cron_secret".to_string());
+
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+    let expected_token = format!("Bearer {cron_secret}");
+
+    if auth_header != Some(&expected_token) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(json!({"error": "Unauthorized cron trigger"})),
+        )
+            .into_response();
+    }
+
+    tokio::spawn(async move {
+        // Simulate an automation run (e.g., clearing stale sessions, aggregating metrics)
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        DAILY_CRON_RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        println!("[Onyx Automation] Daily cron task executed successfully.");
+    });
+
+    (StatusCode::ACCEPTED, axum::Json(json!({"status": "accepted"}))).into_response()
 }
