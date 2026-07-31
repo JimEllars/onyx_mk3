@@ -321,22 +321,40 @@ pub fn draw_status_bar(
         .unwrap_or(0.0) as usize;
 
     let cmds = telemetry::metrics::get_command_execution_total();
-    let text = format!("{text} ∥ [Cmds: {cmds}] ∥ Worker Load: {swarm_queue_depth} · DLQ Depth: {dlq_depth} ∥ Blocked Ingress: {blocked_ingress}");
+    let swarm_fmt = if swarm_queue_depth > 0 {
+        format!("[33m[Swarm Q: {swarm_queue_depth}][0m")
+    } else {
+        "[2m[Swarm Q: 0][0m".to_string()
+    };
+
+    let dlq_fmt = if dlq_depth > 0 {
+        format!("[33m[DLQ: {dlq_depth}][0m")
+    } else {
+        "[2m[DLQ: 0][0m".to_string()
+    };
+
+    let text = format!(
+        "{text} ∥ [Cmds: {cmds}] ∥ {swarm_fmt} ∥ {dlq_fmt} ∥ Blocked Ingress: {blocked_ingress}"
+    );
 
     if let Ok((cols, rows)) = size() {
         let mut out = stdout();
 
         // Safely truncate the text dynamically to avoid terminal size panics
-        let truncated_text = if text.chars().count() > cols as usize {
+        let stripped_text = text
+            .replace("[33m", "")
+            .replace("[2m", "")
+            .replace("[0m", "");
+        let truncated_text = if stripped_text.chars().count() > cols as usize {
             let width = cols.saturating_sub(2) as usize;
             if width == 0 {
                 ""
             } else {
-                let end_idx = text
+                let end_idx = stripped_text
                     .char_indices()
                     .nth(width)
-                    .map_or(text.len(), |(i, _)| i);
-                &text[0..end_idx]
+                    .map_or(stripped_text.len(), |(i, _)| i);
+                &stripped_text[0..end_idx]
             }
         } else {
             &text

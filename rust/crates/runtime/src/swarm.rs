@@ -2,6 +2,7 @@ use crate::dispatch::SwarmQueues;
 use crate::mcp_stdio::McpServerManager;
 use crate::mcp_tool_bridge::{execute_mcp_tool, McpToolRegistry};
 use crate::task_packet::TaskPacket;
+use std::fmt::Write;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -77,6 +78,7 @@ impl SwarmWorker {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn execute_task(&self, priority: &str, packet: TaskPacket) {
         println!(
             "[Swarm Worker] Processing {priority} priority task: {:?}",
@@ -108,25 +110,65 @@ impl SwarmWorker {
         })
         .await;
 
-        // Execute called tools through mcp_tool_bridge::execute_mcp_tool
+        let mut available_tools = Vec::new();
         if let Some(registry) = &self.registry {
             let servers = registry.list_servers();
-
             for server in servers {
                 if let Ok(tools) = registry.list_tools(&server.server_name) {
                     for tool in tools {
-                        let _ = execute_mcp_tool(
-                            registry,
-                            &server.server_name,
-                            &tool.name,
-                            &serde_json::json!({}),
-                        );
+                        available_tools.push(crate::mcp_tool_bridge::McpToolInfo {
+                            name: format!("{}__{}", server.server_name, tool.name),
+                            description: tool.description,
+                            input_schema: Some(tool.input_schema.unwrap_or_else(|| {
+                                serde_json::json!({
+                                    "type": "object",
+                                    "properties": {}
+                                })
+                            })),
+                        });
                     }
                 }
             }
         }
 
-        // In a real execution, dispatch to playbook or MCP tools
+        let mut output_packet = packet.clone();
+
+        if !available_tools.is_empty() {
+            if let Some(registry) = &self.registry {
+                for tool in &available_tools {
+                    if let Some((server_name, tool_name)) = tool.name.split_once("__") {
+                        let result = execute_mcp_tool(
+                            registry,
+                            server_name,
+                            tool_name,
+                            &serde_json::json!({}),
+                        );
+
+                        match result {
+                            Ok(res) => {
+                                let mut res_str = res.to_string();
+                                if res_str.len() > 4000 {
+                                    res_str.truncate(4000);
+                                    res_str.push_str("... [Output Truncated]");
+                                }
+                                let _ = write!(
+                                    output_packet.context,
+                                    "\nTool {} executed: {}",
+                                    tool.name, res_str
+                                );
+                            }
+                            Err(e) => {
+                                let _ = write!(
+                                    output_packet.context,
+                                    "\n[Tool Failure - {}]: {}",
+                                    tool.name, e
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         sleep(Duration::from_millis(10)).await;
 
@@ -138,7 +180,7 @@ impl SwarmWorker {
         let url = format!("{axim_core_url}/api/v1/swarm/execute");
 
         let payload = serde_json::json!({
-            "packet": packet
+            "packet": output_packet
         });
 
         // Note: in a fully non-blocking architecture, we could spawn this out or await it depending on guarantees
