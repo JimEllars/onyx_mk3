@@ -6,6 +6,7 @@ use std::fmt::Write;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
+use tracing::info;
 
 #[derive(Debug)]
 pub struct SwarmWorker {
@@ -78,6 +79,7 @@ impl SwarmWorker {
         }
     }
 
+    #[tracing::instrument(skip(self, parent_packet), fields(parent_task_id = %parent_packet.job_id.as_deref().unwrap_or(""), child_task_id = %subtask_objective))]
     pub fn delegate_subtask(
         &self,
         parent_packet: &TaskPacket,
@@ -87,6 +89,8 @@ impl SwarmWorker {
         if depth >= 3 {
             return Err("Max delegation depth reached".to_string());
         }
+
+        info!("Delegating sub-task execution to child agent");
 
         let mut subtask = parent_packet.clone();
         subtask.objective = subtask_objective.to_string();
@@ -100,6 +104,8 @@ impl SwarmWorker {
 
         // Recursion or actual dispatch logic can go here. For now we simulate success.
         subtask.context.push_str(&child_context);
+
+        info!("Sub-task execution completed");
 
         Ok(subtask)
     }

@@ -220,8 +220,15 @@ pub fn render_status_bar_text(
     let cache_hit_rate = telemetry::metrics::EDGE_CACHE_HIT_RATE.get();
     let cache_ttl = telemetry::metrics::EDGE_CACHE_TTL.get();
 
+    let rps = 0;
+    let rps_str = if rps > 0 {
+        format!("\x1b[1;32m[RPS: {rps}]\x1b[0m")
+    } else {
+        format!("[RPS: {rps}]")
+    };
+
     text = format!(
-        "{text} ∥ [Edge: OK] · EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s"
+        "{text} ∥ {rps_str} ∥ [Edge: OK] · EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s"
     );
 
     let email_status = telemetry::metrics::get_last_email_status();
