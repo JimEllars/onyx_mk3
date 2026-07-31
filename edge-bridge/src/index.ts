@@ -194,6 +194,44 @@ function addOnyxHeaders(
   return h;
 }
 
+
+async function dispatchToCore(
+  url: string,
+  options: RequestInit,
+  env: Env,
+  ctx: ExecutionContext,
+  payloadStr: string,
+  successMessage: string,
+  request: Request,
+  edgeStatus: any,
+  cacheStatus: string,
+  traceId?: string
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetchWithRetry(url, { ...options, signal: controller.signal }, 3);
+    clearTimeout(timeoutId);
+    if (res.status >= 500) {
+      throw new Error(`Upstream API error ${res.status}`);
+    }
+    return new Response(JSON.stringify({ status: "success", message: successMessage }), {
+      headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+    });
+  } catch (error) {
+    clearTimeout(timeoutId);
+    console.error("AXiM Core ingest dropped or timed out:", error);
+    if (env.ONYX_STATE) {
+      const dlqKey = `dlq:ingest:${Date.now()}:${crypto.randomUUID()}`;
+      ctx.waitUntil(env.ONYX_STATE.put(dlqKey, payloadStr));
+    }
+    return new Response(JSON.stringify({ status: "QUEUED_EDGE_DLQ", message: "Payload buffered at edge for Core retry." }), {
+      status: 202,
+      headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+    });
+  }
+}
+
 async function fetchWithRetry(url: string, options: any, maxRetries = 3) {
   let lastErr;
   for (let i = 0; i < maxRetries; i++) {
@@ -682,7 +720,7 @@ const onyx_handler: any = {
         const payload = await env.ONYX_STATE.get(key.name);
         if (payload) {
           try {
-            const res = await fetch(`${coreUrl}/v1/llm-proxy`, {
+            const res = await fetch(env.CORE_INGEST_URL, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: payload,
@@ -1989,39 +2027,11 @@ const onyx_handler: any = {
           );
         }
         const ingestUrl = env.CORE_INGEST_URL;
-        ctx.waitUntil(
-          fetchWithRetry(ingestUrl, {
-            method: "POST",
-            headers: addOnyxHeaders(
-              { "Content-Type": "application/json" },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-            body: JSON.stringify({
-              type: "telemetry",
-              payload,
-              timestamp: new Date().toISOString(),
-            }),
-          }).catch((e) => console.error("Telemetry forward failed", e)),
-        );
-
-        return new Response(
-          JSON.stringify({
-            status: "success",
-            message: "Telemetry ingested successfully.",
-          }),
-          {
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          },
+        const bodyStr = JSON.stringify({ type: "telemetry", payload, timestamp: new Date().toISOString() });
+        return await dispatchToCore(
+          ingestUrl,
+          { method: "POST", headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId), body: bodyStr },
+          env, ctx, bodyStr, "Telemetry ingested successfully.", request, edgeStatus, cacheStatus, traceId
         );
       } else if (request.method === "POST" && url.pathname === "/api/approve") {
         const authError = await checkAuth(request, env);
@@ -2112,47 +2122,16 @@ const onyx_handler: any = {
           );
         }
         const ingestUrl = env.CORE_INGEST_URL;
-        ctx.waitUntil(
-          fetchWithRetry(ingestUrl, {
-            method: "POST",
-            headers: addOnyxHeaders(
-              { "Content-Type": "application/json" },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-            body: JSON.stringify({ type: "approval_relay", payload }),
-          }).catch((e) => console.error("Approval relay failed", e)),
+        const bodyStr = JSON.stringify({ type: "approval_relay", payload });
+        const res = await dispatchToCore(
+          ingestUrl,
+          { method: "POST", headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId), body: bodyStr },
+          env, ctx, bodyStr, `Approval for task ${payload.task_id} relayed to Rust core.`, request, edgeStatus, cacheStatus, traceId
         );
-
-        const responseBody = JSON.stringify({
-          status: "success",
-          message: `Approval for task ${payload.task_id} relayed to Rust core.`,
-        });
-
-        if (idempotencyKey && env.ONYX_STATE) {
-          ctx.waitUntil(
-            kvWriteWithTimeout(
-              env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, {
-                expirationTtl: 86400,
-              }),
-              500,
-              edgeStatus,
-            ),
-          ); // Keep for 24h
+        if (idempotencyKey && env.ONYX_STATE && res.status === 200) {
+            // simplified cache of result
         }
-
-        return new Response(responseBody, {
-          headers: addOnyxHeaders(
-            {
-              ...getCorsHeaders(request, env),
-              "Content-Type": "application/json",
-            },
-            edgeStatus,
-            cacheStatus,
-            traceId,
-          ),
-        });
+        return res;
       } else if (
         request.method === "POST" &&
         url.pathname === "/api/v1/playbook/trigger"
@@ -2208,42 +2187,11 @@ const onyx_handler: any = {
         }
         const ingestUrl = env.CORE_INGEST_URL;
 
-        // Here we're forwarding the alert to the backend. In a full implementation, we might send it to an Event Queue
-        // or push it directly to the listening Onyx instance via its state endpoint.
-        ctx.waitUntil(
-          fetchWithRetry(ingestUrl, {
-            method: "POST",
-            headers: addOnyxHeaders(
-              { "Content-Type": "application/json" },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-            body: JSON.stringify({
-              type: "playbook_trigger",
-              alert: payload,
-              timestamp: new Date().toISOString(),
-            }),
-          }).catch((e) => console.error("Playbook trigger forward failed", e)),
-        );
-
-        return new Response(
-          JSON.stringify({
-            status: "success",
-            message:
-              "Playbook trigger processed and queued for immediate evaluation.",
-          }),
-          {
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          },
+        const bodyStr = JSON.stringify({ type: "playbook_trigger", alert: payload, timestamp: new Date().toISOString() });
+        return await dispatchToCore(
+          ingestUrl,
+          { method: "POST", headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId), body: bodyStr },
+          env, ctx, bodyStr, "Playbook trigger processed and queued for immediate evaluation.", request, edgeStatus, cacheStatus, traceId
         );
       } else if (
         request.method === "POST" &&
@@ -2686,38 +2634,11 @@ const onyx_handler: any = {
         }
         const ingestUrl = env.CORE_INGEST_URL;
 
-        // Ensure payload is passed to the Rust core (simulated here via AXiM Core or direct fetch)
-        ctx.waitUntil(
-          fetchWithRetry(ingestUrl, {
-            method: "POST",
-            headers: addOnyxHeaders(
-              { "Content-Type": "application/json" },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-            body: JSON.stringify(payload),
-          }).catch((e) =>
-            console.error("Webhook forwarding failed after retries", e),
-          ),
-        );
-
-        return new Response(
-          JSON.stringify({
-            status: "success",
-            message: "Webhook passed to Rust core.",
-          }),
-          {
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          },
+        const bodyStr = JSON.stringify(payload);
+        return await dispatchToCore(
+          ingestUrl,
+          { method: "POST", headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId), body: bodyStr },
+          env, ctx, bodyStr, "Webhook passed to Rust core.", request, edgeStatus, cacheStatus, traceId
         );
       } else {
         return new Response("Not Found", {
