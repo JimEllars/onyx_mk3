@@ -362,6 +362,38 @@ async function bootstrapDatabase(env: Env) {
   }
 }
 
+
+async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
+  if (!env.ONYX_STATE) return;
+  const listResult = await env.ONYX_STATE.list({ prefix: "dlq:ingest:", limit: 50 });
+  if (!listResult.keys || listResult.keys.length === 0) return;
+
+  const coreUrl = env.CORE_INGEST_URL || "https://api.axim.us.com/v1/functions/telemetry-ingest";
+
+  for (const keyInfo of listResult.keys) {
+    const key = keyInfo.name;
+    const payload = await env.ONYX_STATE.get(key);
+    if (!payload) continue;
+
+    try {
+      const res = await fetch(coreUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-onyx-edge-auth": env.AXIM_ONYX_SECRET || "edge-sync-worker"
+        },
+        body: payload
+      });
+
+      if (res.status === 200 || res.status === 202) {
+        await env.ONYX_STATE.delete(key);
+      }
+    } catch (e) {
+      console.error(`Failed to drain DLQ key ${key}`, e);
+    }
+  }
+}
+
 const onyx_handler: any = {
   async scheduled(
     controller: any,
@@ -370,7 +402,12 @@ const onyx_handler: any = {
   ): Promise<void> {
     try {
       // Execute a low-overhead heartbeat sanity evaluation across active KV stores
-      console.log(`Cron triggered at ${new Date().toISOString()}`);
+      console.log(`Cron triggered at ${new Date().toISOString()} for ${controller.cron}`);
+
+    if (controller.cron === "*/5 * * * *") {
+      ctx.waitUntil(drainIngestDlq(env, ctx));
+    }
+
       const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
       if (env.ONYX_DB) {
         ctx.waitUntil(

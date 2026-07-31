@@ -328,7 +328,7 @@ pub fn draw_status_bar(
     };
 
     let dlq_fmt = if dlq_depth > 0 {
-        format!("[33m[DLQ: {dlq_depth}][0m")
+        format!("[36;1m[DLQ: {dlq_depth} ⟳][0m")
     } else {
         "[2m[DLQ: 0][0m".to_string()
     };
