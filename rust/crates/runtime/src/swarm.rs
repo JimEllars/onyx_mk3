@@ -78,6 +78,32 @@ impl SwarmWorker {
         }
     }
 
+    pub fn delegate_subtask(
+        &self,
+        parent_packet: &TaskPacket,
+        subtask_objective: &str,
+        depth: u8,
+    ) -> Result<TaskPacket, String> {
+        if depth >= 3 {
+            return Err("Max delegation depth reached".to_string());
+        }
+
+        let mut subtask = parent_packet.clone();
+        subtask.objective = subtask_objective.to_string();
+
+        // Emulate subtask processing and output aggregation
+        let mut child_context = String::new();
+        let _ = write!(
+            child_context,
+            "\n[Sub-Task Execution: {subtask_objective} - Depth {depth}]"
+        );
+
+        // Recursion or actual dispatch logic can go here. For now we simulate success.
+        subtask.context.push_str(&child_context);
+
+        Ok(subtask)
+    }
+
     #[allow(clippy::too_many_lines)]
     pub async fn execute_task(&self, priority: &str, packet: TaskPacket) {
         println!(
@@ -219,6 +245,41 @@ impl SwarmWorker {
 mod tests {
     use super::*;
     use crate::dispatch::{Dispatcher, TaskPriority};
+
+    #[tokio::test]
+    async fn test_swarm_worker_subtask_delegation() {
+        let (_dispatcher, queues) = Dispatcher::new(10);
+        let worker = SwarmWorker::new(queues);
+
+        let packet = TaskPacket {
+            objective: "Parent Task".to_string(),
+            repo: "axim".to_string(),
+            branch_policy: "main".to_string(),
+            scope: "global".to_string(),
+            worker_id: Some("worker-parent".to_string()),
+            job_id: Some("job-parent".to_string()),
+            acceptance_tests: vec![],
+            commit_policy: String::new(),
+            reporting_contract: String::new(),
+            escalation_policy: String::new(),
+            context: String::new(),
+            goal: String::new(),
+            expected_schema: serde_json::Value::Null,
+            reasoning_effort: None,
+            web3_wallet_address: None,
+        };
+
+        let result = worker.delegate_subtask(&packet, "Child Task", 1);
+        assert!(result.is_ok());
+        let aggregated = result.unwrap();
+        assert!(aggregated
+            .context
+            .contains("[Sub-Task Execution: Child Task - Depth 1]"));
+
+        // test depth guardrail
+        let guardrail_result = worker.delegate_subtask(&packet, "Deep Task", 3);
+        assert!(guardrail_result.is_err());
+    }
 
     #[tokio::test]
     async fn test_swarm_worker_routing_priorities() {
