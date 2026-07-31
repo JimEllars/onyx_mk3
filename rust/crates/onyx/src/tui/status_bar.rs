@@ -333,14 +333,18 @@ pub fn draw_status_bar(
         "[2m[DLQ: 0][0m".to_string()
     };
 
-    let text = format!("{text} ∥ [Cmds: {cmds}] ∥ {swarm_fmt} ∥ {dlq_fmt} ∥ Blocked Ingress: {blocked_ingress}");
-
+    let text = format!(
+        "{text} ∥ [Cmds: {cmds}] ∥ {swarm_fmt} ∥ {dlq_fmt} ∥ Blocked Ingress: {blocked_ingress}"
+    );
 
     if let Ok((cols, rows)) = size() {
         let mut out = stdout();
 
         // Safely truncate the text dynamically to avoid terminal size panics
-        let stripped_text = text.replace("[33m", "").replace("[2m", "").replace("[0m", "");
+        let stripped_text = text
+            .replace("[33m", "")
+            .replace("[2m", "")
+            .replace("[0m", "");
         let truncated_text = if stripped_text.chars().count() > cols as usize {
             let width = cols.saturating_sub(2) as usize;
             if width == 0 {
