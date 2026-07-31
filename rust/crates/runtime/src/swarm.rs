@@ -78,7 +78,12 @@ impl SwarmWorker {
         }
     }
 
-    pub fn delegate_subtask(&self, parent_packet: &TaskPacket, subtask_objective: &str, depth: u8) -> Result<TaskPacket, String> {
+    pub fn delegate_subtask(
+        &self,
+        parent_packet: &TaskPacket,
+        subtask_objective: &str,
+        depth: u8,
+    ) -> Result<TaskPacket, String> {
         if depth >= 3 {
             return Err("Max delegation depth reached".to_string());
         }
@@ -88,7 +93,10 @@ impl SwarmWorker {
 
         // Emulate subtask processing and output aggregation
         let mut child_context = String::new();
-        let _ = write!(child_context, "\n[Sub-Task Execution: {subtask_objective} - Depth {depth}]");
+        let _ = write!(
+            child_context,
+            "\n[Sub-Task Execution: {subtask_objective} - Depth {depth}]"
+        );
 
         // Recursion or actual dispatch logic can go here. For now we simulate success.
         subtask.context.push_str(&child_context);
@@ -238,7 +246,6 @@ mod tests {
     use super::*;
     use crate::dispatch::{Dispatcher, TaskPriority};
 
-
     #[tokio::test]
     async fn test_swarm_worker_subtask_delegation() {
         let (_dispatcher, queues) = Dispatcher::new(10);
@@ -265,7 +272,9 @@ mod tests {
         let result = worker.delegate_subtask(&packet, "Child Task", 1);
         assert!(result.is_ok());
         let aggregated = result.unwrap();
-        assert!(aggregated.context.contains("[Sub-Task Execution: Child Task - Depth 1]"));
+        assert!(aggregated
+            .context
+            .contains("[Sub-Task Execution: Child Task - Depth 1]"));
 
         // test depth guardrail
         let guardrail_result = worker.delegate_subtask(&packet, "Deep Task", 3);
