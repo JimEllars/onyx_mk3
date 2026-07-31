@@ -1,8 +1,8 @@
-use std::fmt::Write;
 use crate::dispatch::SwarmQueues;
 use crate::mcp_stdio::McpServerManager;
 use crate::mcp_tool_bridge::{execute_mcp_tool, McpToolRegistry};
 use crate::task_packet::TaskPacket;
+use std::fmt::Write;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -131,7 +131,7 @@ impl SwarmWorker {
             }
         }
 
-                let mut output_packet = packet.clone();
+        let mut output_packet = packet.clone();
 
         if !available_tools.is_empty() {
             if let Some(registry) = &self.registry {
@@ -151,10 +151,18 @@ impl SwarmWorker {
                                     res_str.truncate(4000);
                                     res_str.push_str("... [Output Truncated]");
                                 }
-                                let _ = write!(output_packet.context, "\nTool {} executed: {}", tool.name, res_str);
+                                let _ = write!(
+                                    output_packet.context,
+                                    "\nTool {} executed: {}",
+                                    tool.name, res_str
+                                );
                             }
                             Err(e) => {
-                                let _ = write!(output_packet.context, "\n[Tool Failure - {}]: {}", tool.name, e);
+                                let _ = write!(
+                                    output_packet.context,
+                                    "\n[Tool Failure - {}]: {}",
+                                    tool.name, e
+                                );
                             }
                         }
                     }
