@@ -329,5 +329,4 @@ use std::sync::atomic::AtomicU64;
 pub static D1_TIMEOUT_COUNT: AtomicU64 = AtomicU64::new(0);
 pub static EDGE_HEARTBEAT_INTERCEPTS: AtomicU64 = AtomicU64::new(0);
 
-
 pub static EDGE_AUTH_OK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);

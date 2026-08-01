@@ -74,7 +74,6 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
                     i += 1;
                 }
 
-
                 if !current_batch.is_empty() {
                     let mut req = client.post(&sync_url).json(&current_batch);
                     if !axim_service_key.is_empty() {
@@ -94,14 +93,23 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
                         }
                         Ok(response) => {
                             let status = response.status();
-                            if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-                                crate::metrics::EDGE_AUTH_OK.store(false, std::sync::atomic::Ordering::Relaxed);
-                                crate::metrics::EDGE_AUTH_MISMATCH_TOTAL.with_label_values(&["rejected"]).inc();
+                            if status == reqwest::StatusCode::UNAUTHORIZED
+                                || status == reqwest::StatusCode::FORBIDDEN
+                            {
+                                crate::metrics::EDGE_AUTH_OK
+                                    .store(false, std::sync::atomic::Ordering::Relaxed);
+                                crate::metrics::EDGE_AUTH_MISMATCH_TOTAL
+                                    .with_label_values(&["rejected"])
+                                    .inc();
                             } else if status.is_success() {
-                                crate::metrics::EDGE_AUTH_OK.store(true, std::sync::atomic::Ordering::Relaxed);
+                                crate::metrics::EDGE_AUTH_OK
+                                    .store(true, std::sync::atomic::Ordering::Relaxed);
                             }
 
-                            if status.is_server_error() || status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+                            if status.is_server_error()
+                                || status == reqwest::StatusCode::UNAUTHORIZED
+                                || status == reqwest::StatusCode::FORBIDDEN
+                            {
                                 for line in current_batch_lines {
                                     lines_to_keep.push(line);
                                     if lines_to_keep.len() > max_lines {
