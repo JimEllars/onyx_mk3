@@ -370,6 +370,8 @@ async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
 
   const coreUrl = env.CORE_INGEST_URL || "https://api.axim.us.com/v1/functions/telemetry-ingest";
 
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
   for (const keyInfo of listResult.keys) {
     const key = keyInfo.name;
     const payload = await env.ONYX_STATE.get(key);
@@ -388,6 +390,8 @@ async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
       if (res.status === 200 || res.status === 202) {
         await env.ONYX_STATE.delete(key);
       }
+
+      await sleep(50);
     } catch (e) {
       console.error(`Failed to drain DLQ key ${key}`, e);
     }
