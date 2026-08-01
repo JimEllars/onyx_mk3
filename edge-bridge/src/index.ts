@@ -382,7 +382,7 @@ async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-onyx-edge-auth": env.AXIM_ONYX_SECRET || "edge-sync-worker"
+          "x-onyx-edge-auth": env.AXIM_ONYX_SECRET
         },
         body: payload
       });
@@ -448,7 +448,7 @@ const onyx_handler: any = {
       const backendCronUrl = env.CORE_INGEST_URL
         ? env.CORE_INGEST_URL.replace("/v1/functions/telemetry-ingest", "/api/v1/internal/cron/daily-run")
         : "http://localhost:3000/api/v1/internal/cron/daily-run";
-      const cronSecret = env.CRON_SECRET_KEY || "default_cron_secret";
+      const cronSecret = env.CRON_SECRET_KEY;
 
       ctx.waitUntil(
         fetch(backendCronUrl, {
@@ -481,7 +481,7 @@ const onyx_handler: any = {
       };
 
       const payloadString = JSON.stringify(mockedThreadsPayload);
-      const secret = env.GITHUB_WEBHOOK_SECRET || "default_secret";
+      const secret = env.GITHUB_WEBHOOK_SECRET;
       const encoder = new TextEncoder();
       const key = await crypto.subtle.importKey(
         "raw",

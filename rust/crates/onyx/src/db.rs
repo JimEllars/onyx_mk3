@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result};
+use rusqlite::{params, Connection, Result};
 use std::path::PathBuf;
 
 pub struct Database {
@@ -30,7 +30,7 @@ impl Database {
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )",
-            [],
+            params![],
         )?;
 
         conn.execute(
@@ -42,7 +42,7 @@ impl Database {
                 timestamp TEXT NOT NULL,
                 FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
             )",
-            [],
+            params![],
         )?;
 
         Ok(Self { conn })
@@ -56,7 +56,7 @@ impl Database {
             "INSERT INTO sessions (id, title, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at, title = excluded.title",
-            [session_id, title, &now, &now],
+            params![session_id, title, now, now],
         )?;
         Ok(())
     }
@@ -73,7 +73,7 @@ impl Database {
             "INSERT INTO messages (id, session_id, role, content, timestamp)
              VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(id) DO UPDATE SET content = excluded.content",
-            [msg_id, session_id, role, content, &now],
+            params![msg_id, session_id, role, content, now],
         )?;
         Ok(())
     }
