@@ -769,7 +769,8 @@ pub enum TelemetryError {
 pub async fn send_session_heartbeat(session_id: &str, user_id: &str) -> Result<(), TelemetryError> {
     let bridge_url =
         std::env::var("AXIM_ONYX_EDGE_URL").unwrap_or_else(|_| "http://127.0.0.1:8787".to_string());
-    let token = std::env::var("AXIM_ONYX_SECRET").unwrap_or_default();
+    let token = std::env::var("AXIM_SERVICE_KEY")
+        .unwrap_or_else(|_| std::env::var("AXIM_ONYX_SECRET").unwrap_or_default());
     let url = format!(
         "{}/api/v1/session/heartbeat",
         bridge_url.trim_end_matches('/')
