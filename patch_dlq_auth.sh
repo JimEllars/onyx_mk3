@@ -1,3 +1,5 @@
+#!/bin/bash
+cat << 'INNER_EOF' > rust/crates/telemetry/src/dlq.rs
 use reqwest::Client;
 use std::fs::{File, OpenOptions};
 use fs2::FileExt;
@@ -193,3 +195,4 @@ mod tests {
         assert!(threshold > 0, "10 MB threshold check");
     }
 }
+INNER_EOF
