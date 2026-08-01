@@ -328,6 +328,14 @@ pub fn draw_status_bar(
         .unwrap_or(0.0) as usize;
 
     let cmds = telemetry::metrics::get_command_execution_total();
+
+    let (healthy_providers, total_providers) = api::providers::check_all_providers_health();
+    let provider_str = if healthy_providers == total_providers {
+        format!("[32m[Providers: {healthy_providers}/{total_providers} OK][0m")
+    } else {
+        format!("[33m[Providers: {healthy_providers}/{total_providers} OK][0m")
+    };
+
     let swarm_fmt = if swarm_queue_depth > 0 {
         format!("[33m[Swarm Q: {swarm_queue_depth}][0m")
     } else {
@@ -348,7 +356,7 @@ pub fn draw_status_bar(
     };
 
     let text = format!(
-        "{text} ∥ [Cmds: {cmds}] ∥ {swarm_fmt} ∥ {dlq_fmt} ∥ Blocked Ingress: {blocked_ingress} ∥ {edge_auth_str}"
+        "{text} ∥ [Cmds: {cmds}] ∥ {swarm_fmt} ∥ {dlq_fmt} ∥ Blocked Ingress: {blocked_ingress} ∥ {edge_auth_str} ∥ {provider_str}"
     );
 
     if let Ok((cols, rows)) = size() {

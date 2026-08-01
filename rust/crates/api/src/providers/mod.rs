@@ -299,6 +299,34 @@ pub fn detect_provider_kind(model: &str) -> ProviderKind {
 }
 
 #[must_use]
+pub fn check_all_providers_health() -> (usize, usize) {
+    let mut total = 0;
+    let mut healthy = 0;
+
+    // Check Anthropic
+    total += 1;
+    if std::env::var("ANTHROPIC_API_KEY").is_ok() || std::env::var("ANTHROPIC_AUTH_TOKEN").is_ok() { healthy += 1; }
+
+    // Check Cloudflare
+    total += 1;
+    if std::env::var("CLOUDFLARE_API_TOKEN").is_ok() { healthy += 1; }
+
+    // Check Gemini
+    total += 1;
+    if std::env::var("GEMINI_API_KEY").is_ok() { healthy += 1; }
+
+    // Check Kimi
+    total += 1;
+    if std::env::var("KIMI_API_KEY").is_ok() { healthy += 1; }
+
+    // Check OpenAI
+    total += 1;
+    if std::env::var("OPENAI_API_KEY").is_ok() { healthy += 1; }
+
+    (healthy, total)
+}
+
+#[must_use]
 pub fn max_tokens_for_model(model: &str) -> u32 {
     model_token_limit(model).map_or_else(
         || {
@@ -498,6 +526,7 @@ pub(crate) fn dotenv_value(key: &str) -> Option<String> {
 }
 
 #[allow(dead_code)]
+#[must_use]
 pub fn apply_least_cost_routing(
     mut original_model: String,
     reasoning_effort: Option<&str>,
