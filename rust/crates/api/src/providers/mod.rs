@@ -305,23 +305,33 @@ pub fn check_all_providers_health() -> (usize, usize) {
 
     // Check Anthropic
     total += 1;
-    if std::env::var("ANTHROPIC_API_KEY").is_ok() || std::env::var("ANTHROPIC_AUTH_TOKEN").is_ok() { healthy += 1; }
+    if std::env::var("ANTHROPIC_API_KEY").is_ok() || std::env::var("ANTHROPIC_AUTH_TOKEN").is_ok() {
+        healthy += 1;
+    }
 
     // Check Cloudflare
     total += 1;
-    if std::env::var("CLOUDFLARE_API_TOKEN").is_ok() { healthy += 1; }
+    if std::env::var("CLOUDFLARE_API_TOKEN").is_ok() {
+        healthy += 1;
+    }
 
     // Check Gemini
     total += 1;
-    if std::env::var("GEMINI_API_KEY").is_ok() { healthy += 1; }
+    if std::env::var("GEMINI_API_KEY").is_ok() {
+        healthy += 1;
+    }
 
     // Check Kimi
     total += 1;
-    if std::env::var("KIMI_API_KEY").is_ok() { healthy += 1; }
+    if std::env::var("KIMI_API_KEY").is_ok() {
+        healthy += 1;
+    }
 
     // Check OpenAI
     total += 1;
-    if std::env::var("OPENAI_API_KEY").is_ok() { healthy += 1; }
+    if std::env::var("OPENAI_API_KEY").is_ok() {
+        healthy += 1;
+    }
 
     (healthy, total)
 }
