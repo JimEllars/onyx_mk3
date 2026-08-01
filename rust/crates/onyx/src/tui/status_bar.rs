@@ -340,8 +340,15 @@ pub fn draw_status_bar(
         "[2m[DLQ: 0][0m".to_string()
     };
 
+    let edge_auth_ok = telemetry::metrics::EDGE_AUTH_OK.load(std::sync::atomic::Ordering::Relaxed);
+    let edge_auth_str = if edge_auth_ok {
+        "[32m[Auth: OK][0m"
+    } else {
+        "[1;31m[Auth: FAIL][0m"
+    };
+
     let text = format!(
-        "{text} ∥ [Cmds: {cmds}] ∥ {swarm_fmt} ∥ {dlq_fmt} ∥ Blocked Ingress: {blocked_ingress}"
+        "{text} ∥ [Cmds: {cmds}] ∥ {swarm_fmt} ∥ {dlq_fmt} ∥ Blocked Ingress: {blocked_ingress} ∥ {edge_auth_str}"
     );
 
     if let Ok((cols, rows)) = size() {
@@ -351,7 +358,10 @@ pub fn draw_status_bar(
         let stripped_text = text
             .replace("[33m", "")
             .replace("[2m", "")
-            .replace("[0m", "");
+            .replace("[0m", "")
+            .replace("[32m", "")
+            .replace("[1;31m", "")
+            .replace("[36;1m", "");
         let truncated_text = if stripped_text.chars().count() > cols as usize {
             let width = cols.saturating_sub(2) as usize;
             if width == 0 {

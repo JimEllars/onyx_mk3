@@ -13,7 +13,7 @@ impl SupabaseTelemetrySink {
     pub fn new() -> Option<Self> {
         let endpoint = env::var("AXIM_CORE_LANE_EVENTS_ENDPOINT")
             .unwrap_or_else(|_| "https://api.axim.us.com/api/v1/telemetry".to_string());
-        let bearer_token = env::var("AXIM_ONYX_SECRET").unwrap_or_default();
+        let bearer_token = env::var("AXIM_SERVICE_KEY").unwrap_or_else(|_| env::var("AXIM_ONYX_SECRET").unwrap_or_default());
         Some(Self {
             client: Client::new(),
             endpoint,

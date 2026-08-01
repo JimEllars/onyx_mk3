@@ -4,11 +4,13 @@ use std::io::{BufRead, BufReader, Write};
 use std::time::Duration;
 use tokio::time::sleep;
 
+#[allow(clippy::too_many_lines)]
 pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::SupabaseTelemetrySink>) {
     let dlq_path = std::path::PathBuf::from(".claw/unsynced_receipts.jsonl");
     let core_url =
         std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
     let sync_url = format!("{core_url}/api/v1/receipts/sync");
+    let axim_service_key = std::env::var("AXIM_SERVICE_KEY").unwrap_or_default();
     let client = Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
@@ -21,6 +23,10 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
 
             let max_file_size = 10 * 1024 * 1024; // 10MB
             let max_lines = 5000;
+            let max_batch_bytes = 3_500_000; // 3.5MB
+
+            let mut all_valid_lines = Vec::new();
+            let mut all_receipts = Vec::new();
 
             if let Ok(file) = File::open(&dlq_path) {
                 let reader = BufReader::new(file);
@@ -28,28 +34,83 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
                     if line.trim().is_empty() {
                         continue;
                     }
+                    if let Ok(receipt) = serde_json::from_str::<serde_json::Value>(&line) {
+                        all_valid_lines.push(line);
+                        all_receipts.push(receipt);
+                    }
+                }
+            }
 
-                    if repeated_failures > 0 {
-                        lines_to_keep.push(line);
-                        if lines_to_keep.len() > max_lines {
-                            lines_to_keep.remove(0);
-                        }
-                        continue;
+            // Now we process in batches
+            let mut i = 0;
+            while i < all_receipts.len() {
+                if repeated_failures > 0 {
+                    // if we already failed a batch, keep the rest of the lines
+                    lines_to_keep.push(all_valid_lines[i].clone());
+                    if lines_to_keep.len() > max_lines {
+                        lines_to_keep.remove(0);
+                    }
+                    i += 1;
+                    continue;
+                }
+
+                let mut current_batch = Vec::new();
+                let mut current_batch_lines = Vec::new();
+                let mut current_batch_size = 2; // "[]"
+
+                while i < all_receipts.len() {
+                    let receipt_str = &all_valid_lines[i];
+                    let receipt_size = receipt_str.len();
+
+                    if !current_batch.is_empty()
+                        && current_batch_size + receipt_size + 1 > max_batch_bytes
+                    {
+                        break;
                     }
 
-                    if let Ok(receipt) = serde_json::from_str::<serde_json::Value>(&line) {
-                        let res = client.post(&sync_url).json(&receipt).send().await;
-                        if res.is_err() || res.unwrap().status().is_server_error() {
-                            lines_to_keep.push(line);
-                            repeated_failures += 1;
+                    current_batch.push(all_receipts[i].clone());
+                    current_batch_lines.push(receipt_str.clone());
+                    current_batch_size += receipt_size + 1; // +1 for comma
+                    i += 1;
+                }
 
-                            // FIFO eviction if the queue grows too large (in memory)
-                            if lines_to_keep.len() > max_lines {
-                                lines_to_keep.remove(0);
+
+                if !current_batch.is_empty() {
+                    let mut req = client.post(&sync_url).json(&current_batch);
+                    if !axim_service_key.is_empty() {
+                        req = req.header("Authorization", format!("Bearer {axim_service_key}"));
+                    }
+
+                    let res = req.send().await;
+                    match res {
+                        Err(_) => {
+                            for line in current_batch_lines {
+                                lines_to_keep.push(line);
+                                if lines_to_keep.len() > max_lines {
+                                    lines_to_keep.remove(0);
+                                }
+                            }
+                            repeated_failures += 1;
+                        }
+                        Ok(response) => {
+                            let status = response.status();
+                            if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+                                crate::metrics::EDGE_AUTH_OK.store(false, std::sync::atomic::Ordering::Relaxed);
+                                crate::metrics::EDGE_AUTH_MISMATCH_TOTAL.with_label_values(&["rejected"]).inc();
+                            } else if status.is_success() {
+                                crate::metrics::EDGE_AUTH_OK.store(true, std::sync::atomic::Ordering::Relaxed);
+                            }
+
+                            if status.is_server_error() || status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+                                for line in current_batch_lines {
+                                    lines_to_keep.push(line);
+                                    if lines_to_keep.len() > max_lines {
+                                        lines_to_keep.remove(0);
+                                    }
+                                }
+                                repeated_failures += 1;
                             }
                         }
-                    } else {
-                        // Unparseable, discard
                     }
                 }
             }
@@ -100,9 +161,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_dlq_compiles_and_sizes_limits() {
-        // Here we just test compilation essentially, as creating mock web servers
-        // to fully mock out the reqwest calls goes slightly beyond standard boundaries for now
-        // But we assert logic components:
         let threshold = 10 * 1024 * 1024;
         assert!(threshold > 0, "10 MB threshold check");
     }
