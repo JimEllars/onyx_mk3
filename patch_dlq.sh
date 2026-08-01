@@ -1,10 +1,12 @@
-use fs2::FileExt;
+#!/bin/bash
+cat << 'INNER_EOF' > rust/crates/telemetry/src/dlq.rs
 use reqwest::Client;
 use std::fs::{File, OpenOptions};
+use fs2::FileExt;
 use std::io::{BufRead, BufReader, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::time::sleep;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub static IS_SYNC_ACTIVE: AtomicBool = AtomicBool::new(false);
 
@@ -14,8 +16,7 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
     let core_url =
         std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
     let sync_url = format!("{core_url}/api/v1/receipts/sync");
-
-    // Create client with default timeout
+    let axim_service_key = std::env::var("AXIM_SERVICE_KEY").unwrap_or_default();
     let client = Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
@@ -24,9 +25,6 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
     loop {
         if dlq_path.exists() {
             IS_SYNC_ACTIVE.store(true, Ordering::Relaxed);
-
-            // Re-fetch key in case it rotated during runtime
-            let axim_service_key = std::env::var("AXIM_SERVICE_KEY").unwrap_or_default();
 
             let mut lines_to_keep = Vec::new();
             let mut repeated_failures = 0;
@@ -39,7 +37,7 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
             let mut all_receipts = Vec::new();
 
             if let Ok(file) = File::open(&dlq_path) {
-                // Try to get an exclusive lock. If we can't, skip this cycle to avoid blocking the thread
+                // Try to get an exclusive lock. If we can't, skip this cycle.
                 if file.try_lock_exclusive().is_ok() {
                     let reader = BufReader::new(&file);
                     for line in reader.lines().map_while(Result::ok) {
@@ -87,12 +85,8 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
 
                         if !current_batch.is_empty() {
                             let mut req = client.post(&sync_url).json(&current_batch);
-
-                            // Inject RLS auth header unconditionally for every outbound request
-                            // if the key exists in the environment
                             if !axim_service_key.is_empty() {
-                                req = req
-                                    .header("Authorization", format!("Bearer {axim_service_key}"));
+                                req = req.header("Authorization", format!("Bearer {axim_service_key}"));
                             }
 
                             let res = req.send().await;
@@ -139,8 +133,7 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
                     }
 
                     // Further memory boundary check
-                    let mut total_size: usize =
-                        lines_to_keep.iter().map(std::string::String::len).sum();
+                    let mut total_size: usize = lines_to_keep.iter().map(std::string::String::len).sum();
                     while total_size > max_file_size && !lines_to_keep.is_empty() {
                         total_size -= lines_to_keep[0].len();
                         lines_to_keep.remove(0);
@@ -152,13 +145,13 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
                     if lines_to_keep.is_empty() {
                         let _ = std::fs::remove_file(&dlq_path);
                     } else {
-                        if let Ok(mut write_file) = OpenOptions::new()
+                        if let Ok(mut file) = OpenOptions::new()
                             .write(true)
                             .truncate(true)
                             .open(&dlq_path)
                         {
                             for line in lines_to_keep {
-                                let _ = writeln!(write_file, "{line}");
+                                let _ = writeln!(file, "{line}");
                             }
                         }
 
@@ -195,3 +188,4 @@ mod tests {
         assert!(threshold > 0, "10 MB threshold check");
     }
 }
+INNER_EOF
