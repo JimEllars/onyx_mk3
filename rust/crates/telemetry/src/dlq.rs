@@ -1,10 +1,10 @@
+use fs2::FileExt;
 use reqwest::Client;
 use std::fs::{File, OpenOptions};
-use fs2::FileExt;
 use std::io::{BufRead, BufReader, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::time::sleep;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 pub static IS_SYNC_ACTIVE: AtomicBool = AtomicBool::new(false);
 
@@ -91,7 +91,8 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
                             // Inject RLS auth header unconditionally for every outbound request
                             // if the key exists in the environment
                             if !axim_service_key.is_empty() {
-                                req = req.header("Authorization", format!("Bearer {axim_service_key}"));
+                                req = req
+                                    .header("Authorization", format!("Bearer {axim_service_key}"));
                             }
 
                             let res = req.send().await;
@@ -138,7 +139,8 @@ pub async fn start_dlq_drain_loop(sink: std::sync::Arc<crate::supabase::Supabase
                     }
 
                     // Further memory boundary check
-                    let mut total_size: usize = lines_to_keep.iter().map(std::string::String::len).sum();
+                    let mut total_size: usize =
+                        lines_to_keep.iter().map(std::string::String::len).sum();
                     while total_size > max_file_size && !lines_to_keep.is_empty() {
                         total_size -= lines_to_keep[0].len();
                         lines_to_keep.remove(0);
