@@ -4,7 +4,12 @@
  * This is the Onyx Edge Bridge worker.
  */
 
+import { Hyperdrive } from "@cloudflare/workers-types";
+import { Client } from "pg";
+
 export interface Env {
+  SUPABASE_DB: Hyperdrive;
+  AXIM_SERVICE_KEY: string;
   ONYX_DB: D1Database;
   ONYX_STATE: KVNamespace;
   ONYX_SESSION_STATE: KVNamespace;
@@ -2014,8 +2019,32 @@ const onyx_handler: any = {
         request.method === "POST" &&
         url.pathname === "/api/v1/telemetry"
       ) {
-        const authError = await checkAuth(request, env);
-        if (authError) return authError;
+        const authHeader = request.headers.get("Authorization") || "";
+        const expectedAuth = `Bearer ${env.AXIM_SERVICE_KEY || ""}`;
+        let isAuthorized = false;
+        if (authHeader && env.AXIM_SERVICE_KEY) {
+          const encoder = new TextEncoder();
+          const a = encoder.encode(authHeader);
+          const b = encoder.encode(expectedAuth);
+          if (a.length === b.length) {
+            isAuthorized = await crypto.subtle.timingSafeEqual(a, b);
+          }
+        }
+        if (!isAuthorized) {
+          return new Response("Unauthorized", {
+            status: 401,
+            headers: addOnyxHeaders(
+              getCorsHeaders(request, env),
+              edgeStatus,
+              cacheStatus,
+              traceId,
+            ),
+          });
+        }
+
+        // Remove old auth check since we explicitly check AXIM_SERVICE_KEY
+        // const authError = await checkAuth(request, env);
+        // if (authError) return authError;
         // Type definitions for Telemetry
         interface TelemetryPayload {
           brandId: string;
@@ -2047,12 +2076,40 @@ const onyx_handler: any = {
           );
         }
 
-        // Forward to AXiM Core Telemetry via ctx.waitUntil
-        if (!env.CORE_INGEST_URL) {
+        const bodyStr = JSON.stringify({ type: "telemetry", payload, timestamp: new Date().toISOString() });
+
+        try {
+          const client = new Client({ connectionString: env.SUPABASE_DB.connectionString });
+          await client.connect();
+          await client.query(
+            "INSERT INTO telemetry (brand_id, page_views, errors_404, errors_500, web3_connections, timestamp, payload) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            [payload.brandId, payload.pageViews, payload.errors404, payload.errors500, payload.web3Connections, payload.timestamp, bodyStr]
+          );
+          ctx.waitUntil(client.end());
+
           return new Response(
             JSON.stringify({
-              error: "Configuration error: CORE_INGEST_URL is missing",
+              status: "success",
+              message: "Telemetry ingested successfully.",
+              traceId,
             }),
+            {
+              status: 200,
+              headers: addOnyxHeaders(
+                {
+                  ...getCorsHeaders(request, env),
+                  "Content-Type": "application/json",
+                },
+                edgeStatus,
+                cacheStatus,
+                traceId,
+              ),
+            },
+          );
+        } catch (error: any) {
+          console.error("Telemetry insert error:", error);
+          return new Response(
+            JSON.stringify({ error: "Failed to ingest telemetry", details: error.message }),
             {
               status: 500,
               headers: addOnyxHeaders(
@@ -2067,13 +2124,6 @@ const onyx_handler: any = {
             },
           );
         }
-        const ingestUrl = env.CORE_INGEST_URL;
-        const bodyStr = JSON.stringify({ type: "telemetry", payload, timestamp: new Date().toISOString() });
-        return await dispatchToCore(
-          ingestUrl,
-          { method: "POST", headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId), body: bodyStr },
-          env, ctx, bodyStr, "Telemetry ingested successfully.", request, edgeStatus, cacheStatus, traceId
-        );
       } else if (request.method === "POST" && url.pathname === "/api/approve") {
         const authError = await checkAuth(request, env);
         if (authError) return authError;

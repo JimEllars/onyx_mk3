@@ -17,6 +17,7 @@ const DEFAULT_INITIAL_BACKOFF: Duration = Duration::from_secs(5);
 const DEFAULT_MAX_BACKOFF: Duration = Duration::from_secs(128);
 const DEFAULT_MAX_RETRIES: u32 = 8;
 
+#[must_use]
 pub fn has_api_key() -> bool {
     env::var("GEMINI_API_KEY").is_ok()
 }

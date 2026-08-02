@@ -2,7 +2,7 @@ mod client;
 mod error;
 pub mod http_client;
 mod prompt_cache;
-mod providers;
+pub mod providers;
 pub mod router;
 mod sse;
 pub mod types;
