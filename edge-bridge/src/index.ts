@@ -988,7 +988,8 @@ const onyx_handler: any = {
       request.method === "GET" &&
       (url.pathname.startsWith("/api/v1/schema") ||
         url.pathname.startsWith("/api/v1/template") ||
-        url.pathname === "/api/v1/telemetry/health")
+        url.pathname === "/api/v1/telemetry/health" ||
+        url.pathname === "/api/v1/llm/health")
     ) {
       const cacheUrl = new Request(request.url, request);
       const cache = caches.default;
@@ -1014,14 +1015,14 @@ const onyx_handler: any = {
       try {
         const res = await fetch(`${coreUrl}${url.pathname}`);
         if (res.ok) {
-          const maxAge = url.pathname === "/api/v1/telemetry/health" ? 15 : 3600;
+          const maxAge = (url.pathname === "/api/v1/telemetry/health" || url.pathname === "/api/v1/llm/health") ? 15 : 3600;
           const responseToCache = new Response(res.body, {
             status: res.status,
             statusText: res.statusText,
             headers: {
               ...getCorsHeaders(request, env),
               "Content-Type": "application/json",
-              "Cache-Control": `public, max-age=${maxAge}`,
+              "Cache-Control": `public, max-age=${maxAge}, s-maxage=${maxAge}`,
             },
           });
           ctx.waitUntil(cache.put(cacheUrl, responseToCache.clone()));

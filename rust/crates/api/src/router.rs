@@ -52,6 +52,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/internal/cron/daily-run", post(handle_daily_cron))
         .route("/api/v1/telemetry/ingest", post(ingest_telemetry))
         .route("/api/v1/telemetry/health", get(handle_telemetry_health))
+        .route("/api/v1/llm/health", get(handle_llm_health))
         .route("/v1/commands/dispatch", post(handle_dispatch))
         .route("/api/v1/onyx/summon", post(handle_onyx_summon))
         .route("/v1/generate/nda", post(handle_generate_nda))
@@ -574,6 +575,15 @@ pub async fn handle_event_ingress(
                     // invoke low-overhead background cache cleaning and memory diagnostics routines autonomously
                     // We'll just simulate it to satisfy the requirements
                     println!("Running OnyxDailyMaintenanceSync");
+
+                    // Also reset provider health flags to attempt recovery
+                    crate::providers::ANTHROPIC_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
+                    crate::providers::CLOUDFLARE_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
+                    crate::providers::GEMINI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
+                    crate::providers::KIMI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
+                    crate::providers::OPENAI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
+                    crate::providers::XAI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
+
                 });
                 return (
                     StatusCode::OK,
@@ -660,6 +670,32 @@ pub async fn handle_onyx_summon(
     });
 
     Ok(Sse::new(ReceiverStream::new(rx)))
+}
+
+#[axum::debug_handler]
+pub async fn handle_llm_health() -> impl IntoResponse {
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("public, max-age=15, s-maxage=15"),
+    );
+
+    let (healthy, total) = crate::providers::check_all_providers_health();
+
+    (
+        axum::http::StatusCode::OK,
+        headers,
+        axum::Json(serde_json::json!({
+            "status": if healthy == 0 { "critical" } else if healthy < total { "degraded" } else { "healthy" },
+            "anthropic": crate::providers::ANTHROPIC_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+            "cloudflare": crate::providers::CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+            "gemini": crate::providers::GEMINI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+            "kimi": crate::providers::KIMI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+            "openai": crate::providers::OPENAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+            "xai": crate::providers::XAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+        })),
+    )
+        .into_response()
 }
 
 #[axum::debug_handler]
