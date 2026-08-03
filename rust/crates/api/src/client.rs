@@ -98,47 +98,204 @@ impl ProviderClient {
         &self,
         request: &MessageRequest,
     ) -> Result<MessageResponse, ApiError> {
-        let provider_name = match self {
-            Self::Anthropic(_) => "anthropic",
-            Self::Xai(_) => "xai",
-            Self::OpenAi(_) => "openai",
-            Self::Gemini(_) => "gemini",
-            Self::Cloudflare(_) => "cloudflare",
-        };
-        let result = match self {
-            Self::Anthropic(client) => client.send_message(request).await,
-            Self::Xai(client) | Self::OpenAi(client) => client.send_message(request).await,
-            Self::Gemini(client) => client.send_message(request).await,
-            Self::Cloudflare(client) => client.send_message(request).await,
-        };
-        let status = if result.is_ok() { "success" } else { "error" };
-        telemetry::metrics::LLM_API_CALLS
-            .with_label_values(&[provider_name, &request.model, status])
-            .inc();
-        result
+        let mut current_client = self.clone();
+
+        loop {
+            let provider_name = match &current_client {
+                Self::Anthropic(_) => "anthropic",
+                Self::Xai(_) => "xai",
+                Self::OpenAi(_) => "openai",
+                Self::Gemini(_) => "gemini",
+                Self::Cloudflare(_) => "cloudflare",
+            };
+
+            // Check if current is healthy before even sending
+            let healthy = match provider_name {
+                "anthropic" => crate::providers::ANTHROPIC_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                "gemini" => crate::providers::GEMINI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                "cloudflare" => crate::providers::CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                "xai" => crate::providers::XAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                "openai" => crate::providers::OPENAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                _ => true,
+            };
+
+            let result = if healthy {
+                match &current_client {
+                    Self::Anthropic(client) => client.send_message(request).await,
+                    Self::Xai(client) | Self::OpenAi(client) => client.send_message(request).await,
+                    Self::Gemini(client) => client.send_message(request).await,
+                    Self::Cloudflare(client) => client.send_message(request).await,
+                }
+            } else {
+                Err(ApiError::Auth("Provider marked unhealthy".to_string()))
+            };
+
+            let status = if result.is_ok() { "success" } else { "error" };
+            telemetry::metrics::LLM_API_CALLS
+                .with_label_values(&[provider_name, &request.model, status])
+                .inc();
+
+            if let Err(e) = &result {
+                let is_failure = match e {
+                    ApiError::Api { status, .. } => {
+                        let code = status.as_u16();
+                        code == 429 || (500..600).contains(&code)
+                    }
+                    ApiError::Http(err) => err.is_timeout() || err.is_connect(),
+                    ApiError::Auth(msg) if msg == "Provider marked unhealthy" => true,
+                    _ => false,
+                };
+
+                if is_failure {
+                    // mark unhealthy
+                    match provider_name {
+                        "anthropic" => crate::providers::ANTHROPIC_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
+                        "gemini" => crate::providers::GEMINI_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
+                        "cloudflare" => crate::providers::CLOUDFLARE_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
+                        "xai" => crate::providers::XAI_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
+                        "openai" => crate::providers::OPENAI_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
+                        _ => {}
+                    }
+
+                    // Fallback cascade: Anthropic -> Gemini -> Cloudflare -> Kimi -> OpenAI
+                    let next_client_opt = match provider_name {
+                        "anthropic" => {
+                            if std::env::var("GEMINI_API_KEY").is_ok() {
+                                Self::from_model("gemini/gemini-1.5-pro").ok()
+                            } else { None }
+                        },
+                        "gemini" => {
+                            if std::env::var("CLOUDFLARE_API_TOKEN").is_ok() {
+                                Self::from_model("cloudflare").ok()
+                            } else { None }
+                        },
+                        "cloudflare" => {
+                            if std::env::var("KIMI_API_KEY").is_ok() {
+                                Self::from_model("kimi").ok()
+                            } else { None }
+                        },
+                        "xai" => {
+                            if std::env::var("OPENAI_API_KEY").is_ok() {
+                                Self::from_model("openai/gpt-4o").ok()
+                            } else { None }
+                        },
+                        _ => None, // including openai
+                    };
+
+                    if let Some(next_client) = next_client_opt {
+                        current_client = next_client;
+                        continue;
+                    }
+                }
+            }
+
+            return result;
+        }
     }
 
     pub async fn stream_message(
         &self,
         request: &MessageRequest,
     ) -> Result<MessageStream, ApiError> {
-        match self {
-            Self::Anthropic(client) => client
-                .stream_message(request)
-                .await
-                .map(|s| MessageStream::Anthropic(Box::new(s))),
-            Self::Xai(client) | Self::OpenAi(client) => client
-                .stream_message(request)
-                .await
-                .map(|s| MessageStream::OpenAiCompat(Box::new(s))),
-            Self::Gemini(client) => client
-                .stream_message(request)
-                .await
-                .map(MessageStream::Gemini),
-            Self::Cloudflare(client) => client
-                .stream_message(request)
-                .await
-                .map(|s| MessageStream::Cloudflare(Box::new(s))),
+        let mut current_client = self.clone();
+
+        loop {
+            let provider_name = match &current_client {
+                Self::Anthropic(_) => "anthropic",
+                Self::Xai(_) => "xai",
+                Self::OpenAi(_) => "openai",
+                Self::Gemini(_) => "gemini",
+                Self::Cloudflare(_) => "cloudflare",
+            };
+
+            // Check if current is healthy before even sending
+            let healthy = match provider_name {
+                "anthropic" => crate::providers::ANTHROPIC_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                "gemini" => crate::providers::GEMINI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                "cloudflare" => crate::providers::CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                "xai" => crate::providers::XAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                "openai" => crate::providers::OPENAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                _ => true,
+            };
+
+            let result = if healthy {
+                match &current_client {
+                    Self::Anthropic(client) => client
+                        .stream_message(request)
+                        .await
+                        .map(|s| MessageStream::Anthropic(Box::new(s))),
+                    Self::Xai(client) | Self::OpenAi(client) => client
+                        .stream_message(request)
+                        .await
+                        .map(|s| MessageStream::OpenAiCompat(Box::new(s))),
+                    Self::Gemini(client) => client
+                        .stream_message(request)
+                        .await
+                        .map(MessageStream::Gemini),
+                    Self::Cloudflare(client) => client
+                        .stream_message(request)
+                        .await
+                        .map(|s| MessageStream::Cloudflare(Box::new(s))),
+                }
+            } else {
+                Err(ApiError::Auth("Provider marked unhealthy".to_string()))
+            };
+
+            if let Err(e) = &result {
+                let is_failure = match e {
+                    ApiError::Api { status, .. } => {
+                        let code = status.as_u16();
+                        code == 429 || (500..600).contains(&code)
+                    }
+                    ApiError::Http(err) => err.is_timeout() || err.is_connect(),
+                    ApiError::Auth(msg) if msg == "Provider marked unhealthy" => true,
+                    _ => false,
+                };
+
+                if is_failure {
+                    // mark unhealthy
+                    match provider_name {
+                        "anthropic" => crate::providers::ANTHROPIC_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
+                        "gemini" => crate::providers::GEMINI_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
+                        "cloudflare" => crate::providers::CLOUDFLARE_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
+                        "xai" => crate::providers::XAI_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
+                        "openai" => crate::providers::OPENAI_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
+                        _ => {}
+                    }
+
+                    // Fallback cascade: Anthropic -> Gemini -> Cloudflare -> Kimi -> OpenAI
+                    let next_client_opt = match provider_name {
+                        "anthropic" => {
+                            if std::env::var("GEMINI_API_KEY").is_ok() {
+                                Self::from_model("gemini/gemini-1.5-pro").ok()
+                            } else { None }
+                        },
+                        "gemini" => {
+                            if std::env::var("CLOUDFLARE_API_TOKEN").is_ok() {
+                                Self::from_model("cloudflare").ok()
+                            } else { None }
+                        },
+                        "cloudflare" => {
+                            if std::env::var("KIMI_API_KEY").is_ok() {
+                                Self::from_model("kimi").ok()
+                            } else { None }
+                        },
+                        "xai" => {
+                            if std::env::var("OPENAI_API_KEY").is_ok() {
+                                Self::from_model("openai/gpt-4o").ok()
+                            } else { None }
+                        },
+                        _ => None, // including openai
+                    };
+
+                    if let Some(next_client) = next_client_opt {
+                        current_client = next_client;
+                        continue;
+                    }
+                }
+            }
+
+            return result;
         }
     }
 }

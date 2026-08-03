@@ -12,6 +12,17 @@ pub mod cloudflare;
 pub mod gemini;
 pub mod openai_compat;
 
+
+use std::sync::atomic::AtomicBool;
+
+pub static ANTHROPIC_HEALTHY: AtomicBool = AtomicBool::new(true);
+pub static CLOUDFLARE_HEALTHY: AtomicBool = AtomicBool::new(true);
+pub static GEMINI_HEALTHY: AtomicBool = AtomicBool::new(true);
+pub static KIMI_HEALTHY: AtomicBool = AtomicBool::new(true);
+pub static OPENAI_HEALTHY: AtomicBool = AtomicBool::new(true);
+pub static XAI_HEALTHY: AtomicBool = AtomicBool::new(true);
+
+
 #[allow(dead_code)]
 pub type ProviderFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, ApiError>> + Send + 'a>>;
 
