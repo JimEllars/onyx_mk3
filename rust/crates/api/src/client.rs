@@ -94,6 +94,7 @@ impl ProviderClient {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn send_message(
         &self,
         request: &MessageRequest,
@@ -111,11 +112,19 @@ impl ProviderClient {
 
             // Check if current is healthy before even sending
             let healthy = match provider_name {
-                "anthropic" => crate::providers::ANTHROPIC_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
-                "gemini" => crate::providers::GEMINI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
-                "cloudflare" => crate::providers::CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                "anthropic" => {
+                    crate::providers::ANTHROPIC_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                }
+                "gemini" => {
+                    crate::providers::GEMINI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                }
+                "cloudflare" => {
+                    crate::providers::CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                }
                 "xai" => crate::providers::XAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
-                "openai" => crate::providers::OPENAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                "openai" => {
+                    crate::providers::OPENAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                }
                 _ => true,
             };
 
@@ -149,11 +158,16 @@ impl ProviderClient {
                 if is_failure {
                     // mark unhealthy
                     match provider_name {
-                        "anthropic" => crate::providers::ANTHROPIC_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
-                        "gemini" => crate::providers::GEMINI_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
-                        "cloudflare" => crate::providers::CLOUDFLARE_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
-                        "xai" => crate::providers::XAI_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
-                        "openai" => crate::providers::OPENAI_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
+                        "anthropic" => crate::providers::ANTHROPIC_HEALTHY
+                            .store(false, std::sync::atomic::Ordering::Relaxed),
+                        "gemini" => crate::providers::GEMINI_HEALTHY
+                            .store(false, std::sync::atomic::Ordering::Relaxed),
+                        "cloudflare" => crate::providers::CLOUDFLARE_HEALTHY
+                            .store(false, std::sync::atomic::Ordering::Relaxed),
+                        "xai" => crate::providers::XAI_HEALTHY
+                            .store(false, std::sync::atomic::Ordering::Relaxed),
+                        "openai" => crate::providers::OPENAI_HEALTHY
+                            .store(false, std::sync::atomic::Ordering::Relaxed),
                         _ => {}
                     }
 
@@ -162,23 +176,31 @@ impl ProviderClient {
                         "anthropic" => {
                             if std::env::var("GEMINI_API_KEY").is_ok() {
                                 Self::from_model("gemini/gemini-1.5-pro").ok()
-                            } else { None }
-                        },
+                            } else {
+                                None
+                            }
+                        }
                         "gemini" => {
                             if std::env::var("CLOUDFLARE_API_TOKEN").is_ok() {
                                 Self::from_model("cloudflare").ok()
-                            } else { None }
-                        },
+                            } else {
+                                None
+                            }
+                        }
                         "cloudflare" => {
                             if std::env::var("KIMI_API_KEY").is_ok() {
                                 Self::from_model("kimi").ok()
-                            } else { None }
-                        },
+                            } else {
+                                None
+                            }
+                        }
                         "xai" => {
                             if std::env::var("OPENAI_API_KEY").is_ok() {
                                 Self::from_model("openai/gpt-4o").ok()
-                            } else { None }
-                        },
+                            } else {
+                                None
+                            }
+                        }
                         _ => None, // including openai
                     };
 
@@ -193,6 +215,7 @@ impl ProviderClient {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn stream_message(
         &self,
         request: &MessageRequest,
@@ -210,11 +233,19 @@ impl ProviderClient {
 
             // Check if current is healthy before even sending
             let healthy = match provider_name {
-                "anthropic" => crate::providers::ANTHROPIC_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
-                "gemini" => crate::providers::GEMINI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
-                "cloudflare" => crate::providers::CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                "anthropic" => {
+                    crate::providers::ANTHROPIC_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                }
+                "gemini" => {
+                    crate::providers::GEMINI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                }
+                "cloudflare" => {
+                    crate::providers::CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                }
                 "xai" => crate::providers::XAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
-                "openai" => crate::providers::OPENAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed),
+                "openai" => {
+                    crate::providers::OPENAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                }
                 _ => true,
             };
 
@@ -255,11 +286,16 @@ impl ProviderClient {
                 if is_failure {
                     // mark unhealthy
                     match provider_name {
-                        "anthropic" => crate::providers::ANTHROPIC_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
-                        "gemini" => crate::providers::GEMINI_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
-                        "cloudflare" => crate::providers::CLOUDFLARE_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
-                        "xai" => crate::providers::XAI_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
-                        "openai" => crate::providers::OPENAI_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed),
+                        "anthropic" => crate::providers::ANTHROPIC_HEALTHY
+                            .store(false, std::sync::atomic::Ordering::Relaxed),
+                        "gemini" => crate::providers::GEMINI_HEALTHY
+                            .store(false, std::sync::atomic::Ordering::Relaxed),
+                        "cloudflare" => crate::providers::CLOUDFLARE_HEALTHY
+                            .store(false, std::sync::atomic::Ordering::Relaxed),
+                        "xai" => crate::providers::XAI_HEALTHY
+                            .store(false, std::sync::atomic::Ordering::Relaxed),
+                        "openai" => crate::providers::OPENAI_HEALTHY
+                            .store(false, std::sync::atomic::Ordering::Relaxed),
                         _ => {}
                     }
 
@@ -268,23 +304,31 @@ impl ProviderClient {
                         "anthropic" => {
                             if std::env::var("GEMINI_API_KEY").is_ok() {
                                 Self::from_model("gemini/gemini-1.5-pro").ok()
-                            } else { None }
-                        },
+                            } else {
+                                None
+                            }
+                        }
                         "gemini" => {
                             if std::env::var("CLOUDFLARE_API_TOKEN").is_ok() {
                                 Self::from_model("cloudflare").ok()
-                            } else { None }
-                        },
+                            } else {
+                                None
+                            }
+                        }
                         "cloudflare" => {
                             if std::env::var("KIMI_API_KEY").is_ok() {
                                 Self::from_model("kimi").ok()
-                            } else { None }
-                        },
+                            } else {
+                                None
+                            }
+                        }
                         "xai" => {
                             if std::env::var("OPENAI_API_KEY").is_ok() {
                                 Self::from_model("openai/gpt-4o").ok()
-                            } else { None }
-                        },
+                            } else {
+                                None
+                            }
+                        }
                         _ => None, // including openai
                     };
 
