@@ -147,7 +147,23 @@ async fn handle_connection(
     requests: Arc<Mutex<Vec<CapturedRequest>>>,
 ) -> io::Result<()> {
     let (method, path, headers, raw_body) = read_http_request(&mut socket).await?;
-    let request: MessageRequest = serde_json::from_str(&raw_body)
+    // Anthropic API allows `system` to be an array of objects (for cache control).
+    // Our `MessageRequest` uses `Option<String>`, so if it's an array, we must convert it back to string
+    // to allow deserialization to succeed in tests.
+    let mut json_body: Value = serde_json::from_str(&raw_body)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
+
+    if let Some(system) = json_body.get_mut("system") {
+        if let Some(arr) = system.as_array() {
+            if let Some(first) = arr.first() {
+                if let Some(text) = first.get("text").and_then(|t| t.as_str()) {
+                    *system = Value::String(text.to_string());
+                }
+            }
+        }
+    }
+
+    let request: MessageRequest = serde_json::from_value(json_body)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
     let scenario = detect_scenario(&request)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing parity scenario"))?;
