@@ -1051,6 +1051,19 @@ fn enrich_bearer_auth_error(error: ApiError, auth: &AuthSource) -> ApiError {
 /// Anthropic's nested `source` object format. Audio blocks are unsupported
 /// by Anthropic and should be stripped (or you can error early in the caller).
 fn rewrite_content_blocks_for_anthropic(body: &mut Value) {
+    if let Some(system) = body.get_mut("system") {
+        if system.is_string() {
+            let s = system.as_str().unwrap().to_string();
+            *system = serde_json::json!([
+                {
+                    "type": "text",
+                    "text": s,
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ]);
+        }
+    }
+
     let Some(messages) = body.get_mut("messages").and_then(|m| m.as_array_mut()) else {
         return;
     };

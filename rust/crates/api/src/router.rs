@@ -633,7 +633,7 @@ pub async fn handle_onyx_summon(
         ));
     }
 
-    let _payload = match payload_result {
+    let payload = match payload_result {
         Ok(Json(v)) => v,
         Err(e) => {
             return Err((
@@ -648,24 +648,60 @@ pub async fn handle_onyx_summon(
     let (tx, rx) = tokio::sync::mpsc::channel(10);
 
     tokio::spawn(async move {
-        let mut buf = Vec::new();
-        let payload1 = crate::sse::SsePayload::new("Summoning Onyx Mk3...", false);
-        if payload1.emit(&mut buf).is_ok() {
-            let _ = tx
-                .send(Ok::<_, Infallible>(
-                    AxumSseEvent::default().data(String::from_utf8_lossy(&buf)),
-                ))
-                .await;
-        }
+        let Ok(client) = crate::client::ProviderClient::from_model("claude-3-7-sonnet-latest") else { return };
 
-        buf.clear();
-        let payload2 = crate::sse::SsePayload::new("Context initialized.", true);
-        if payload2.emit(&mut buf).is_ok() {
-            let _ = tx
-                .send(Ok::<_, Infallible>(
-                    AxumSseEvent::default().data(String::from_utf8_lossy(&buf)),
-                ))
-                .await;
+        let message = payload.get("message").and_then(|v| v.as_str()).unwrap_or("Hello");
+
+        let request = crate::types::MessageRequest {
+            model: "claude-3-7-sonnet-latest".to_string(),
+            max_tokens: 1024,
+            messages: vec![crate::types::InputMessage::user_text(message)],
+            system: Some("You are Onyx Mk3. Reply concisely.".to_string()),
+            tools: None,
+            tool_choice: None,
+            stream: true,
+            temperature: None,
+            top_p: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stop: None,
+            reasoning_effort: None,
+            budget_priority: None,
+            response_format: None,
+            web3_wallet_address: None,
+        };
+
+        if let Ok(mut stream) = client.stream_message(&request).await {
+            while let Ok(Some(event)) = stream.next_event().await {
+                match event {
+                    crate::types::StreamEvent::ContentBlockDelta(delta_event) => {
+                        if let crate::types::ContentBlockDelta::TextDelta { text } = delta_event.delta {
+                            let mut buf = Vec::new();
+                            let payload = crate::sse::SsePayload::new(text, false);
+                            if payload.emit(&mut buf).is_ok() {
+                                let _ = tx.send(Ok::<_, Infallible>(
+                                    AxumSseEvent::default().data(String::from_utf8_lossy(&buf)),
+                                )).await;
+                            }
+                        }
+                    },
+                    crate::types::StreamEvent::MessageStop(_) => {
+                        let mut buf = Vec::new();
+                        let payload = crate::sse::SsePayload::new("", true);
+                        if payload.emit(&mut buf).is_ok() {
+                            let _ = tx.send(Ok::<_, Infallible>(
+                                AxumSseEvent::default().data(String::from_utf8_lossy(&buf)),
+                            )).await;
+                        }
+
+                        let _ = tx.send(Ok::<_, Infallible>(
+                            AxumSseEvent::default().data("[DONE]"),
+                        )).await;
+                        break;
+                    },
+                    _ => {}
+                }
+            }
         }
     });
 
