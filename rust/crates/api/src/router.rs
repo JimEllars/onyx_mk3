@@ -648,9 +648,15 @@ pub async fn handle_onyx_summon(
     let (tx, rx) = tokio::sync::mpsc::channel(10);
 
     tokio::spawn(async move {
-        let Ok(client) = crate::client::ProviderClient::from_model("claude-3-7-sonnet-latest") else { return };
+        let Ok(client) = crate::client::ProviderClient::from_model("claude-3-7-sonnet-latest")
+        else {
+            return;
+        };
 
-        let message = payload.get("message").and_then(|v| v.as_str()).unwrap_or("Hello");
+        let message = payload
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Hello");
 
         let request = crate::types::MessageRequest {
             model: "claude-3-7-sonnet-latest".to_string(),
@@ -675,30 +681,36 @@ pub async fn handle_onyx_summon(
             while let Ok(Some(event)) = stream.next_event().await {
                 match event {
                     crate::types::StreamEvent::ContentBlockDelta(delta_event) => {
-                        if let crate::types::ContentBlockDelta::TextDelta { text } = delta_event.delta {
+                        if let crate::types::ContentBlockDelta::TextDelta { text } =
+                            delta_event.delta
+                        {
                             let mut buf = Vec::new();
                             let payload = crate::sse::SsePayload::new(text, false);
                             if payload.emit(&mut buf).is_ok() {
-                                let _ = tx.send(Ok::<_, Infallible>(
-                                    AxumSseEvent::default().data(String::from_utf8_lossy(&buf)),
-                                )).await;
+                                let _ = tx
+                                    .send(Ok::<_, Infallible>(
+                                        AxumSseEvent::default().data(String::from_utf8_lossy(&buf)),
+                                    ))
+                                    .await;
                             }
                         }
-                    },
+                    }
                     crate::types::StreamEvent::MessageStop(_) => {
                         let mut buf = Vec::new();
                         let payload = crate::sse::SsePayload::new("", true);
                         if payload.emit(&mut buf).is_ok() {
-                            let _ = tx.send(Ok::<_, Infallible>(
-                                AxumSseEvent::default().data(String::from_utf8_lossy(&buf)),
-                            )).await;
+                            let _ = tx
+                                .send(Ok::<_, Infallible>(
+                                    AxumSseEvent::default().data(String::from_utf8_lossy(&buf)),
+                                ))
+                                .await;
                         }
 
-                        let _ = tx.send(Ok::<_, Infallible>(
-                            AxumSseEvent::default().data("[DONE]"),
-                        )).await;
+                        let _ = tx
+                            .send(Ok::<_, Infallible>(AxumSseEvent::default().data("[DONE]")))
+                            .await;
                         break;
-                    },
+                    }
                     _ => {}
                 }
             }
