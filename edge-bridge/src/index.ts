@@ -2632,6 +2632,66 @@ const onyx_handler: any = {
           },
         );
       } else if (
+        url.pathname === "/api/v1/audit/logs" &&
+        request.method === "GET"
+      ) {
+        const authError = await checkAuth(request, env);
+        if (authError) return authError;
+
+        const limitStr = url.searchParams.get("limit") || "20";
+        const offsetStr = url.searchParams.get("offset") || "0";
+        const limit = parseInt(limitStr, 10);
+        const offset = parseInt(offsetStr, 10);
+
+        if (isNaN(limit) || isNaN(offset)) {
+          return new Response(JSON.stringify({ error: "Invalid limit or offset" }), {
+            status: 400,
+            headers: addOnyxHeaders(
+              { ...getCorsHeaders(request, env), "Content-Type": "application/json" },
+              edgeStatus, cacheStatus, traceId
+            )
+          });
+        }
+
+        if (env.ONYX_DB) {
+          try {
+            const countResult = await env.ONYX_DB.prepare("SELECT COUNT(*) as total FROM CommandAuditLogs").first();
+            const total = countResult ? countResult.total : 0;
+
+            const { results } = await env.ONYX_DB.prepare("SELECT * FROM CommandAuditLogs ORDER BY timestamp DESC LIMIT ? OFFSET ?")
+              .bind(limit, offset)
+              .all();
+
+            return new Response(
+              JSON.stringify({ success: true, logs: results || [], total: Number(total) }),
+              {
+                status: 200,
+                headers: addOnyxHeaders(
+                  { ...getCorsHeaders(request, env), "Content-Type": "application/json" },
+                  edgeStatus, cacheStatus, traceId
+                )
+              }
+            );
+          } catch (e) {
+             console.error("D1 Audit Logs query failed:", e);
+             return new Response(JSON.stringify({ error: "Failed to fetch audit logs" }), {
+               status: 500,
+               headers: addOnyxHeaders(
+                 { ...getCorsHeaders(request, env), "Content-Type": "application/json" },
+                 edgeStatus, cacheStatus, traceId
+               )
+             });
+          }
+        } else {
+           return new Response(JSON.stringify({ error: "D1 Database not configured" }), {
+             status: 500,
+             headers: addOnyxHeaders(
+               { ...getCorsHeaders(request, env), "Content-Type": "application/json" },
+               edgeStatus, cacheStatus, traceId
+             )
+           });
+        }
+      } else if (
         request.method === "POST" &&
         url.pathname === "/api/v1/webhooks"
       ) {
