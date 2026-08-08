@@ -567,6 +567,72 @@ pub fn apply_least_cost_routing(
     original_model
 }
 
+pub fn spawn_provider_health_heartbeat() {
+    std::thread::spawn(|| {
+        if let Ok(rt) = tokio::runtime::Runtime::new() {
+            rt.block_on(async {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(45));
+                loop {
+                    interval.tick().await;
+
+                    // Anthropic
+                    if !ANTHROPIC_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                        && check_health(ProviderKind::Anthropic).await
+                    {
+                        tracing::info!(
+                            "Anthropic provider recovered. Health flag restored to true."
+                        );
+                        ANTHROPIC_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+
+                    // Cloudflare
+                    if !CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                        && check_health(ProviderKind::Cloudflare).await
+                    {
+                        tracing::info!(
+                            "Cloudflare provider recovered. Health flag restored to true."
+                        );
+                        CLOUDFLARE_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+
+                    // Gemini
+                    if !GEMINI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                        && check_health(ProviderKind::Gemini).await
+                    {
+                        tracing::info!("Gemini provider recovered. Health flag restored to true.");
+                        GEMINI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+
+                    // Kimi
+                    if !KIMI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                        && check_health(ProviderKind::Anthropic).await
+                    {
+                        // Replace with actual Kimi kind if available
+                        tracing::info!("Kimi provider recovered. Health flag restored to true.");
+                        KIMI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+
+                    // OpenAI
+                    if !OPENAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                        && check_health(ProviderKind::OpenAi).await
+                    {
+                        tracing::info!("OpenAI provider recovered. Health flag restored to true.");
+                        OPENAI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+
+                    // xAI
+                    if !XAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                        && check_health(ProviderKind::Xai).await
+                    {
+                        tracing::info!("xAI provider recovered. Health flag restored to true.");
+                        XAI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+                }
+            });
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use std::ffi::OsString;
@@ -1137,70 +1203,22 @@ NO_EQUALS_LINE
     }
 }
 
-pub fn spawn_provider_health_heartbeat() {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(45));
-        loop {
-            interval.tick().await;
+async fn check_health(provider: ProviderKind) -> bool {
+    let client = crate::http_client::build_http_client_or_default();
 
-            // Anthropic
-            if !ANTHROPIC_HEALTHY.load(std::sync::atomic::Ordering::Relaxed) {
-                if check_provider_health(ProviderKind::Anthropic).await {
-                    tracing::info!("Anthropic provider recovered. Health flag restored to true.");
-                    ANTHROPIC_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
-                }
-            }
+    let url = match provider {
+        ProviderKind::Anthropic => "https://api.anthropic.com/v1/models",
+        ProviderKind::Cloudflare => "https://api.cloudflare.com/client/v4/user",
+        ProviderKind::Gemini => "https://generativelanguage.googleapis.com/v1beta/models",
+        ProviderKind::OpenAi => "https://api.openai.com/v1/models",
+        ProviderKind::Xai => "https://api.x.ai/v1/models",
+    };
 
-            // Cloudflare
-            if !CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed) {
-                if check_provider_health(ProviderKind::Cloudflare).await {
-                    tracing::info!("Cloudflare provider recovered. Health flag restored to true.");
-                    CLOUDFLARE_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
-                }
-            }
-
-            // Gemini
-            if !GEMINI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed) {
-                if check_provider_health(ProviderKind::Gemini).await {
-                    tracing::info!("Gemini provider recovered. Health flag restored to true.");
-                    GEMINI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
-                }
-            }
-
-            // Kimi
-            if !KIMI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed) {
-                if check_provider_health(ProviderKind::Anthropic).await { // Replace with actual Kimi kind if available
-                    tracing::info!("Kimi provider recovered. Health flag restored to true.");
-                    KIMI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
-                }
-            }
-
-            // OpenAI
-            if !OPENAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed) {
-                if check_provider_health(ProviderKind::OpenAi).await {
-                    tracing::info!("OpenAI provider recovered. Health flag restored to true.");
-                    OPENAI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
-                }
-            }
-
-            // xAI
-            if !XAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed) {
-                if check_provider_health(ProviderKind::Xai).await {
-                    tracing::info!("xAI provider recovered. Health flag restored to true.");
-                    XAI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
-                }
-            }
+    match client.get(url).send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            !status.is_server_error()
         }
-    });
-}
-
-async fn check_provider_health(provider: ProviderKind) -> bool {
-    // Lightweight ping to check health
-    match provider {
-        ProviderKind::Anthropic => std::env::var("ANTHROPIC_API_KEY").is_ok() || std::env::var("ANTHROPIC_AUTH_TOKEN").is_ok(),
-        ProviderKind::Cloudflare => std::env::var("CLOUDFLARE_API_TOKEN").is_ok(),
-        ProviderKind::Gemini => std::env::var("GEMINI_API_KEY").is_ok(),
-        ProviderKind::OpenAi => std::env::var("OPENAI_API_KEY").is_ok(),
-        ProviderKind::Xai => std::env::var("XAI_API_KEY").is_ok(),
+        Err(_) => false,
     }
 }
