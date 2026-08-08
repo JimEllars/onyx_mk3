@@ -16,6 +16,7 @@
       "custom_domain": true
     }
   ],
+  "ai": { "binding": "AI" },
   "vars": {
     "CORE_INGEST_URL": "https://api.axim.us.com/v1/functions/telemetry-ingest",
     "ALLOWED_ORIGIN": "tauri://localhost"

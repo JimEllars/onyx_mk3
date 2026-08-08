@@ -115,6 +115,7 @@ type RuntimePluginStateBuildOutput = (
 
 #[allow(clippy::too_many_lines)]
 fn main() {
+    api::spawn_provider_health_heartbeat();
     let mut wants_json_logs = false;
     for arg in std::env::args() {
         if arg == "--json-logs" {
