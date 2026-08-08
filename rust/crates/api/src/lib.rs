@@ -24,7 +24,8 @@ pub use providers::anthropic::{AnthropicClient, AnthropicClient as ApiClient, Au
 pub use providers::openai_compat::{OpenAiCompatClient, OpenAiCompatConfig};
 pub use providers::{
     detect_provider_kind, heuristic_router, max_tokens_for_model,
-    max_tokens_for_model_with_override, resolve_model_alias, ProviderKind, spawn_provider_health_heartbeat,
+    max_tokens_for_model_with_override, resolve_model_alias, spawn_provider_health_heartbeat,
+    ProviderKind,
 };
 pub use sse::{parse_frame, SseParser};
 pub use types::{

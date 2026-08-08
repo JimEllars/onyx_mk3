@@ -576,37 +576,54 @@ pub fn spawn_provider_health_heartbeat() {
                     interval.tick().await;
 
                     // Anthropic
-                    if !ANTHROPIC_HEALTHY.load(std::sync::atomic::Ordering::Relaxed) && check_health(ProviderKind::Anthropic).await {
-                        tracing::info!("Anthropic provider recovered. Health flag restored to true.");
+                    if !ANTHROPIC_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                        && check_health(ProviderKind::Anthropic).await
+                    {
+                        tracing::info!(
+                            "Anthropic provider recovered. Health flag restored to true."
+                        );
                         ANTHROPIC_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
                     }
 
                     // Cloudflare
-                    if !CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed) && check_health(ProviderKind::Cloudflare).await {
-                        tracing::info!("Cloudflare provider recovered. Health flag restored to true.");
+                    if !CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                        && check_health(ProviderKind::Cloudflare).await
+                    {
+                        tracing::info!(
+                            "Cloudflare provider recovered. Health flag restored to true."
+                        );
                         CLOUDFLARE_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
                     }
 
                     // Gemini
-                    if !GEMINI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed) && check_health(ProviderKind::Gemini).await {
+                    if !GEMINI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                        && check_health(ProviderKind::Gemini).await
+                    {
                         tracing::info!("Gemini provider recovered. Health flag restored to true.");
                         GEMINI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
                     }
 
                     // Kimi
-                    if !KIMI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed) && check_health(ProviderKind::Anthropic).await { // Replace with actual Kimi kind if available
+                    if !KIMI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                        && check_health(ProviderKind::Anthropic).await
+                    {
+                        // Replace with actual Kimi kind if available
                         tracing::info!("Kimi provider recovered. Health flag restored to true.");
                         KIMI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
                     }
 
                     // OpenAI
-                    if !OPENAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed) && check_health(ProviderKind::OpenAi).await {
+                    if !OPENAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                        && check_health(ProviderKind::OpenAi).await
+                    {
                         tracing::info!("OpenAI provider recovered. Health flag restored to true.");
                         OPENAI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
                     }
 
                     // xAI
-                    if !XAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed) && check_health(ProviderKind::Xai).await {
+                    if !XAI_HEALTHY.load(std::sync::atomic::Ordering::Relaxed)
+                        && check_health(ProviderKind::Xai).await
+                    {
                         tracing::info!("xAI provider recovered. Health flag restored to true.");
                         XAI_HEALTHY.store(true, std::sync::atomic::Ordering::Relaxed);
                     }
@@ -615,7 +632,6 @@ pub fn spawn_provider_health_heartbeat() {
         }
     });
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1187,7 +1203,6 @@ NO_EQUALS_LINE
     }
 }
 
-
 async fn check_health(provider: ProviderKind) -> bool {
     let client = crate::http_client::build_http_client_or_default();
 
@@ -1203,7 +1218,7 @@ async fn check_health(provider: ProviderKind) -> bool {
         Ok(resp) => {
             let status = resp.status();
             !status.is_server_error()
-        },
+        }
         Err(_) => false,
     }
 }
