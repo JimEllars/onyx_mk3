@@ -3,6 +3,9 @@
   "name": "onyx-edge-bridge",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-09",
+  "analytics_engine_datasets": [
+    { "binding": "ONYX_EDGE_METRICS", "dataset": "onyx_edge_metrics" }
+  ],
   "compatibility_flags": [
     "nodejs_compat"
   ],

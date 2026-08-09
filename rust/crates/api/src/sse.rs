@@ -376,6 +376,13 @@ impl SsePayload {
     /// Formats the payload as a standard SSE event and flushes it to the given writer.
     /// This prevents internal Rust deadlocks when yielding tokens.
     pub fn emit<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        tracing::debug!(
+            target: "telemetry",
+            event = "sse_emit",
+            done = self.done,
+            chunk_len = self.chunk.len(),
+            "Emitting SSE payload"
+        );
         let json = serde_json::to_string(self)?;
         write!(writer, "data: {json}\n\n")?;
         writer.flush()?;

@@ -100,3 +100,28 @@ The backend is stable. The edge infrastructure is scaffolded. We must shift focu
 ## Technical Debt: Circuit Breaker Integration
 - **Immediate Priority:** The `circuit_breaker.rs` logic has been successfully scaffolded inside the API crate to provide exponential backoff and graceful degradation for external LLM requests. However, wiring this logic into the individual provider clients (`Anthropic`, `OpenAI`, `Gemini`, `Cloudflare`) was delayed to prevent compiler conflicts caused by regex-based replacements during Phase 25.
 - **Next Steps:** In the next execution thread, we must surgically integrate the `CircuitBreaker` instances into each provider's `send_with_retry` and message streaming loops utilizing AST-aware edits rather than aggressive text replacements to avoid duplicate field definition conflicts.
+# Onyx AI Operations & Telemetry
+
+## Telemetry Headers
+The Onyx Edge Bridge and Rust core use the following HTTP headers for distributed tracing and observability:
+- `traceparent`: Follows the W3C Trace Context standard. Contains the trace ID, parent span ID, and trace flags. Injected by the edge bridge into upstream requests.
+- `X-Onyx-Trace-Id`: A custom proprietary trace ID header used across the AXiM ecosystem for cross-referencing.
+- `X-Onyx-Ray-ID`: The Cloudflare CF-Ray identifier.
+- `X-Onyx-Edge-Latency`: The recorded latency at the Cloudflare edge before the payload is sent back to the client.
+- `X-Onyx-Edge-Health`: Indicates `OK` or `DEGRADED` depending on internal health checks.
+- `X-Onyx-Cache-Status`: Indicates whether the edge worker hit or missed its cache.
+
+## Cloudflare Analytics Engine (ONYX_EDGE_METRICS)
+The `ONYX_EDGE_METRICS` dataset is used to record edge performance without blocking client responses. The schema maps to:
+- `blobs[0]`: The endpoint/route name (e.g., `llm-proxy`, `chat`).
+- `blobs[1]`: The selected AI provider (e.g., `anthropic`, `gemini`, `cloudflare_workers_ai_fallback`).
+- `doubles[0]`: Total request latency in milliseconds.
+- `doubles[1]`: HTTP response status code.
+- `indexes[0]`: The unique trace ID for filtering specific requests in the Cloudflare dashboard.
+
+## Provider Degradation & Health Probes
+The Rust runtime actively monitors LLM provider availability through background health probes running in `worker_pool.rs`.
+If a provider degrades:
+1. The probe emits a `tracing::warn!` metric indicating the fraction of healthy providers.
+2. The UI dashboard receives a telemetry packet containing `providerHealth` and visually updates the health badge.
+3. If an upstream LLM API returns a `5xx` or `429` (Rate Limit), the Edge Bridge will autonomously fall back to Cloudflare Workers AI (`@cf/meta/llama-2-7b-chat-int8`) to ensure 100% uptime for chat functions.

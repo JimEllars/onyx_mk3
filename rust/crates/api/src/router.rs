@@ -153,8 +153,14 @@ pub async fn handle_generate_nda(
     }
     .await;
 
+
+    let trace_id = headers.get("x-onyx-trace-id").and_then(|h| h.to_str().ok()).unwrap_or("none");
+    let traceparent = headers.get("traceparent").and_then(|h| h.to_str().ok()).unwrap_or("none");
+
     let duration = start_time.elapsed();
     tracing::info!(
+        trace_id = trace_id,
+        traceparent = traceparent,
         target: "telemetry",
         request_duration_ms = duration.as_millis(),
         endpoint = "/v1/generate/nda",
@@ -236,8 +242,14 @@ pub async fn handle_generate_demand_letter(
     }
     .await;
 
+
+    let trace_id = headers.get("x-onyx-trace-id").and_then(|h| h.to_str().ok()).unwrap_or("none");
+    let traceparent = headers.get("traceparent").and_then(|h| h.to_str().ok()).unwrap_or("none");
+
     let duration = start_time.elapsed();
     tracing::info!(
+        trace_id = trace_id,
+        traceparent = traceparent,
         target: "telemetry",
         request_duration_ms = duration.as_millis(),
         endpoint = "/v1/generate/demand-letter",
@@ -319,8 +331,14 @@ pub async fn handle_generate_pay_stub(
     }
     .await;
 
+
+    let trace_id = headers.get("x-onyx-trace-id").and_then(|h| h.to_str().ok()).unwrap_or("none");
+    let traceparent = headers.get("traceparent").and_then(|h| h.to_str().ok()).unwrap_or("none");
+
     let duration = start_time.elapsed();
     tracing::info!(
+        trace_id = trace_id,
+        traceparent = traceparent,
         target: "telemetry",
         request_duration_ms = duration.as_millis(),
         endpoint = "/v1/generate/pay-stub",
@@ -461,8 +479,14 @@ pub async fn handle_dispatch(
     }
     .await;
 
+
+    let trace_id = headers.get("x-onyx-trace-id").and_then(|h| h.to_str().ok()).unwrap_or("none");
+    let traceparent = headers.get("traceparent").and_then(|h| h.to_str().ok()).unwrap_or("none");
+
     let duration = start_time.elapsed();
     tracing::info!(
+        trace_id = trace_id,
+        traceparent = traceparent,
         target: "telemetry",
         request_duration_ms = duration.as_millis(),
         endpoint = "/v1/commands/dispatch",
@@ -600,8 +624,14 @@ pub async fn handle_event_ingress(
             .into_response()
     }.await;
 
+
+    let trace_id = headers.get("x-onyx-trace-id").and_then(|h| h.to_str().ok()).unwrap_or("none");
+    let traceparent = headers.get("traceparent").and_then(|h| h.to_str().ok()).unwrap_or("none");
+
     let duration = start_time.elapsed();
     tracing::info!(
+        trace_id = trace_id,
+        traceparent = traceparent,
         target: "telemetry",
         request_duration_ms = duration.as_millis(),
         endpoint = "/v1/events/ingress",

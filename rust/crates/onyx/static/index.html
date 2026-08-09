@@ -115,6 +115,16 @@
             color: var(--accent);
             margin-top: 5px;
         }
+
+        .health-badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            color: #fff;
+            font-weight: bold;
+            text-transform: capitalize;
+        }
+
     </style>
 </head>
 <body>
@@ -139,6 +149,14 @@
                 <div>Global Error Rate</div>
                 <div class="metric-value" id="errorRate">--%</div>
             </div>
+
+            <div class="metric-card">
+                <div>Provider Health</div>
+                <div id="providerHealthContainer" style="display: flex; gap: 5px; flex-wrap: wrap; margin-top: 10px;">
+                    <span class="health-badge" style="background: var(--accent);">Anthropic</span>
+                </div>
+            </div>
+
             <div class="metric-card">
                 <div>Edge Bridge Status</div>
                 <div class="metric-value" id="bridgeStatus" style="color: #3b82f6;">Connected</div>
@@ -146,32 +164,106 @@
         </div>
     </div>
 
+
+
     <script>
-        const ws = new WebSocket(`ws://${window.location.host}/ws/chat`);
         const chatHistory = document.getElementById('chatHistory');
         const input = document.getElementById('chatInput');
+        const bridgeStatus = document.getElementById('bridgeStatus');
 
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.type === 'text') {
-                appendMessage('ai-message', data.content);
-            } else if (data.type === 'telemetry') {
-                document.getElementById('activeNodes').innerText = data.activeNodes || '12';
-                document.getElementById('errorRate').innerText = (data.errorRate || '0.00') + '%';
+        let eventSource = null;
+        let reconnectDelay = 1000;
+        const MAX_RECONNECT_DELAY = 30000;
+        const seenMessageIds = new Set();
+        let pingInterval = null;
+
+        function connect() {
+            // Using SSE instead of WebSocket
+            eventSource = new EventSource('/api/v1/chat');
+
+            eventSource.onopen = () => {
+                reconnectDelay = 1000;
+                bridgeStatus.innerText = 'Connected';
+                bridgeStatus.style.color = 'var(--accent)';
+
+            };
+
+            eventSource.onmessage = (event) => {
+                try {
+                    // Check if event data is JSON or simple text
+                    let data;
+                    try {
+                        data = JSON.parse(event.data);
+                    } catch (e) {
+                        data = { type: 'text', content: event.data };
+                    }
+
+                    if (data === '[DONE]' || event.data === '[DONE]') return;
+
+                    // Deduplication
+                    if (data.id && seenMessageIds.has(data.id)) return;
+                    if (data.id) seenMessageIds.add(data.id);
+
+                    if (data.type === 'text') {
+                        appendMessage('ai-message', data.content);
+                    } else if (data.type === 'telemetry') {
+                        document.getElementById('activeNodes').innerText = data.activeNodes || '--';
+                        document.getElementById('errorRate').innerText = (data.errorRate || '0.00') + '%';
+
+                        if (data.providerHealth) {
+                            updateProviderHealth(data.providerHealth);
+                        }
+                    } else {
+                        // Just append normal message
+                        if (data.content) {
+                            appendMessage('ai-message', data.content);
+                        } else if (typeof data === 'string') {
+                            appendMessage('ai-message', data);
+                        }
+                    }
+                } catch(e) {
+                    console.error("Error processing SSE message", e);
+                }
+            };
+
+            eventSource.onerror = (err) => {
+                bridgeStatus.innerText = 'Disconnected (Reconnecting...)';
+                bridgeStatus.style.color = '#ef4444';
+                eventSource.close();
+
+                setTimeout(() => {
+                    reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+                    connect();
+                }, reconnectDelay);
+            };
+        }
+
+        // Also support sending messages via fetch to the same or a different endpoint
+        async function sendMessage() {
+            const text = input.value.trim();
+            if (!text) return;
+            appendMessage('user-message', text);
+            input.value = '';
+
+            try {
+                const response = await fetch('/api/v1/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text })
+                });
+                if (!response.ok) {
+                    appendMessage('ai-message', 'Error sending message');
+                }
+            } catch (e) {
+                appendMessage('ai-message', 'Network error');
             }
-        };
+        }
+
+        connect();
 
         input.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendMessage();
         });
-
-        function sendMessage() {
-            const text = input.value.trim();
-            if (!text) return;
-            appendMessage('user-message', text);
-            ws.send(JSON.stringify({ message: text }));
-            input.value = '';
-        }
 
         function appendMessage(className, text) {
             const div = document.createElement('div');
@@ -180,6 +272,23 @@
             chatHistory.appendChild(div);
             chatHistory.scrollTop = chatHistory.scrollHeight;
         }
+
+        function updateProviderHealth(healthObj) {
+            const container = document.getElementById('providerHealthContainer');
+            if (!container) return;
+
+            container.innerHTML = '';
+            for (const [provider, isHealthy] of Object.entries(healthObj)) {
+                if (provider === 'status') continue;
+                const badge = document.createElement('span');
+                badge.className = 'health-badge';
+                badge.style.backgroundColor = isHealthy ? 'var(--accent)' : '#ef4444';
+                badge.innerText = provider;
+                container.appendChild(badge);
+            }
+        }
     </script>
+
+
 </body>
 </html>
