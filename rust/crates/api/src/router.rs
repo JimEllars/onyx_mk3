@@ -153,9 +153,14 @@ pub async fn handle_generate_nda(
     }
     .await;
 
-
-    let trace_id = headers.get("x-onyx-trace-id").and_then(|h| h.to_str().ok()).unwrap_or("none");
-    let traceparent = headers.get("traceparent").and_then(|h| h.to_str().ok()).unwrap_or("none");
+    let trace_id = headers
+        .get("x-onyx-trace-id")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("none");
+    let traceparent = headers
+        .get("traceparent")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("none");
 
     let duration = start_time.elapsed();
     tracing::info!(
@@ -242,9 +247,14 @@ pub async fn handle_generate_demand_letter(
     }
     .await;
 
-
-    let trace_id = headers.get("x-onyx-trace-id").and_then(|h| h.to_str().ok()).unwrap_or("none");
-    let traceparent = headers.get("traceparent").and_then(|h| h.to_str().ok()).unwrap_or("none");
+    let trace_id = headers
+        .get("x-onyx-trace-id")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("none");
+    let traceparent = headers
+        .get("traceparent")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("none");
 
     let duration = start_time.elapsed();
     tracing::info!(
@@ -331,9 +341,14 @@ pub async fn handle_generate_pay_stub(
     }
     .await;
 
-
-    let trace_id = headers.get("x-onyx-trace-id").and_then(|h| h.to_str().ok()).unwrap_or("none");
-    let traceparent = headers.get("traceparent").and_then(|h| h.to_str().ok()).unwrap_or("none");
+    let trace_id = headers
+        .get("x-onyx-trace-id")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("none");
+    let traceparent = headers
+        .get("traceparent")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("none");
 
     let duration = start_time.elapsed();
     tracing::info!(
@@ -479,9 +494,14 @@ pub async fn handle_dispatch(
     }
     .await;
 
-
-    let trace_id = headers.get("x-onyx-trace-id").and_then(|h| h.to_str().ok()).unwrap_or("none");
-    let traceparent = headers.get("traceparent").and_then(|h| h.to_str().ok()).unwrap_or("none");
+    let trace_id = headers
+        .get("x-onyx-trace-id")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("none");
+    let traceparent = headers
+        .get("traceparent")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("none");
 
     let duration = start_time.elapsed();
     tracing::info!(
@@ -624,9 +644,14 @@ pub async fn handle_event_ingress(
             .into_response()
     }.await;
 
-
-    let trace_id = headers.get("x-onyx-trace-id").and_then(|h| h.to_str().ok()).unwrap_or("none");
-    let traceparent = headers.get("traceparent").and_then(|h| h.to_str().ok()).unwrap_or("none");
+    let trace_id = headers
+        .get("x-onyx-trace-id")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("none");
+    let traceparent = headers
+        .get("traceparent")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("none");
 
     let duration = start_time.elapsed();
     tracing::info!(
