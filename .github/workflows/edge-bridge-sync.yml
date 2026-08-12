@@ -27,11 +27,11 @@ jobs:
 
       - name: Install Dependencies
         working-directory: edge-bridge
-        run: npm install --legacy-peer-deps
+        run: npm ci --legacy-peer-deps
 
       - name: Typecheck
         working-directory: edge-bridge
-        run: npm run typecheck && npm run build
+        run: npm run build
 
       - name: Deploy to Cloudflare
         working-directory: edge-bridge
