@@ -15,7 +15,6 @@ impl WorkerPool {
     pub fn new(capacity: usize, workers: usize) -> Self {
         let (sender, receiver) = mpsc::channel::<Job>(capacity);
 
-
         let receiver = std::sync::Arc::new(tokio::sync::Mutex::new(receiver));
 
         // Spawn a background health probe to mark degraded providers without crashing
@@ -26,13 +25,16 @@ impl WorkerPool {
                 // Just calling check_all_providers_health to simulate probes
                 let (healthy, total) = crate::providers::check_all_providers_health();
                 if healthy < total {
-                    tracing::warn!("Worker pool health probe detected degraded providers: {}/{} healthy", healthy, total);
+                    tracing::warn!(
+                        "Worker pool health probe detected degraded providers: {}/{} healthy",
+                        healthy,
+                        total
+                    );
                 }
             }
         });
 
         for _ in 0..workers {
-
             let rx = receiver.clone();
             tokio::spawn(async move {
                 loop {

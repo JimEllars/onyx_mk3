@@ -9,6 +9,7 @@ import { Client } from "pg";
 
 export interface Env {
   AI?: any;
+  ASSETS?: Fetcher;
   SUPABASE_DB: Hyperdrive;
   AXIM_SERVICE_KEY: string;
   ONYX_DB: D1Database;
@@ -2859,6 +2860,16 @@ const onyx_handler: any = {
           env, ctx, bodyStr, "Webhook passed to Rust core.", request, edgeStatus, cacheStatus, traceId
         );
       } else {
+        if (request.method === "GET" && env.ASSETS) {
+          try {
+            const assetResponse = await env.ASSETS.fetch(request);
+            if (assetResponse && assetResponse.status !== 404) {
+              return assetResponse;
+            }
+          } catch (e) {
+            console.error("Error serving static asset", e);
+          }
+        }
         return new Response("Not Found", {
           status: 404,
           headers: addOnyxHeaders(
