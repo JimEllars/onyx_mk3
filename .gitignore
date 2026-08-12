@@ -6,3 +6,5 @@ archive/
 .claude/settings.local.json
 .claude/sessions/
 edge-bridge/node_modules
+.env
+edge-bridge/.dev.vars

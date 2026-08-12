@@ -1,9 +1,9 @@
-# Container-first claw-code workflows
+# Container-first Onyx workflows
 
 This repo already had **container detection** in the Rust runtime before this document was added:
 
 - `rust/crates/runtime/src/sandbox.rs` detects Docker/Podman/container markers such as `/.dockerenv`, `/run/.containerenv`, matching env vars, and `/proc/1/cgroup` hints.
-- `rust/crates/rusty-claude-cli/src/main.rs` exposes that state through the `claw sandbox` / `cargo run -p rusty-claude-cli -- sandbox` report.
+- `rust/crates/onyx/src/main.rs` exposes that state through the `onyx sandbox` / `cargo run -p onyx -- sandbox` report.
 - `.github/workflows/rust-ci.yml` runs on `ubuntu-latest`, but it does **not** define a Docker or Podman container job.
 - Before this change, the repo did **not** have a checked-in `Dockerfile`, `Containerfile`, or `.devcontainer/` config.
 
@@ -22,13 +22,13 @@ From the repository root:
 ### Docker
 
 ```bash
-docker build -t claw-code-dev -f Containerfile .
+docker build -t onyx-dev -f Containerfile .
 ```
 
 ### Podman
 
 ```bash
-podman build -t claw-code-dev -f Containerfile .
+podman build -t onyx-dev -f Containerfile .
 ```
 
 ## Run `cargo test --workspace` in the container
@@ -42,7 +42,7 @@ docker run --rm -it \
   -v "$PWD":/workspace \
   -e CARGO_TARGET_DIR=/tmp/claw-target \
   -w /workspace/rust \
-  claw-code-dev \
+  onyx-dev \
   cargo test --workspace
 ```
 
@@ -53,7 +53,7 @@ podman run --rm -it \
   -v "$PWD":/workspace:Z \
   -e CARGO_TARGET_DIR=/tmp/claw-target \
   -w /workspace/rust \
-  claw-code-dev \
+  onyx-dev \
   cargo test --workspace
 ```
 
@@ -68,7 +68,7 @@ docker run --rm -it \
   -v "$PWD":/workspace \
   -e CARGO_TARGET_DIR=/tmp/claw-target \
   -w /workspace/rust \
-  claw-code-dev
+  onyx-dev
 ```
 
 ### Podman
@@ -78,7 +78,7 @@ podman run --rm -it \
   -v "$PWD":/workspace:Z \
   -e CARGO_TARGET_DIR=/tmp/claw-target \
   -w /workspace/rust \
-  claw-code-dev
+  onyx-dev
 ```
 
 Inside the shell:
@@ -86,15 +86,15 @@ Inside the shell:
 ```bash
 cargo build --workspace
 cargo test --workspace
-cargo run -p rusty-claude-cli -- --help
-cargo run -p rusty-claude-cli -- sandbox
+cargo run -p onyx -- --help
+cargo run -p onyx -- sandbox
 ```
 
 The `sandbox` command is a useful sanity check: inside Docker or Podman it should report `In container true` and list the markers the runtime detected.
 
 ## Bind-mount this repo and another repo at the same time
 
-If you want to run `claw` against a second checkout while keeping `claw-code` itself mounted read-write:
+If you want to run `onyx` against a second checkout while keeping Onyx mounted read-write:
 
 ### Docker
 
@@ -104,7 +104,7 @@ docker run --rm -it \
   -v "$HOME/src/other-repo":/repo \
   -e CARGO_TARGET_DIR=/tmp/claw-target \
   -w /workspace/rust \
-  claw-code-dev
+  onyx-dev
 ```
 
 ### Podman
@@ -115,13 +115,13 @@ podman run --rm -it \
   -v "$HOME/src/other-repo":/repo:Z \
   -e CARGO_TARGET_DIR=/tmp/claw-target \
   -w /workspace/rust \
-  claw-code-dev
+  onyx-dev
 ```
 
 Then, for example:
 
 ```bash
-cargo run -p rusty-claude-cli -- prompt "summarize /repo"
+cargo run -p onyx -- prompt "summarize /repo"
 ```
 
 ## Notes
@@ -129,4 +129,4 @@ cargo run -p rusty-claude-cli -- prompt "summarize /repo"
 - Docker and Podman use the same checked-in `Containerfile`.
 - The `:Z` suffix in the Podman examples is for SELinux relabeling; keep it on Fedora/RHEL-class hosts.
 - Running with `CARGO_TARGET_DIR=/tmp/claw-target` avoids leaving container-owned `target/` artifacts in your bind-mounted checkout.
-- For non-container local development, keep using [`../USAGE.md`](../USAGE.md) and [`../rust/README.md`](../rust/README.md).
+- For non-container local development, use [`ONYX_SETUP.md`](./ONYX_SETUP.md) and [`../rust/README.md`](../rust/README.md).

@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "npm --prefix edge-bridge install --legacy-peer-deps && npm --prefix edge-bridge run build",
-    "deploy": "cd edge-bridge && npm install && npx wrangler deploy",
-    "deploy:dry-run": "cd edge-bridge && npm install && npx wrangler deploy --dry-run"
+    "build": "npm --prefix edge-bridge ci --legacy-peer-deps && npm --prefix edge-bridge run build",
+    "deploy": "npm --prefix edge-bridge ci --legacy-peer-deps && npm --prefix edge-bridge run deploy",
+    "deploy:dry-run": "npm --prefix edge-bridge ci --legacy-peer-deps && npm --prefix edge-bridge run deploy:dry-run"
   },
   "dependencies": {
     "zustand": "^5.0.14"

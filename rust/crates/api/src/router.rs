@@ -159,9 +159,9 @@ pub async fn handle_generate_nda(
 
     let duration = start_time.elapsed();
     tracing::info!(
+        target: "telemetry",
         trace_id = trace_id,
         traceparent = traceparent,
-        target: "telemetry",
         request_duration_ms = duration.as_millis(),
         endpoint = "/v1/generate/nda",
         "Request executed"
@@ -248,9 +248,9 @@ pub async fn handle_generate_demand_letter(
 
     let duration = start_time.elapsed();
     tracing::info!(
+        target: "telemetry",
         trace_id = trace_id,
         traceparent = traceparent,
-        target: "telemetry",
         request_duration_ms = duration.as_millis(),
         endpoint = "/v1/generate/demand-letter",
         "Request executed"
@@ -337,9 +337,9 @@ pub async fn handle_generate_pay_stub(
 
     let duration = start_time.elapsed();
     tracing::info!(
+        target: "telemetry",
         trace_id = trace_id,
         traceparent = traceparent,
-        target: "telemetry",
         request_duration_ms = duration.as_millis(),
         endpoint = "/v1/generate/pay-stub",
         "Request executed"
@@ -485,9 +485,9 @@ pub async fn handle_dispatch(
 
     let duration = start_time.elapsed();
     tracing::info!(
+        target: "telemetry",
         trace_id = trace_id,
         traceparent = traceparent,
-        target: "telemetry",
         request_duration_ms = duration.as_millis(),
         endpoint = "/v1/commands/dispatch",
         "Request executed"
@@ -630,9 +630,9 @@ pub async fn handle_event_ingress(
 
     let duration = start_time.elapsed();
     tracing::info!(
+        target: "telemetry",
         trace_id = trace_id,
         traceparent = traceparent,
-        target: "telemetry",
         request_duration_ms = duration.as_millis(),
         endpoint = "/v1/events/ingress",
         "Request executed"
