@@ -2915,12 +2915,18 @@ export default {
         response = await onyx_handler._fetch(request, env, ctx);
     } catch (e) {
         console.error("Route error:", e);
+        const traceIdFallback = request.headers.get("x-request-id") || crypto.randomUUID();
         response = new Response(JSON.stringify({ error: "Internal Server Error", fallback: true }), {
             status: 500,
-            headers: {
-                "Content-Type": "application/json",
-                ...getCorsHeaders(request, env),
-            }
+            headers: addOnyxHeaders(
+                {
+                    "Content-Type": "application/json",
+                    ...getCorsHeaders(request, env),
+                },
+                { degraded: true },
+                "MISS",
+                traceIdFallback
+            )
         });
     }
     const latency = Date.now() - startTime;
