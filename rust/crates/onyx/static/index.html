@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AXiM Onyx Mk3 Dashboard</title>
     <style>
+        * { box-sizing: border-box; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .header { display: flex; align-items: center; justify-content: space-between; }
+
         :root {
             --bg: #0f172a;
             --text: #f8fafc;
@@ -130,7 +138,10 @@
 <body>
     <div class="dashboard-container">
         <div class="chat-panel">
-            <div class="header">Onyx Mk3 Terminal</div>
+            <div class="header">
+                Onyx Mk3 Terminal
+                <span id="bridgeStatus" class="health-badge" style="background: var(--primary); margin-left: auto;">Connected</span>
+            </div>
             <div class="chat-history" id="chatHistory">
                 <div class="message ai-message">Onyx Mk3 Online. Ready for prompt.</div>
             </div>
@@ -157,10 +168,7 @@
                 </div>
             </div>
 
-            <div class="metric-card">
-                <div>Edge Bridge Status</div>
-                <div class="metric-value" id="bridgeStatus" style="color: #3b82f6;">Connected</div>
-            </div>
+
         </div>
     </div>
 

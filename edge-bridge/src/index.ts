@@ -8,6 +8,7 @@ import { Hyperdrive } from "@cloudflare/workers-types";
 import { Client } from "pg";
 
 export interface Env {
+  ONYX_EDGE_METRICS?: AnalyticsEngineDataset;
   AI?: any;
   ASSETS?: Fetcher;
   SUPABASE_DB: Hyperdrive;
@@ -2904,7 +2905,39 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
+    const startTime = Date.now();
     const response = await onyx_handler._fetch(request, env, ctx);
+    const latency = Date.now() - startTime;
+    const url = new URL(request.url);
+    const traceId = response.headers.get("X-Onyx-Trace-Id") || "unknown";
+
+    if (url.pathname === "/api/v1/chat" || url.pathname.startsWith("/api/v1/jules/")) {
+      if (env.ONYX_EDGE_METRICS) {
+        ctx.waitUntil(
+          new Promise<void>((resolve) => {
+            try {
+              env.ONYX_EDGE_METRICS!.writeDataPoint({
+                blobs: [
+                  request.method,
+                  url.pathname,
+                  traceId,
+                  response.status.toString()
+                ],
+                doubles: [
+                  latency
+                ],
+                indexes: [
+                  response.status >= 400 ? "error" : "success"
+                ]
+              });
+            } catch (e) {
+              console.error("Telemetry error", e);
+            }
+            resolve();
+          })
+        );
+      }
+    }
     if (response.status === 429) {
       if (env.ONYX_DB) {
         const ip = request.headers.get("cf-connecting-ip") || "unknown";
