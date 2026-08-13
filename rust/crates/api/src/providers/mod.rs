@@ -653,7 +653,6 @@ async fn check_health(provider: ProviderKind) -> bool {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::ffi::OsString;
@@ -1223,4 +1222,3 @@ NO_EQUALS_LINE
         );
     }
 }
-
