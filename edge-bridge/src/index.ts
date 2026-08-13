@@ -1864,24 +1864,28 @@ const onyx_handler: any = {
         const promptHash = await hashPrompt(fullPrompt);
 
         if (env.ONYX_PROMPT_CACHE) {
-          const cachedResult = await kvReadWithTimeout(
-            env.ONYX_PROMPT_CACHE.get(promptHash),
-            500,
-            edgeStatus,
-          );
-          if (cachedResult) {
-            cacheStatus = "HIT";
-            return new Response(cachedResult, {
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "text/event-stream",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            });
+          try {
+            const cachedResult = await kvReadWithTimeout(
+              env.ONYX_PROMPT_CACHE.get(promptHash),
+              500,
+              edgeStatus,
+            );
+            if (cachedResult) {
+              cacheStatus = "HIT";
+              return new Response(cachedResult, {
+                headers: addOnyxHeaders(
+                  {
+                    ...getCorsHeaders(request, env),
+                    "Content-Type": "text/event-stream",
+                  },
+                  edgeStatus,
+                  cacheStatus,
+                  traceId,
+                ),
+              });
+            }
+          } catch (e) {
+            console.warn("Prompt cache miss or error, falling back to generation:", e);
           }
         }
 
@@ -2906,7 +2910,19 @@ export default {
     ctx: ExecutionContext,
   ): Promise<Response> {
     const startTime = Date.now();
-    const response = await onyx_handler._fetch(request, env, ctx);
+    let response;
+    try {
+        response = await onyx_handler._fetch(request, env, ctx);
+    } catch (e) {
+        console.error("Route error:", e);
+        response = new Response(JSON.stringify({ error: "Internal Server Error", fallback: true }), {
+            status: 500,
+            headers: {
+                "Content-Type": "application/json",
+                ...getCorsHeaders(request, env),
+            }
+        });
+    }
     const latency = Date.now() - startTime;
     const url = new URL(request.url);
     const traceId = response.headers.get("X-Onyx-Trace-Id") || "unknown";
