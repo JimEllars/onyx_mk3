@@ -633,6 +633,26 @@ pub fn spawn_provider_health_heartbeat() {
     });
 }
 
+async fn check_health(provider: ProviderKind) -> bool {
+    let client = crate::http_client::build_http_client_or_default();
+
+    let url = match provider {
+        ProviderKind::Anthropic => "https://api.anthropic.com/v1/models",
+        ProviderKind::Cloudflare => "https://api.cloudflare.com/client/v4/user",
+        ProviderKind::Gemini => "https://generativelanguage.googleapis.com/v1beta/models",
+        ProviderKind::OpenAi => "https://api.openai.com/v1/models",
+        ProviderKind::Xai => "https://api.x.ai/v1/models",
+    };
+
+    match client.get(url).send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            !status.is_server_error()
+        }
+        Err(_) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::ffi::OsString;
@@ -1200,25 +1220,5 @@ NO_EQUALS_LINE
             hint.is_none(),
             "empty env var should not trigger the hint sniffer, got {hint:?}"
         );
-    }
-}
-
-async fn check_health(provider: ProviderKind) -> bool {
-    let client = crate::http_client::build_http_client_or_default();
-
-    let url = match provider {
-        ProviderKind::Anthropic => "https://api.anthropic.com/v1/models",
-        ProviderKind::Cloudflare => "https://api.cloudflare.com/client/v4/user",
-        ProviderKind::Gemini => "https://generativelanguage.googleapis.com/v1beta/models",
-        ProviderKind::OpenAi => "https://api.openai.com/v1/models",
-        ProviderKind::Xai => "https://api.x.ai/v1/models",
-    };
-
-    match client.get(url).send().await {
-        Ok(resp) => {
-            let status = resp.status();
-            !status.is_server_error()
-        }
-        Err(_) => false,
     }
 }

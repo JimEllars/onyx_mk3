@@ -8,6 +8,7 @@ import { Hyperdrive } from "@cloudflare/workers-types";
 import { Client } from "pg";
 
 export interface Env {
+  ONYX_EDGE_METRICS?: AnalyticsEngineDataset;
   AI?: any;
   ASSETS?: Fetcher;
   SUPABASE_DB: Hyperdrive;
@@ -1863,24 +1864,28 @@ const onyx_handler: any = {
         const promptHash = await hashPrompt(fullPrompt);
 
         if (env.ONYX_PROMPT_CACHE) {
-          const cachedResult = await kvReadWithTimeout(
-            env.ONYX_PROMPT_CACHE.get(promptHash),
-            500,
-            edgeStatus,
-          );
-          if (cachedResult) {
-            cacheStatus = "HIT";
-            return new Response(cachedResult, {
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "text/event-stream",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            });
+          try {
+            const cachedResult = await kvReadWithTimeout(
+              env.ONYX_PROMPT_CACHE.get(promptHash),
+              500,
+              edgeStatus,
+            );
+            if (cachedResult) {
+              cacheStatus = "HIT";
+              return new Response(cachedResult, {
+                headers: addOnyxHeaders(
+                  {
+                    ...getCorsHeaders(request, env),
+                    "Content-Type": "text/event-stream",
+                  },
+                  edgeStatus,
+                  cacheStatus,
+                  traceId,
+                ),
+              });
+            }
+          } catch (e) {
+            console.warn("Prompt cache miss or error, falling back to generation:", e);
           }
         }
 
@@ -2904,7 +2909,57 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
-    const response = await onyx_handler._fetch(request, env, ctx);
+    const startTime = Date.now();
+    let response;
+    try {
+        response = await onyx_handler._fetch(request, env, ctx);
+    } catch (e) {
+        console.error("Route error:", e);
+        const traceIdFallback = request.headers.get("x-request-id") || crypto.randomUUID();
+        response = new Response(JSON.stringify({ error: "Internal Server Error", fallback: true }), {
+            status: 500,
+            headers: addOnyxHeaders(
+                {
+                    "Content-Type": "application/json",
+                    ...getCorsHeaders(request, env),
+                },
+                { degraded: true },
+                "MISS",
+                traceIdFallback
+            )
+        });
+    }
+    const latency = Date.now() - startTime;
+    const url = new URL(request.url);
+    const traceId = response.headers.get("X-Onyx-Trace-Id") || "unknown";
+
+    if (url.pathname === "/api/v1/chat" || url.pathname.startsWith("/api/v1/jules/")) {
+      if (env.ONYX_EDGE_METRICS) {
+        ctx.waitUntil(
+          new Promise<void>((resolve) => {
+            try {
+              env.ONYX_EDGE_METRICS!.writeDataPoint({
+                blobs: [
+                  request.method,
+                  url.pathname,
+                  traceId,
+                  response.status.toString()
+                ],
+                doubles: [
+                  latency
+                ],
+                indexes: [
+                  response.status >= 400 ? "error" : "success"
+                ]
+              });
+            } catch (e) {
+              console.error("Telemetry error", e);
+            }
+            resolve();
+          })
+        );
+      }
+    }
     if (response.status === 429) {
       if (env.ONYX_DB) {
         const ip = request.headers.get("cf-connecting-ip") || "unknown";
