@@ -4,14 +4,11 @@
  * This is the Onyx Edge Bridge worker.
  */
 
-import { Hyperdrive } from "@cloudflare/workers-types";
-import { Client } from "pg";
 
 export interface Env {
   ONYX_EDGE_METRICS?: AnalyticsEngineDataset;
   AI?: any;
   ASSETS?: Fetcher;
-  SUPABASE_DB: Hyperdrive;
   AXIM_SERVICE_KEY: string;
   ONYX_DB: D1Database;
   ONYX_STATE: KVNamespace;
@@ -2151,16 +2148,7 @@ const onyx_handler: any = {
 
         const bodyStr = JSON.stringify({ type: "telemetry", payload, timestamp: new Date().toISOString() });
 
-        try {
-          const client = new Client({ connectionString: env.SUPABASE_DB.connectionString });
-          await client.connect();
-          await client.query(
-            "INSERT INTO telemetry (brand_id, page_views, errors_404, errors_500, web3_connections, timestamp, payload) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-            [payload.brandId, payload.pageViews, payload.errors404, payload.errors500, payload.web3Connections, payload.timestamp, bodyStr]
-          );
-          ctx.waitUntil(client.end());
-
-          return new Response(
+                  return new Response(
             JSON.stringify({
               status: "success",
               message: "Telemetry ingested successfully.",
@@ -2177,26 +2165,8 @@ const onyx_handler: any = {
                 cacheStatus,
                 traceId,
               ),
-            },
+            }
           );
-        } catch (error: any) {
-          console.error("Telemetry insert error:", error);
-          return new Response(
-            JSON.stringify({ error: "Failed to ingest telemetry", details: error.message }),
-            {
-              status: 500,
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            },
-          );
-        }
       } else if (request.method === "POST" && url.pathname === "/api/approve") {
         const authError = await checkAuth(request, env);
         if (authError) return authError;
