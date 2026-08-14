@@ -4,7 +4,10 @@
   "main": "edge-bridge/src/index.ts",
   "compatibility_date": "2026-07-09",
   "analytics_engine_datasets": [
-    { "binding": "ONYX_EDGE_METRICS", "dataset": "onyx_edge_metrics" }
+    {
+      "binding": "ONYX_EDGE_METRICS",
+      "dataset": "onyx_edge_metrics"
+    }
   ],
   "compatibility_flags": [
     "nodejs_compat"
@@ -19,18 +22,13 @@
       "custom_domain": true
     }
   ],
-  "ai": { "binding": "AI" },
+  "ai": {
+    "binding": "AI"
+  },
   "vars": {
     "CORE_INGEST_URL": "https://api.axim.us.com/v1/functions/telemetry-ingest",
     "ALLOWED_ORIGIN": "tauri://localhost"
   },
-  "hyperdrive": [
-    {
-      "binding": "SUPABASE_DB",
-      "id": "e0e290f6a2fb4fb9a12c8ffb089c1622",
-      "localConnectionString": "postgresql://postgres.your_supabase_project_ref:password@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"
-    }
-  ],
   "d1_databases": [
     {
       "binding": "ONYX_DB",
@@ -58,7 +56,8 @@
   ],
   "triggers": {
     "crons": [
-      "0 0 * * *", "*/5 * * * *"
+      "0 0 * * *",
+      "*/5 * * * *"
     ]
   }
 }
