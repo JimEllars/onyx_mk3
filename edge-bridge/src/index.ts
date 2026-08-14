@@ -10,7 +10,7 @@ export interface Env {
   AI?: any;
   ASSETS?: Fetcher;
   AXIM_SERVICE_KEY: string;
-  ONYX_DB: D1Database;
+  ONYX_DB?: D1Database;
   ONYX_STATE: KVNamespace;
   ONYX_SESSION_STATE: KVNamespace;
   ONYX_DISPATCH_LOCKS: KVNamespace;
