@@ -29,13 +29,6 @@
     "CORE_INGEST_URL": "https://api.axim.us.com/v1/functions/telemetry-ingest",
     "ALLOWED_ORIGIN": "tauri://localhost"
   },
-  "d1_databases": [
-    {
-      "binding": "ONYX_DB",
-      "database_name": "onyx-db",
-      "database_id": "8bbbbbbb-8888-8888-8888-888888888888"
-    }
-  ],
   "kv_namespaces": [
     {
       "binding": "ONYX_STATE",
