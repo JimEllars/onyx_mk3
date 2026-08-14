@@ -4,7 +4,6 @@
  * This is the Onyx Edge Bridge worker.
  */
 
-import { Hyperdrive } from "@cloudflare/workers-types";
 
 export interface Env {
   ONYX_EDGE_METRICS?: AnalyticsEngineDataset;
