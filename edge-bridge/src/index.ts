@@ -5,7 +5,6 @@
  */
 
 import { Hyperdrive } from "@cloudflare/workers-types";
-import { Client } from "pg";
 
 export interface Env {
   ONYX_EDGE_METRICS?: AnalyticsEngineDataset;
