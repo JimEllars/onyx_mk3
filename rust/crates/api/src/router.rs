@@ -733,14 +733,33 @@ pub async fn handle_onyx_summon(
         };
 
         if let Ok(mut stream) = client.stream_message(&request).await {
-            while let Ok(Some(event)) = stream.next_event().await {
-                match event {
-                    crate::types::StreamEvent::ContentBlockDelta(delta_event) => {
-                        if let crate::types::ContentBlockDelta::TextDelta { text } =
-                            delta_event.delta
-                        {
+            loop {
+                match tokio::time::timeout(
+                    tokio::time::Duration::from_secs(15),
+                    stream.next_event(),
+                )
+                .await
+                {
+                    Ok(Ok(Some(event))) => match event {
+                        crate::types::StreamEvent::ContentBlockDelta(delta_event) => {
+                            if let crate::types::ContentBlockDelta::TextDelta { text } =
+                                delta_event.delta
+                            {
+                                let mut buf = Vec::new();
+                                let payload = crate::sse::SsePayload::new(text, false);
+                                if payload.emit(&mut buf).is_ok() {
+                                    let _ = tx
+                                        .send(Ok::<_, Infallible>(
+                                            AxumSseEvent::default()
+                                                .data(String::from_utf8_lossy(&buf)),
+                                        ))
+                                        .await;
+                                }
+                            }
+                        }
+                        crate::types::StreamEvent::MessageStop(_) => {
                             let mut buf = Vec::new();
-                            let payload = crate::sse::SsePayload::new(text, false);
+                            let payload = crate::sse::SsePayload::new("", true);
                             if payload.emit(&mut buf).is_ok() {
                                 let _ = tx
                                     .send(Ok::<_, Infallible>(
@@ -748,25 +767,28 @@ pub async fn handle_onyx_summon(
                                     ))
                                     .await;
                             }
-                        }
-                    }
-                    crate::types::StreamEvent::MessageStop(_) => {
-                        let mut buf = Vec::new();
-                        let payload = crate::sse::SsePayload::new("", true);
-                        if payload.emit(&mut buf).is_ok() {
-                            let _ = tx
-                                .send(Ok::<_, Infallible>(
-                                    AxumSseEvent::default().data(String::from_utf8_lossy(&buf)),
-                                ))
-                                .await;
-                        }
 
+                            let _ = tx
+                                .send(Ok::<_, Infallible>(AxumSseEvent::default().data("[DONE]")))
+                                .await;
+                            break;
+                        }
+                        _ => {}
+                    },
+                    Ok(Ok(None)) => break,
+                    Ok(Err(_)) => break,
+                    Err(_) => {
+                        // Timeout hit: stream is idle (e.g. waiting for HITL approval). Emit keep-alive heartbeat.
+                        let heartbeat_payload = serde_json::json!({
+                            "type": "status",
+                            "state": "WAITING_ON_USER"
+                        });
                         let _ = tx
-                            .send(Ok::<_, Infallible>(AxumSseEvent::default().data("[DONE]")))
+                            .send(Ok::<_, Infallible>(
+                                AxumSseEvent::default().data(heartbeat_payload.to_string()),
+                            ))
                             .await;
-                        break;
                     }
-                    _ => {}
                 }
             }
         }

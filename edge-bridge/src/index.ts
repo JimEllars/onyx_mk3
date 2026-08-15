@@ -2219,6 +2219,36 @@ const onyx_handler: any = {
           }
         }
 
+        // Record HITL Telemetry using Analytics Engine if available
+        if (env.ONYX_EDGE_METRICS) {
+          ctx.waitUntil(
+            new Promise<void>((resolve) => {
+              try {
+                const actionType = (payload as any).action_type || "approve";
+                const turnaroundTime = (payload as any).turnaround_time_ms || 0;
+
+                env.ONYX_EDGE_METRICS!.writeDataPoint({
+                  blobs: [
+                    "HITL_ACTION",
+                    url.pathname,
+                    payload.task_id || "unknown",
+                    actionType
+                  ],
+                  doubles: [
+                    turnaroundTime
+                  ],
+                  indexes: [
+                    "hitl_telemetry"
+                  ]
+                });
+              } catch (e) {
+                console.error("HITL Telemetry error", e);
+              }
+              resolve();
+            })
+          );
+        }
+
         // Save approval to KV store
         if (env.ONYX_STATE) {
           try {
