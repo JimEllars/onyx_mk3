@@ -67,6 +67,16 @@ export default function ChatInterface() {
                                 const parsed = JSON.parse(dataStr);
                                 if (parsed.type === 'status' && parsed.state === 'WAITING_ON_USER') {
                                     window.dispatchEvent(new CustomEvent('onyx_waiting_on_user'));
+                                } else if (parsed.type === 'status' && parsed.state === 'PROVIDER_FAILOVER') {
+                                    setStreamStatus('PROVIDER_FAILOVER');
+                                    setMessages(prev => {
+                                        const newMsgs = [...prev];
+                                        const last = newMsgs[newMsgs.length - 1];
+                                        if (last && last.role === 'assistant') {
+                                            last.isFailover = true;
+                                        }
+                                        return newMsgs;
+                                    });
                                 } else {
                                     setMessages(prev => {
                                         const newMessages = [...prev];

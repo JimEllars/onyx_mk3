@@ -8,3 +8,6 @@ archive/
 edge-bridge/node_modules
 .env
 edge-bridge/.dev.vars
+.claw/
+.onyx/logs/
+patch_*.py

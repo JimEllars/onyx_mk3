@@ -4,7 +4,6 @@
  * This is the Onyx Edge Bridge worker.
  */
 
-
 export interface Env {
   ONYX_EDGE_METRICS?: AnalyticsEngineDataset;
   AI?: any;
@@ -199,7 +198,6 @@ function addOnyxHeaders(
   return h;
 }
 
-
 async function dispatchToCore(
   url: string,
   options: RequestInit,
@@ -210,19 +208,34 @@ async function dispatchToCore(
   request: Request,
   edgeStatus: any,
   cacheStatus: string,
-  traceId?: string
+  traceId?: string,
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
-    const res = await fetchWithRetry(url, { ...options, signal: controller.signal }, 3);
+    const res = await fetchWithRetry(
+      url,
+      { ...options, signal: controller.signal },
+      3,
+    );
     clearTimeout(timeoutId);
     if (res.status >= 500) {
       throw new Error(`Upstream API error ${res.status}`);
     }
-    return new Response(JSON.stringify({ status: "success", message: successMessage }), {
-      headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
-    });
+    return new Response(
+      JSON.stringify({ status: "success", message: successMessage }),
+      {
+        headers: addOnyxHeaders(
+          {
+            ...getCorsHeaders(request, env),
+            "Content-Type": "application/json",
+          },
+          edgeStatus,
+          cacheStatus,
+          traceId,
+        ),
+      },
+    );
   } catch (error) {
     clearTimeout(timeoutId);
     console.error("AXiM Core ingest dropped or timed out:", error);
@@ -230,10 +243,24 @@ async function dispatchToCore(
       const dlqKey = `dlq:ingest:${Date.now()}:${crypto.randomUUID()}`;
       ctx.waitUntil(env.ONYX_STATE.put(dlqKey, payloadStr));
     }
-    return new Response(JSON.stringify({ status: "QUEUED_EDGE_DLQ", message: "Payload buffered at edge for Core retry." }), {
-      status: 202,
-      headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
-    });
+    return new Response(
+      JSON.stringify({
+        status: "QUEUED_EDGE_DLQ",
+        message: "Payload buffered at edge for Core retry.",
+      }),
+      {
+        status: 202,
+        headers: addOnyxHeaders(
+          {
+            ...getCorsHeaders(request, env),
+            "Content-Type": "application/json",
+          },
+          edgeStatus,
+          cacheStatus,
+          traceId,
+        ),
+      },
+    );
   }
 }
 
@@ -367,15 +394,19 @@ async function bootstrapDatabase(env: Env) {
   }
 }
 
-
 async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
   if (!env.ONYX_STATE) return;
-  const listResult = await env.ONYX_STATE.list({ prefix: "dlq:ingest:", limit: 50 });
+  const listResult = await env.ONYX_STATE.list({
+    prefix: "dlq:ingest:",
+    limit: 50,
+  });
   if (!listResult.keys || listResult.keys.length === 0) return;
 
-  const coreUrl = env.CORE_INGEST_URL || "https://api.axim.us.com/v1/functions/telemetry-ingest";
+  const coreUrl =
+    env.CORE_INGEST_URL ||
+    "https://api.axim.us.com/v1/functions/telemetry-ingest";
 
-  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   for (const keyInfo of listResult.keys) {
     const key = keyInfo.name;
@@ -387,9 +418,9 @@ async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-onyx-edge-auth": env.AXIM_ONYX_SECRET
+          "x-onyx-edge-auth": env.AXIM_ONYX_SECRET,
         },
-        body: payload
+        body: payload,
       });
 
       if (res.status === 200 || res.status === 202) {
@@ -411,11 +442,13 @@ const onyx_handler: any = {
   ): Promise<void> {
     try {
       // Execute a low-overhead heartbeat sanity evaluation across active KV stores
-      console.log(`Cron triggered at ${new Date().toISOString()} for ${controller.cron}`);
+      console.log(
+        `Cron triggered at ${new Date().toISOString()} for ${controller.cron}`,
+      );
 
-    if (controller.cron === "*/5 * * * *") {
-      ctx.waitUntil(drainIngestDlq(env, ctx));
-    }
+      if (controller.cron === "*/5 * * * *") {
+        ctx.waitUntil(drainIngestDlq(env, ctx));
+      }
 
       const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
       if (env.ONYX_DB) {
@@ -448,10 +481,12 @@ const onyx_handler: any = {
         );
       }
 
-
       // Execute the Rust backend daily cron endpoint
       const backendCronUrl = env.CORE_INGEST_URL
-        ? env.CORE_INGEST_URL.replace("/v1/functions/telemetry-ingest", "/api/v1/internal/cron/daily-run")
+        ? env.CORE_INGEST_URL.replace(
+            "/v1/functions/telemetry-ingest",
+            "/api/v1/internal/cron/daily-run",
+          )
         : "http://localhost:3000/api/v1/internal/cron/daily-run";
       const cronSecret = env.CRON_SECRET_KEY;
 
@@ -460,11 +495,11 @@ const onyx_handler: any = {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${cronSecret}`
-          }
+            Authorization: `Bearer ${cronSecret}`,
+          },
         })
           .then((res) => console.log(`Backend cron response: ${res.status}`))
-          .catch((e) => console.error("Failed to trigger backend cron", e))
+          .catch((e) => console.error("Failed to trigger backend cron", e)),
       );
 
       // Pulse Sync: Fetch external social data and forward to Rust backend
@@ -948,51 +983,69 @@ const onyx_handler: any = {
       }
 
       try {
-        const summonRes = await fetchWithRetry(ingestUrl, {
-          method: "POST",
-          headers: addOnyxHeaders(
-            { "Content-Type": "application/json" },
-            edgeStatus,
-            cacheStatus,
-            traceId,
-          ),
-          body: JSON.stringify({
-            type: "onyx_summon",
-            payload,
-            timestamp: new Date().toISOString(),
-          }),
-        }, 3);
+        const summonRes = await fetchWithRetry(
+          ingestUrl,
+          {
+            method: "POST",
+            headers: addOnyxHeaders(
+              { "Content-Type": "application/json" },
+              edgeStatus,
+              cacheStatus,
+              traceId,
+            ),
+            body: JSON.stringify({
+              type: "onyx_summon",
+              payload,
+              timestamp: new Date().toISOString(),
+            }),
+          },
+          3,
+        );
 
-        if (!summonRes.ok || summonRes.headers.get("x-onyx-all-providers-down") === "true") {
-           throw new Error("Providers down or 503");
+        if (
+          !summonRes.ok ||
+          summonRes.headers.get("x-onyx-all-providers-down") === "true"
+        ) {
+          throw new Error("Providers down or 503");
         }
       } catch (e) {
-        console.error("Onyx summon forward failed, attempting Workers AI fallback", e);
+        console.error(
+          "Onyx summon forward failed, attempting Workers AI fallback",
+          e,
+        );
         if (env.AI) {
-            try {
-              const fallbackResponse = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
-                messages: [{ role: 'user', content: (payload as any).message || 'Hello' }]
-              }) as { response: string };
-
-              const responseText = fallbackResponse.response;
-
-              const ssePayload = `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message: { model: 'workers-ai-llama-3.1-8b' } })}\n\nevent: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: responseText } })}\n\nevent: message_delta\ndata: ${JSON.stringify({ type: 'message_delta', usage: { output_tokens: responseText.length } })}\n\nevent: message_stop\ndata: {}\n\ndata: [DONE]\n\n`;
-              return new Response(ssePayload, {
-                status: 200,
-                headers: addOnyxHeaders(
+          try {
+            const fallbackResponse = (await env.AI.run(
+              "@cf/meta/llama-3.1-8b-instruct",
+              {
+                messages: [
                   {
-                    ...getCorsHeaders(request, env),
-                    "Content-Type": "text/event-stream",
-                    "X-Onyx-Fallback": "workers-ai"
+                    role: "user",
+                    content: (payload as any).message || "Hello",
                   },
-                  edgeStatus,
-                  cacheStatus,
-                  traceId,
-                )
-              });
-            } catch (aiError) {
-              console.error("Workers AI fallback failed:", aiError);
-            }
+                ],
+              },
+            )) as { response: string };
+
+            const responseText = fallbackResponse.response;
+
+            const ssePayload = `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { model: "workers-ai-llama-3.1-8b" } })}\n\nevent: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: responseText } })}\n\nevent: message_delta\ndata: ${JSON.stringify({ type: "message_delta", usage: { output_tokens: responseText.length } })}\n\nevent: message_stop\ndata: {}\n\ndata: [DONE]\n\n`;
+            return new Response(ssePayload, {
+              status: 200,
+              headers: addOnyxHeaders(
+                {
+                  ...getCorsHeaders(request, env),
+                  "Content-Type": "text/event-stream",
+                  "X-Onyx-Fallback": "workers-ai",
+                },
+                edgeStatus,
+                cacheStatus,
+                traceId,
+              ),
+            });
+          } catch (aiError) {
+            console.error("Workers AI fallback failed:", aiError);
+          }
         }
       }
 
@@ -1047,7 +1100,11 @@ const onyx_handler: any = {
       try {
         const res = await fetch(`${coreUrl}${url.pathname}`);
         if (res.ok) {
-          const maxAge = (url.pathname === "/api/v1/telemetry/health" || url.pathname === "/api/v1/llm/health") ? 15 : 3600;
+          const maxAge =
+            url.pathname === "/api/v1/telemetry/health" ||
+            url.pathname === "/api/v1/llm/health"
+              ? 15
+              : 3600;
           const responseToCache = new Response(res.body, {
             status: res.status,
             statusText: res.statusText,
@@ -1538,17 +1595,22 @@ const onyx_handler: any = {
           // Try to forward heartbeat to backend with 800ms timeout
           let backendSuccess = false;
           if (env.CORE_INGEST_URL) {
-            const ingestUrl = env.CORE_INGEST_URL.replace(/\/$/, "") + "/api/v1/session/heartbeat";
+            const ingestUrl =
+              env.CORE_INGEST_URL.replace(/\/$/, "") +
+              "/api/v1/session/heartbeat";
 
             try {
               const fetchPromise = fetchWithRetry(ingestUrl, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": request.headers.get("Authorization") || "" },
-                body: JSON.stringify(body)
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: request.headers.get("Authorization") || "",
+                },
+                body: JSON.stringify(body),
               });
 
-              const timeoutPromise = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
-                setTimeout(() => resolve(TIMEOUT_SYMBOL), 800)
+              const timeoutPromise = new Promise<typeof TIMEOUT_SYMBOL>(
+                (resolve) => setTimeout(() => resolve(TIMEOUT_SYMBOL), 800),
               );
 
               const result = await Promise.race([fetchPromise, timeoutPromise]);
@@ -1563,24 +1625,29 @@ const onyx_handler: any = {
           if (!backendSuccess) {
             // Synthetic response logic
             if (env.ONYX_SESSION_STATE) {
-               ctx.waitUntil(
-                 kvWriteWithTimeout(
-                   env.ONYX_SESSION_STATE.put(body.session_id, Date.now().toString()),
-                   500,
-                   edgeStatus
-                 )
-               );
+              ctx.waitUntil(
+                kvWriteWithTimeout(
+                  env.ONYX_SESSION_STATE.put(
+                    body.session_id,
+                    Date.now().toString(),
+                  ),
+                  500,
+                  edgeStatus,
+                ),
+              );
             }
 
             // Send warning telemetry to backend asynchronously
             if (env.CORE_INGEST_URL) {
-              const telemetryUrl = env.CORE_INGEST_URL.replace(/\/$/, "") + "/api/v1/telemetry/ingest";
+              const telemetryUrl =
+                env.CORE_INGEST_URL.replace(/\/$/, "") +
+                "/api/v1/telemetry/ingest";
               ctx.waitUntil(
                 fetch(telemetryUrl, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ warning: "INTERCEPTED_HEARTBEAT" })
-                }).catch(() => {}) // Fire and forget
+                  body: JSON.stringify({ warning: "INTERCEPTED_HEARTBEAT" }),
+                }).catch(() => {}), // Fire and forget
               );
             }
           } else {
@@ -1593,7 +1660,7 @@ const onyx_handler: any = {
                  ON CONFLICT(session_id) DO UPDATE SET
                    user_id=excluded.user_id,
                    client_version=excluded.client_version,
-                   last_seen=excluded.last_seen`
+                   last_seen=excluded.last_seen`,
               )
                 .bind(
                   body.session_id,
@@ -1601,12 +1668,17 @@ const onyx_handler: any = {
                   body.client_version || null,
                   now,
                 )
-                .run().catch(() => {});
+                .run()
+                .catch(() => {});
             }
           }
 
           return new Response(
-            JSON.stringify({ status: "success", session_id: body.session_id, synthetic: !backendSuccess }),
+            JSON.stringify({
+              status: "success",
+              session_id: body.session_id,
+              synthetic: !backendSuccess,
+            }),
             {
               headers: addOnyxHeaders(
                 {
@@ -1882,7 +1954,10 @@ const onyx_handler: any = {
               });
             }
           } catch (e) {
-            console.warn("Prompt cache miss or error, falling back to generation:", e);
+            console.warn(
+              "Prompt cache miss or error, falling back to generation:",
+              e,
+            );
           }
         }
 
@@ -1940,9 +2015,17 @@ const onyx_handler: any = {
           });
           clearTimeout(timeoutId);
 
-          if (!claudeResponse.ok || claudeResponse.headers.get("x-onyx-all-providers-down") === "true") {
-            if (claudeResponse.status >= 500 || claudeResponse.headers.get("x-onyx-all-providers-down") === "true") {
-              throw new Error(`Upstream API error ${claudeResponse.status} or providers down`);
+          if (
+            !claudeResponse.ok ||
+            claudeResponse.headers.get("x-onyx-all-providers-down") === "true"
+          ) {
+            if (
+              claudeResponse.status >= 500 ||
+              claudeResponse.headers.get("x-onyx-all-providers-down") === "true"
+            ) {
+              throw new Error(
+                `Upstream API error ${claudeResponse.status} or providers down`,
+              );
             } else {
               const errorData = await claudeResponse.text();
               console.error("Anthropic API Error:", errorData);
@@ -1964,14 +2047,25 @@ const onyx_handler: any = {
             }
           }
         } catch (error) {
-          console.error("AXiM Core ingest dropped, timed out, or providers down:", error);
+          console.error(
+            "AXiM Core ingest dropped, timed out, or providers down:",
+            error,
+          );
 
           if (env.AI) {
             console.warn("Attempting Cloudflare Workers AI edge fallback...");
             try {
-              const fallbackResponse = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
-                messages: [{ role: 'user', content: `System: ${onyxSystemPrompt}\nUser: ${command}` }]
-              }) as { response: string };
+              const fallbackResponse = (await env.AI.run(
+                "@cf/meta/llama-3.1-8b-instruct",
+                {
+                  messages: [
+                    {
+                      role: "user",
+                      content: `System: ${onyxSystemPrompt}\nUser: ${command}`,
+                    },
+                  ],
+                },
+              )) as { response: string };
 
               const responseText = fallbackResponse.response;
 
@@ -1979,19 +2073,19 @@ const onyx_handler: any = {
               // The original route handles streaming via TransformStream if successful.
               // Let's just return a JSON response with the fallback text or stream if easy.
               // The prompt says "and stream or return the response back to the client as an emergency fallback"
-              const ssePayload = `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message: { model: 'workers-ai-llama-3.1-8b' } })}\n\nevent: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: responseText } })}\n\nevent: message_delta\ndata: ${JSON.stringify({ type: 'message_delta', usage: { output_tokens: responseText.length } })}\n\nevent: message_stop\ndata: {}\n\ndata: [DONE]\n\n`;
+              const ssePayload = `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { model: "workers-ai-llama-3.1-8b" } })}\n\nevent: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: responseText } })}\n\nevent: message_delta\ndata: ${JSON.stringify({ type: "message_delta", usage: { output_tokens: responseText.length } })}\n\nevent: message_stop\ndata: {}\n\ndata: [DONE]\n\n`;
               return new Response(ssePayload, {
                 status: 200,
                 headers: addOnyxHeaders(
                   {
                     ...getCorsHeaders(request, env),
                     "Content-Type": "text/event-stream",
-                    "X-Onyx-Fallback": "workers-ai"
+                    "X-Onyx-Fallback": "workers-ai",
                   },
                   edgeStatus,
                   cacheStatus,
                   traceId,
-                )
+                ),
               });
             } catch (aiError) {
               console.error("Workers AI fallback failed:", aiError);
@@ -2146,27 +2240,31 @@ const onyx_handler: any = {
           );
         }
 
-        const bodyStr = JSON.stringify({ type: "telemetry", payload, timestamp: new Date().toISOString() });
+        const bodyStr = JSON.stringify({
+          type: "telemetry",
+          payload,
+          timestamp: new Date().toISOString(),
+        });
 
-                  return new Response(
-            JSON.stringify({
-              status: "success",
-              message: "Telemetry ingested successfully.",
+        return new Response(
+          JSON.stringify({
+            status: "success",
+            message: "Telemetry ingested successfully.",
+            traceId,
+          }),
+          {
+            status: 200,
+            headers: addOnyxHeaders(
+              {
+                ...getCorsHeaders(request, env),
+                "Content-Type": "application/json",
+              },
+              edgeStatus,
+              cacheStatus,
               traceId,
-            }),
-            {
-              status: 200,
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            }
-          );
+            ),
+          },
+        );
       } else if (request.method === "POST" && url.pathname === "/api/approve") {
         const authError = await checkAuth(request, env);
         if (authError) return authError;
@@ -2232,20 +2330,16 @@ const onyx_handler: any = {
                     "HITL_ACTION",
                     url.pathname,
                     payload.task_id || "unknown",
-                    actionType
+                    actionType,
                   ],
-                  doubles: [
-                    turnaroundTime
-                  ],
-                  indexes: [
-                    "hitl_telemetry"
-                  ]
+                  doubles: [turnaroundTime],
+                  indexes: ["hitl_telemetry"],
                 });
               } catch (e) {
                 console.error("HITL Telemetry error", e);
               }
               resolve();
-            })
+            }),
           );
         }
 
@@ -2289,11 +2383,27 @@ const onyx_handler: any = {
         const bodyStr = JSON.stringify({ type: "approval_relay", payload });
         const res = await dispatchToCore(
           ingestUrl,
-          { method: "POST", headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId), body: bodyStr },
-          env, ctx, bodyStr, `Approval for task ${payload.task_id} relayed to Rust core.`, request, edgeStatus, cacheStatus, traceId
+          {
+            method: "POST",
+            headers: addOnyxHeaders(
+              { "Content-Type": "application/json" },
+              edgeStatus,
+              cacheStatus,
+              traceId,
+            ),
+            body: bodyStr,
+          },
+          env,
+          ctx,
+          bodyStr,
+          `Approval for task ${payload.task_id} relayed to Rust core.`,
+          request,
+          edgeStatus,
+          cacheStatus,
+          traceId,
         );
         if (idempotencyKey && env.ONYX_STATE && res.status === 200) {
-            // simplified cache of result
+          // simplified cache of result
         }
         return res;
       } else if (
@@ -2351,11 +2461,31 @@ const onyx_handler: any = {
         }
         const ingestUrl = env.CORE_INGEST_URL;
 
-        const bodyStr = JSON.stringify({ type: "playbook_trigger", alert: payload, timestamp: new Date().toISOString() });
+        const bodyStr = JSON.stringify({
+          type: "playbook_trigger",
+          alert: payload,
+          timestamp: new Date().toISOString(),
+        });
         return await dispatchToCore(
           ingestUrl,
-          { method: "POST", headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId), body: bodyStr },
-          env, ctx, bodyStr, "Playbook trigger processed and queued for immediate evaluation.", request, edgeStatus, cacheStatus, traceId
+          {
+            method: "POST",
+            headers: addOnyxHeaders(
+              { "Content-Type": "application/json" },
+              edgeStatus,
+              cacheStatus,
+              traceId,
+            ),
+            body: bodyStr,
+          },
+          env,
+          ctx,
+          bodyStr,
+          "Playbook trigger processed and queued for immediate evaluation.",
+          request,
+          edgeStatus,
+          cacheStatus,
+          traceId,
         );
       } else if (
         request.method === "POST" &&
@@ -2650,52 +2780,89 @@ const onyx_handler: any = {
         const offset = parseInt(offsetStr, 10);
 
         if (isNaN(limit) || isNaN(offset)) {
-          return new Response(JSON.stringify({ error: "Invalid limit or offset" }), {
-            status: 400,
-            headers: addOnyxHeaders(
-              { ...getCorsHeaders(request, env), "Content-Type": "application/json" },
-              edgeStatus, cacheStatus, traceId
-            )
-          });
+          return new Response(
+            JSON.stringify({ error: "Invalid limit or offset" }),
+            {
+              status: 400,
+              headers: addOnyxHeaders(
+                {
+                  ...getCorsHeaders(request, env),
+                  "Content-Type": "application/json",
+                },
+                edgeStatus,
+                cacheStatus,
+                traceId,
+              ),
+            },
+          );
         }
 
         if (env.ONYX_DB) {
           try {
-            const countResult = await env.ONYX_DB.prepare("SELECT COUNT(*) as total FROM CommandAuditLogs").first();
+            const countResult = await env.ONYX_DB.prepare(
+              "SELECT COUNT(*) as total FROM CommandAuditLogs",
+            ).first();
             const total = countResult ? countResult.total : 0;
 
-            const { results } = await env.ONYX_DB.prepare("SELECT * FROM CommandAuditLogs ORDER BY timestamp DESC LIMIT ? OFFSET ?")
+            const { results } = await env.ONYX_DB.prepare(
+              "SELECT * FROM CommandAuditLogs ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+            )
               .bind(limit, offset)
               .all();
 
             return new Response(
-              JSON.stringify({ success: true, logs: results || [], total: Number(total) }),
+              JSON.stringify({
+                success: true,
+                logs: results || [],
+                total: Number(total),
+              }),
               {
                 status: 200,
                 headers: addOnyxHeaders(
-                  { ...getCorsHeaders(request, env), "Content-Type": "application/json" },
-                  edgeStatus, cacheStatus, traceId
-                )
-              }
+                  {
+                    ...getCorsHeaders(request, env),
+                    "Content-Type": "application/json",
+                  },
+                  edgeStatus,
+                  cacheStatus,
+                  traceId,
+                ),
+              },
             );
           } catch (e) {
-             console.error("D1 Audit Logs query failed:", e);
-             return new Response(JSON.stringify({ error: "Failed to fetch audit logs" }), {
-               status: 500,
-               headers: addOnyxHeaders(
-                 { ...getCorsHeaders(request, env), "Content-Type": "application/json" },
-                 edgeStatus, cacheStatus, traceId
-               )
-             });
+            console.error("D1 Audit Logs query failed:", e);
+            return new Response(
+              JSON.stringify({ error: "Failed to fetch audit logs" }),
+              {
+                status: 500,
+                headers: addOnyxHeaders(
+                  {
+                    ...getCorsHeaders(request, env),
+                    "Content-Type": "application/json",
+                  },
+                  edgeStatus,
+                  cacheStatus,
+                  traceId,
+                ),
+              },
+            );
           }
         } else {
-           return new Response(JSON.stringify({ error: "D1 Database not configured" }), {
-             status: 500,
-             headers: addOnyxHeaders(
-               { ...getCorsHeaders(request, env), "Content-Type": "application/json" },
-               edgeStatus, cacheStatus, traceId
-             )
-           });
+          return new Response(
+            JSON.stringify({ error: "D1 Database not configured" }),
+            {
+              status: 500,
+              headers: addOnyxHeaders(
+                {
+                  ...getCorsHeaders(request, env),
+                  "Content-Type": "application/json",
+                },
+                edgeStatus,
+                cacheStatus,
+                traceId,
+              ),
+            },
+          );
         }
       } else if (
         request.method === "POST" &&
@@ -2861,8 +3028,24 @@ const onyx_handler: any = {
         const bodyStr = JSON.stringify(payload);
         return await dispatchToCore(
           ingestUrl,
-          { method: "POST", headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId), body: bodyStr },
-          env, ctx, bodyStr, "Webhook passed to Rust core.", request, edgeStatus, cacheStatus, traceId
+          {
+            method: "POST",
+            headers: addOnyxHeaders(
+              { "Content-Type": "application/json" },
+              edgeStatus,
+              cacheStatus,
+              traceId,
+            ),
+            body: bodyStr,
+          },
+          env,
+          ctx,
+          bodyStr,
+          "Webhook passed to Rust core.",
+          request,
+          edgeStatus,
+          cacheStatus,
+          traceId,
         );
       } else {
         if (request.method === "GET" && env.ASSETS) {
@@ -2912,28 +3095,35 @@ export default {
     const startTime = Date.now();
     let response;
     try {
-        response = await onyx_handler._fetch(request, env, ctx);
+      response = await onyx_handler._fetch(request, env, ctx);
     } catch (e) {
-        console.error("Route error:", e);
-        const traceIdFallback = request.headers.get("x-request-id") || crypto.randomUUID();
-        response = new Response(JSON.stringify({ error: "Internal Server Error", fallback: true }), {
-            status: 500,
-            headers: addOnyxHeaders(
-                {
-                    "Content-Type": "application/json",
-                    ...getCorsHeaders(request, env),
-                },
-                { degraded: true },
-                "MISS",
-                traceIdFallback
-            )
-        });
+      console.error("Route error:", e);
+      const traceIdFallback =
+        request.headers.get("x-request-id") || crypto.randomUUID();
+      response = new Response(
+        JSON.stringify({ error: "Internal Server Error", fallback: true }),
+        {
+          status: 500,
+          headers: addOnyxHeaders(
+            {
+              "Content-Type": "application/json",
+              ...getCorsHeaders(request, env),
+            },
+            { degraded: true },
+            "MISS",
+            traceIdFallback,
+          ),
+        },
+      );
     }
     const latency = Date.now() - startTime;
     const url = new URL(request.url);
     const traceId = response.headers.get("X-Onyx-Trace-Id") || "unknown";
 
-    if (url.pathname === "/api/v1/chat" || url.pathname.startsWith("/api/v1/jules/")) {
+    if (
+      url.pathname === "/api/v1/chat" ||
+      url.pathname.startsWith("/api/v1/jules/")
+    ) {
       if (env.ONYX_EDGE_METRICS) {
         ctx.waitUntil(
           new Promise<void>((resolve) => {
@@ -2943,20 +3133,16 @@ export default {
                   request.method,
                   url.pathname,
                   traceId,
-                  response.status.toString()
+                  response.status.toString(),
                 ],
-                doubles: [
-                  latency
-                ],
-                indexes: [
-                  response.status >= 400 ? "error" : "success"
-                ]
+                doubles: [latency],
+                indexes: [response.status >= 400 ? "error" : "success"],
               });
             } catch (e) {
               console.error("Telemetry error", e);
             }
             resolve();
-          })
+          }),
         );
       }
     }
