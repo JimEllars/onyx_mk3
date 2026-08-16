@@ -30,6 +30,8 @@ pub struct FleetStatus {
     pub last_updated: u64,
     pub pending_actions: Vec<ProposedAction>,
     pub anomaly_counters: HashMap<String, usize>,
+    pub last_edge_heartbeats: u64,
+    pub last_eval_time: u64,
 }
 
 pub type GlobalFleetStatus = Arc<RwLock<FleetStatus>>;
@@ -140,12 +142,59 @@ pub async fn evaluate_health_with_ai(
 }
 
 pub fn evaluate_fleet_health(status: &GlobalFleetStatus, telemetry_logs: &serde_json::Value) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     {
         let mut current_status = status.write().unwrap();
-        current_status.last_updated = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        current_status.last_updated = now;
+
+        let current_heartbeats = telemetry::metrics::EDGE_HEARTBEAT_INTERCEPTS
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let time_diff = now.saturating_sub(current_status.last_eval_time);
+
+        // Ensure at least some time has passed to prevent instant triggers, and check if it's within a reasonable window (e.g., around 1 min or whatever interval evaluates run on)
+        if time_diff > 0 {
+            let heartbeat_diff =
+                current_heartbeats.saturating_sub(current_status.last_edge_heartbeats);
+            if heartbeat_diff > 5 {
+                let action_id = format!(
+                    "action-{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos()
+                );
+                let proposed_action = ProposedAction {
+                    tool_name: "reduce_request_rate".to_string(), // Or execute_circuit_breaker
+                    arguments: serde_json::json!({ "reason": "Heartbeat intercept spike > 5 in evaluation window" }),
+                    id: action_id.clone(),
+                    status: ActionStatus::Pending,
+                    created_at: now,
+                };
+                println!("[Self-Healing: Spike in EDGE_HEARTBEAT_INTERCEPTS ({} -> {}). Pushing ProposedAction: {}]", current_status.last_edge_heartbeats, current_heartbeats, action_id);
+                current_status.pending_actions.push(proposed_action);
+
+                // Fire and forget audit log
+                tokio::spawn(async move {
+                    let _ = crate::lane_events::handle_telemetry_event(
+                        &crate::lane_events::TelemetryEvent {
+                            r#type: "command_audit_log".to_string(),
+                            payload: serde_json::json!({
+                                "source": "fleet_health",
+                                "action": "propose_circuit_breaker",
+                                "reason": "EDGE_HEARTBEAT_INTERCEPTS spike > 5"
+                            }),
+                        },
+                    )
+                    .await;
+                });
+            }
+        }
+
+        current_status.last_edge_heartbeats = current_heartbeats;
+        current_status.last_eval_time = now;
     }
 
     if let Some(logs) = telemetry_logs.as_array() {

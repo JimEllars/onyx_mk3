@@ -976,7 +976,7 @@ const onyx_handler: any = {
 
               const responseText = fallbackResponse.response;
 
-              const ssePayload = `data: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: responseText } })}\n\ndata: [DONE]\n\n`;
+              const ssePayload = `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message: { model: 'workers-ai-llama-3.1-8b' } })}\n\nevent: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: responseText } })}\n\nevent: message_delta\ndata: ${JSON.stringify({ type: 'message_delta', usage: { output_tokens: responseText.length } })}\n\nevent: message_stop\ndata: {}\n\ndata: [DONE]\n\n`;
               return new Response(ssePayload, {
                 status: 200,
                 headers: addOnyxHeaders(
@@ -1979,7 +1979,7 @@ const onyx_handler: any = {
               // The original route handles streaming via TransformStream if successful.
               // Let's just return a JSON response with the fallback text or stream if easy.
               // The prompt says "and stream or return the response back to the client as an emergency fallback"
-              const ssePayload = `data: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: responseText } })}\n\ndata: [DONE]\n\n`;
+              const ssePayload = `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message: { model: 'workers-ai-llama-3.1-8b' } })}\n\nevent: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: responseText } })}\n\nevent: message_delta\ndata: ${JSON.stringify({ type: 'message_delta', usage: { output_tokens: responseText.length } })}\n\nevent: message_stop\ndata: {}\n\ndata: [DONE]\n\n`;
               return new Response(ssePayload, {
                 status: 200,
                 headers: addOnyxHeaders(

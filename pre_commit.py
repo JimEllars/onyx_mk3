@@ -1,1 +1,2 @@
-print("All done")
+def pre_commit():
+    pass
