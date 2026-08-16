@@ -6,7 +6,20 @@ export default function ActionConsole({ peerConnection }) {
     const { status } = useAgentConnection(peerConnection);
     const { pendingHitlActions, updateHitlActionStatus } = useDesktopAgentStore();
 
+
+    const [isWaiting, setIsWaiting] = useState(false);
+
     useEffect(() => {
+        const handleWaiting = () => {
+            setIsWaiting(true);
+            setTimeout(() => setIsWaiting(false), 3000); // Pulse for a few seconds
+        };
+        window.addEventListener('onyx_waiting_on_user', handleWaiting);
+        return () => window.removeEventListener('onyx_waiting_on_user', handleWaiting);
+    }, []);
+
+    useEffect(() => {
+
         const interval = setInterval(() => {
             const now = Date.now();
             pendingHitlActions.forEach(action => {
@@ -29,7 +42,7 @@ export default function ActionConsole({ peerConnection }) {
         <div className="action-console p-4 bg-slate-900 text-slate-100 flex flex-col gap-4 rounded-lg shadow-xl border border-slate-700">
             <div className="flex justify-between items-center border-b border-slate-700 pb-3">
                 <h2 className="font-bold tracking-wide flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span className={`w-2 h-2 rounded-full ${isWaiting ? 'bg-amber-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`}></span>
                     ACTION CONSOLE
                 </h2>
                 <div className={`badge border border-slate-700 px-3 py-1 rounded-full text-xs font-mono tracking-wider ${voiceColor} bg-slate-800/50 shadow-inner`}>

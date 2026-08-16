@@ -65,14 +65,18 @@ export default function ChatInterface() {
                             }
                             try {
                                 const parsed = JSON.parse(dataStr);
-                                setMessages(prev => {
-                                    const newMessages = [...prev];
-                                    const lastMessage = newMessages[newMessages.length - 1];
-                                    if (lastMessage.role === 'assistant') {
-                                        lastMessage.content += parsed.chunk;
-                                    }
-                                    return newMessages;
-                                });
+                                if (parsed.type === 'status' && parsed.state === 'WAITING_ON_USER') {
+                                    window.dispatchEvent(new CustomEvent('onyx_waiting_on_user'));
+                                } else {
+                                    setMessages(prev => {
+                                        const newMessages = [...prev];
+                                        const lastMessage = newMessages[newMessages.length - 1];
+                                        if (lastMessage.role === 'assistant') {
+                                            lastMessage.content += parsed.chunk;
+                                        }
+                                        return newMessages;
+                                    });
+                                }
                             } catch (err) {
                                 console.error('Error parsing SSE payload:', err);
                             }
