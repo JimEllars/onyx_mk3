@@ -1,0 +1,77 @@
+diff --git a/rust/crates/api/src/router.rs b/rust/crates/api/src/router.rs
+index 40dc63a..41196c0 100644
+--- a/rust/crates/api/src/router.rs
++++ b/rust/crates/api/src/router.rs
+@@ -788,6 +788,7 @@ pub async fn handle_onyx_summon(
+                                 AxumSseEvent::default().data(heartbeat_payload.to_string()),
+                             ))
+                             .await;
++                        continue;
+                     }
+                 }
+             }
+diff --git a/src/components/hud/ActionConsole.jsx b/src/components/hud/ActionConsole.jsx
+index 83cfd9b..463cdb8 100644
+--- a/src/components/hud/ActionConsole.jsx
++++ b/src/components/hud/ActionConsole.jsx
+@@ -6,7 +6,20 @@ export default function ActionConsole({ peerConnection }) {
+     const { status } = useAgentConnection(peerConnection);
+     const { pendingHitlActions, updateHitlActionStatus } = useDesktopAgentStore();
+
++
++    const [isWaiting, setIsWaiting] = useState(false);
++
+     useEffect(() => {
++        const handleWaiting = () => {
++            setIsWaiting(true);
++            setTimeout(() => setIsWaiting(false), 3000); // Pulse for a few seconds
++        };
++        window.addEventListener('onyx_waiting_on_user', handleWaiting);
++        return () => window.removeEventListener('onyx_waiting_on_user', handleWaiting);
++    }, []);
++
++    useEffect(() => {
++
+         const interval = setInterval(() => {
+             const now = Date.now();
+             pendingHitlActions.forEach(action => {
+@@ -29,7 +42,7 @@ export default function ActionConsole({ peerConnection }) {
+         <div className="action-console p-4 bg-slate-900 text-slate-100 flex flex-col gap-4 rounded-lg shadow-xl border border-slate-700">
+             <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+                 <h2 className="font-bold tracking-wide flex items-center gap-2">
+-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
++                    <span className={`w-2 h-2 rounded-full ${isWaiting ? 'bg-amber-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`}></span>
+                     ACTION CONSOLE
+                 </h2>
+                 <div className={`badge border border-slate-700 px-3 py-1 rounded-full text-xs font-mono tracking-wider ${voiceColor} bg-slate-800/50 shadow-inner`}>
+diff --git a/src/components/hud/ChatInterface.jsx b/src/components/hud/ChatInterface.jsx
+index 3de9822..746246f 100644
+--- a/src/components/hud/ChatInterface.jsx
++++ b/src/components/hud/ChatInterface.jsx
+@@ -65,14 +65,18 @@ export default function ChatInterface() {
+                             }
+                             try {
+                                 const parsed = JSON.parse(dataStr);
+-                                setMessages(prev => {
+-                                    const newMessages = [...prev];
+-                                    const lastMessage = newMessages[newMessages.length - 1];
+-                                    if (lastMessage.role === 'assistant') {
+-                                        lastMessage.content += parsed.chunk;
+-                                    }
+-                                    return newMessages;
+-                                });
++                                if (parsed.type === 'status' && parsed.state === 'WAITING_ON_USER') {
++                                    window.dispatchEvent(new CustomEvent('onyx_waiting_on_user'));
++                                } else {
++                                    setMessages(prev => {
++                                        const newMessages = [...prev];
++                                        const lastMessage = newMessages[newMessages.length - 1];
++                                        if (lastMessage.role === 'assistant') {
++                                            lastMessage.content += parsed.chunk;
++                                        }
++                                        return newMessages;
++                                    });
++                                }
+                             } catch (err) {
+                                 console.error('Error parsing SSE payload:', err);
+                             }
