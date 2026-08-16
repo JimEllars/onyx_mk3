@@ -788,8 +788,8 @@ pub async fn handle_onyx_summon(
                                 AxumSseEvent::default().data(heartbeat_payload.to_string()),
                             ))
                             .await;
-                        }
                     }
+                }
             }
         }
     });
