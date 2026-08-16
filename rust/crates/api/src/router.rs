@@ -670,6 +670,7 @@ use std::convert::Infallible;
 use tokio_stream::wrappers::ReceiverStream;
 
 #[axum::debug_handler]
+#[allow(clippy::too_many_lines)]
 pub async fn handle_onyx_summon(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
@@ -775,8 +776,7 @@ pub async fn handle_onyx_summon(
                         }
                         _ => {}
                     },
-                    Ok(Ok(None)) => break,
-                    Ok(Err(_)) => break,
+                    Ok(Ok(None) | Err(_)) => break,
                     Err(_) => {
                         // Timeout hit: stream is idle (e.g. waiting for HITL approval). Emit keep-alive heartbeat.
                         let heartbeat_payload = serde_json::json!({
@@ -788,7 +788,6 @@ pub async fn handle_onyx_summon(
                                 AxumSseEvent::default().data(heartbeat_payload.to_string()),
                             ))
                             .await;
-                        continue;
                     }
                 }
             }
