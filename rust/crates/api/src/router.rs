@@ -714,6 +714,29 @@ pub async fn handle_onyx_summon(
             .and_then(|v| v.as_str())
             .unwrap_or("Hello");
 
+        // Dispatch to swarm
+        let packet = runtime::TaskPacket {
+            job_id: None,
+            worker_id: None,
+            objective: message.to_string(),
+            scope: "global".to_string(),
+            repo: "axim-core".to_string(),
+            branch_policy: "main".to_string(),
+            acceptance_tests: vec![],
+            commit_policy: "strict".to_string(),
+            reporting_contract: "none".to_string(),
+            escalation_policy: "halt".to_string(),
+            context: "Chat Context".to_string(),
+            goal: "Chat Fulfillment".to_string(),
+            expected_schema: serde_json::Value::Null,
+            reasoning_effort: None,
+            web3_wallet_address: None,
+        };
+        let _ = state
+            .dispatcher
+            .dispatch(runtime::dispatch::TaskPriority::Standard, packet)
+            .await;
+
         let request = crate::types::MessageRequest {
             model: "claude-3-7-sonnet-latest".to_string(),
             max_tokens: 1024,

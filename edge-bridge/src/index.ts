@@ -321,8 +321,13 @@ async function checkAuth(req: Request, env: Env): Promise<Response | null> {
     });
   }
 
-  const expectedToken = `Bearer ${env.AXIM_ONYX_SECRET}`;
-  if (authHeader !== expectedToken) {
+  const onyxToken = `Bearer ${env.AXIM_ONYX_SECRET}`;
+  const serviceKey = `Bearer ${env.AXIM_SERVICE_KEY}`;
+
+  // Basic Passport JWT validation (heuristic check for structure)
+  const isJwt = authHeader.startsWith('Bearer ey') && authHeader.split('.').length === 3;
+
+  if (authHeader !== onyxToken && authHeader !== serviceKey && !isJwt) {
     return new Response("Unauthorized", {
       status: 401,
       headers: getCorsHeaders(req),
@@ -2047,12 +2052,23 @@ const onyx_handler: any = {
         }
       } else if (request.method === "POST" && url.pathname === "/api/v1/chat") {
         const authError = await checkAuth(request, env);
-        if (authError) return authError;
+        if (authError) {
+            // Graceful Fallback for unauthenticated chat
+            return new Response(JSON.stringify({
+                type: "text",
+                content: "You are not authenticated with AXiM Passport. Please log in to access Onyx Mk3 capabilities."
+            }), {
+                status: 200,
+                headers: {
+                    ...getCorsHeaders(request, env),
+                    "Content-Type": "application/json"
+                }
+            });
+        }
         // 3. Parse command and context
-        const { command, context } = (await request.json()) as {
-          command?: string;
-          context?: any;
-        };
+        const reqBody = (await request.json()) as any;
+        const command = reqBody.command || reqBody.message;
+        const context = reqBody.context || {};
 
         if (!command) {
           return new Response(JSON.stringify({ error: "Missing command" }), {
