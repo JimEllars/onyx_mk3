@@ -714,7 +714,7 @@ pub async fn handle_onyx_summon(
             .and_then(|v| v.as_str())
             .unwrap_or("Hello");
 
-                // Dispatch to swarm
+        // Dispatch to swarm
         let packet = runtime::TaskPacket {
             job_id: None,
             worker_id: None,
@@ -732,7 +732,10 @@ pub async fn handle_onyx_summon(
             reasoning_effort: None,
             web3_wallet_address: None,
         };
-        let _ = state.dispatcher.dispatch(runtime::dispatch::TaskPriority::Standard, packet).await;
+        let _ = state
+            .dispatcher
+            .dispatch(runtime::dispatch::TaskPriority::Standard, packet)
+            .await;
 
         let request = crate::types::MessageRequest {
             model: "claude-3-7-sonnet-latest".to_string(),
