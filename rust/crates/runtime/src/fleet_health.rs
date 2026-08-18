@@ -141,6 +141,7 @@ pub async fn evaluate_health_with_ai(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn evaluate_fleet_health(status: &GlobalFleetStatus, telemetry_logs: &serde_json::Value) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
