@@ -1485,7 +1485,7 @@ const onyx_handler: any = {
           // For sandbox purposes, we assume 'token' can be decoded or mapped.
 
           // Basic mock validation for instructions:
-          const decodedToken = Buffer.from(token, 'base64').toString('utf8');
+          const decodedToken = atob(token);
           const tokenData = JSON.parse(decodedToken);
           const email = tokenData.email || '';
           const wallet = tokenData.wallet || '';
