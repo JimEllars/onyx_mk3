@@ -40,7 +40,7 @@ export function useAximAuth() {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const urlToken = urlParams.get('token');
-      if (urlToken && window.location.pathname.startsWith('/auth/callback')) {
+      if (urlToken) {
           if (validateToken(urlToken)) return urlToken;
       }
       const storedToken = localStorage.getItem('axim_passport_token');
@@ -58,7 +58,7 @@ export function useAximAuth() {
     const urlParams = new URLSearchParams(window.location.search);
     const urlToken = urlParams.get('token');
 
-    if (urlToken && window.location.pathname.startsWith('/auth/callback')) {
+    if (urlToken) {
       if (validateToken(urlToken)) {
         setToken(urlToken);
         setIsAuthenticated(true);

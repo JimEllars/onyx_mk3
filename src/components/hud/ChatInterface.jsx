@@ -166,15 +166,15 @@ export default function ChatInterface() {
                 {messages.map((msg, index) => {
                     if (msg.role === 'system') {
                         return (
-                            <div key={index} className="flex justify-center my-2">
-                                <span className={`bg-slate-800 border border-blue-500/30 text-blue-300 text-xs px-3 py-1.5 rounded-full font-mono shadow-sm ${msg.isStart ? "animate-pulse" : ""}`}>
+                            <div key={`sys-${index}`} className="flex justify-center my-2">
+                                <span className={`bg-slate-800/80 border border-blue-500/20 text-blue-300/80 text-xs px-3 py-1.5 rounded-full font-mono shadow-sm ${msg.isStart ? "animate-pulse" : "opacity-75"}`}>
                                     {msg.content}
                                 </span>
                             </div>
                         );
                     }
                     return (
-                        <div key={index} className={`p-3 rounded-lg max-w-[85%] ${msg.role === 'user' ? 'bg-blue-600 self-end text-white' : 'bg-slate-700 text-slate-100 self-start'}`}>
+                        <div key={`msg-${index}`} className={`p-3 rounded-lg max-w-[85%] ${msg.role === 'user' ? 'bg-blue-600 self-end text-white' : 'bg-slate-700 text-slate-100 self-start'}`}>
                             {msg.content}
                         </div>
                     );
