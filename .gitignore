@@ -11,3 +11,7 @@ edge-bridge/.dev.vars
 .claw/
 .onyx/logs/
 patch_*.py
+node_modules/
+node_modules
+node_modules/
+dist

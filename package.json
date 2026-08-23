@@ -3,11 +3,22 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "mkdir -p rust/crates/onyx/static && npm --prefix edge-bridge ci --legacy-peer-deps && npm --prefix edge-bridge run build",
+    "build": "vite build && npm --prefix edge-bridge ci --legacy-peer-deps && npm --prefix edge-bridge run build",
     "deploy": "mkdir -p rust/crates/onyx/static && npm --prefix edge-bridge run deploy",
     "deploy:dry-run": "npm --prefix edge-bridge run deploy:dry-run"
   },
   "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "zustand": "^5.0.14"
-  }
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.0",
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^3.4.19",
+    "vite": "^8.2.2"
+  },
+  "type": "module"
 }
