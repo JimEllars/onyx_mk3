@@ -5,10 +5,8 @@ export default function SystemSidebar() {
     const [llmHealth, setLlmHealth] = useState({ healthy: 0, total: 0 });
     const [status, setStatus] = useState('DEGRADED');
     const [telemetry, setTelemetry] = useState({ latency: null, gatewayStatus: 'DEGRADED', cacheHitRate: 0 });
-    const { activeVoiceTrunk, agentMode } = useDesktopAgentStore((state) => ({
-        activeVoiceTrunk: state.activeVoiceTrunk || 'DISCONNECTED',
-        agentMode: state.agentMode || 'STANDBY'
-    }));
+    const activeVoiceTrunk = useDesktopAgentStore((state) => state.activeVoiceTrunk || 'DISCONNECTED');
+    const agentMode = useDesktopAgentStore((state) => state.agentMode || 'STANDBY');
 
     useEffect(() => {
         const checkHealth = async () => {
@@ -39,11 +37,9 @@ export default function SystemSidebar() {
                         cacheHitRate: data.cache_hit_rate || 0
                     });
                 } else {
-                    setTelemetry(prev => ({ ...prev, gatewayStatus: 'DEGRADED' }));
                 }
             } catch (err) {
                 console.error("Failed to fetch telemetry health", err);
-                setTelemetry(prev => ({ ...prev, gatewayStatus: 'DEGRADED' }));
             }
         };
 
