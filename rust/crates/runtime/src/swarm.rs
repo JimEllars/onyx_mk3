@@ -216,7 +216,7 @@ impl SwarmWorker {
                                             "tool_name": tool.name,
                                             "arguments": {},
                                             "status": "failed",
-                                            "error": e.to_string(),
+                                            "error": e.clone(),
                                             "execution_time_ms": 10
                                         }),
                                     },
