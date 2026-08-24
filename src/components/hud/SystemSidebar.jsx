@@ -15,7 +15,7 @@ export default function SystemSidebar() {
                 const data = await res.json();
                 if (data.healthy !== undefined && data.total !== undefined) {
                     setLlmHealth({ healthy: data.healthy, total: data.total });
-                    setStatus(data.healthy === data.total ? 'OK' : 'DEGRADED');
+                    setStatus(data.healthy === data.total ? "OK" : (data.healthy > 0 ? "DEGRADED" : "CRITICAL"));
                 }
             } catch (err) {
                 console.error("Failed to fetch LLM health", err);
@@ -33,7 +33,7 @@ export default function SystemSidebar() {
                     const data = await res.json();
                     setTelemetry({
                         latency,
-                        gatewayStatus: data.status === 'success' || data.status === 'ok' ? 'OPERATIONAL' : 'DEGRADED',
+                        gatewayStatus: data.status === "healthy" || data.status === "success" || data.status === "ok" ? 'OPERATIONAL' : 'DEGRADED',
                         cacheHitRate: data.cache_hit_rate || 0
                     });
                 } else {
@@ -55,7 +55,7 @@ export default function SystemSidebar() {
         };
     }, []);
 
-    const healthColor = status === 'OK' ? 'text-emerald-500' : 'text-amber-500';
+    const healthColor = status === "OK" ? "text-emerald-500" : (status === "CRITICAL" ? "text-red-500" : "text-amber-500");
     const gatewayColor = telemetry.gatewayStatus === 'OPERATIONAL' ? 'text-emerald-500' : 'text-amber-500';
     const latencyColor = telemetry.latency !== null && telemetry.latency < 100 ? 'bg-emerald-500' : 'bg-amber-500';
 
