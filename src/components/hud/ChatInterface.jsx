@@ -174,7 +174,7 @@ export default function ChatInterface() {
                         );
                     }
                     return (
-                        <div key={`msg-${index}`} className={`p-3 rounded-lg max-w-[85%] ${msg.role === 'user' ? 'bg-blue-600 self-end text-white' : 'bg-slate-700 text-slate-100 self-start'}`}>
+                        <div key={`msg-${index}`} className={`p-4 rounded-xl shadow-md max-w-[85%] ${msg.role === 'user' ? 'bg-indigo-600/90 text-white ml-auto border border-indigo-500/50' : 'bg-slate-800/80 text-emerald-300 border border-slate-700/80 self-start'}`}>
                             {msg.content}
                         </div>
                     );
@@ -195,7 +195,7 @@ export default function ChatInterface() {
                 </div>
             )}
 
-            <form onSubmit={handleSubmit} className="p-4 bg-slate-800 flex gap-2 border-t border-slate-700">
+            <form onSubmit={handleSubmit} className="p-4 bg-slate-900 flex gap-2 border-t border-slate-700/50 relative z-10">
                 <input
                     type="text"
                     value={input}
@@ -207,7 +207,7 @@ export default function ChatInterface() {
                 <button
                     type="submit"
                     disabled={isStreaming || !input.trim()}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-medium disabled:opacity-50 transition-colors shadow-md"
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-bold disabled:opacity-50 transition-colors shadow-md flex items-center justify-center gap-2"
                 >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
                 </button>
