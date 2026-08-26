@@ -18,7 +18,7 @@ export default function SystemSidebar() {
                     setStatus(data.healthy === data.total ? "OK" : (data.healthy > 0 ? "DEGRADED" : "CRITICAL"));
                 }
             } catch (err) {
-                console.warn("Failed to fetch LLM health", err);
+                /* void 0; */
             }
         };
 
@@ -39,7 +39,7 @@ export default function SystemSidebar() {
                 } else {
                 }
             } catch (err) {
-                console.warn("Failed to fetch telemetry health", err);
+                /* void 0; */
             }
         };
 

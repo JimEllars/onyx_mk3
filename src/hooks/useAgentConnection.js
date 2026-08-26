@@ -19,11 +19,11 @@ export default function useAgentConnection(peerConnection) {
                 if (retryCountRef.current < maxRetries) {
                     setStatus('RECONNECTING');
                     retryCountRef.current += 1;
-                    console.warn(`WebRTC disconnected, attempting ICE restart (${retryCountRef.current}/${maxRetries})...`);
+                    /* void 0; */
                     peerConnection.restartIce();
                 } else {
                     setStatus('RECONNECT NEEDED');
-                    console.warn('WebRTC reconnection failed after maximum retries.');
+                    /* void 0; */
                 }
             } else if (state === 'connecting' || iceState === 'checking') {
                 setStatus('CONNECTING');
