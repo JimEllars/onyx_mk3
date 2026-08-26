@@ -56,7 +56,7 @@ async function kvWriteWithTimeout<T>(
     }
     return result as T;
   } catch (e) {
-    console.error("KV write error:", e);
+    console.warn("KV write error:", e);
     if (status) status.degraded = true;
     return null;
   }
@@ -79,7 +79,7 @@ async function kvReadWithTimeout<T>(
     }
     return result as T;
   } catch (e) {
-    console.error("KV read error:", e);
+    console.warn("KV read error:", e);
     status.degraded = true;
     return null;
   }
@@ -146,7 +146,7 @@ function getCorsHeaders(request: Request, env?: Env) {
         }
         return result as T;
       } catch (e) {
-        console.error("KV write error:", e);
+        console.warn("KV write error:", e);
         if (status) status.degraded = true;
         return null;
       }
@@ -238,7 +238,7 @@ async function dispatchToCore(
     );
   } catch (error) {
     clearTimeout(timeoutId);
-    console.error("AXiM Core ingest dropped or timed out:", error);
+    console.warn("AXiM Core ingest dropped or timed out:", error);
     if (env.ONYX_STATE) {
       const dlqKey = `dlq:ingest:${Date.now()}:${crypto.randomUUID()}`;
       ctx.waitUntil(env.ONYX_STATE.put(dlqKey, payloadStr));
@@ -307,7 +307,7 @@ async function enforceAsguardRateLimit(request: Request, env: Env, url: URL): Pr
     await env.ONYX_STATE.put(rateLimitKey, (currentCount + 1).toString(), { expirationTtl: 60 });
     return null;
   } catch (err) {
-    console.error("Asguard rate limit error", err);
+    console.warn("Asguard rate limit error", err);
     return null; // fail open if KV errors
   }
 }
@@ -466,7 +466,7 @@ async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
 
       await sleep(50);
     } catch (e) {
-      console.error(`Failed to drain DLQ key ${key}`, e);
+      console.warn(`Failed to drain DLQ key ${key}`, e);
     }
   }
 }
@@ -479,7 +479,7 @@ const onyx_handler: any = {
   ): Promise<void> {
     try {
       // Execute a low-overhead heartbeat sanity evaluation across active KV stores
-      console.log(
+      console.warn(
         `Cron triggered at ${new Date().toISOString()} for ${controller.cron}`,
       );
 
@@ -535,8 +535,8 @@ const onyx_handler: any = {
             Authorization: `Bearer ${cronSecret}`,
           },
         })
-          .then((res) => console.log(`Backend cron response: ${res.status}`))
-          .catch((e) => console.error("Failed to trigger backend cron", e)),
+          .then((res) => console.warn(`Backend cron response: ${res.status}`))
+          .catch((e) => console.warn("Failed to trigger backend cron", e)),
       );
 
       // Pulse Sync: Fetch external social data and forward to Rust backend
@@ -597,11 +597,11 @@ const onyx_handler: any = {
           body: payloadString,
         })
           .then((res) => res.text())
-          .then((t) => console.log("Pulse sync forwarded", t))
-          .catch((e) => console.error("Pulse sync forwarding failed", e)),
+          .then((t) => console.warn("Pulse sync forwarded", t))
+          .catch((e) => console.warn("Pulse sync forwarding failed", e)),
       );
     } catch (e) {
-      console.error("Scheduled task error:", e);
+      console.warn("Scheduled task error:", e);
     }
   },
   async fetch(
@@ -628,7 +628,7 @@ const onyx_handler: any = {
         request.headers.get("X-Request-ID") ||
         request.headers.get("cf-ray") ||
         "unknown";
-      console.log(
+      console.warn(
         `[Edge Telemetry] [X-Request-ID: ${traceId}] Path: ${new URL(request.url).pathname} | Method: ${request.method} | Latency: ${duration.toFixed(2)}ms`,
       );
       return response;
@@ -638,7 +638,7 @@ const onyx_handler: any = {
         request.headers.get("X-Request-ID") ||
         request.headers.get("cf-ray") ||
         "unknown";
-      console.log(
+      console.warn(
         `[Edge Telemetry] [X-Request-ID: ${traceId}] Path: ${new URL(request.url).pathname} | Method: ${request.method} | Latency: ${duration.toFixed(2)}ms`,
       );
       throw error;
@@ -798,7 +798,7 @@ const onyx_handler: any = {
               rayId,
             ),
             body: payloadStr,
-          }).catch((e) => console.error("Telemetry forward failed", e)),
+          }).catch((e) => console.warn("Telemetry forward failed", e)),
         );
         return new Response(
           JSON.stringify({ success: true, message: "Telemetry ingested" }),
@@ -871,7 +871,7 @@ const onyx_handler: any = {
               replayed++;
             }
           } catch (e) {
-            console.error("DLQ drain failed for key", key.name, e);
+            console.warn("DLQ drain failed for key", key.name, e);
           }
         }
       }
@@ -1069,7 +1069,7 @@ const onyx_handler: any = {
           throw new Error("Providers down or 503");
         }
       } catch (e) {
-        console.error(
+        console.warn(
           "Onyx summon forward failed, attempting Workers AI fallback",
           e,
         );
@@ -1104,7 +1104,7 @@ const onyx_handler: any = {
               ),
             });
           } catch (aiError) {
-            console.error("Workers AI fallback failed:", aiError);
+            console.warn("Workers AI fallback failed:", aiError);
           }
         }
       }
@@ -1264,7 +1264,7 @@ const onyx_handler: any = {
             edgeStatus,
           );
           if (existingLock) {
-            console.info(
+            console.warn(
               JSON.stringify({
                 event: "ONYX_DISPATCH_LOCK_CONFLICT",
                 key_hash: idempotencyKey,
@@ -1588,7 +1588,7 @@ const onyx_handler: any = {
             },
           );
         } catch (e) {
-          console.error("Error fetching rate-limit metrics", e);
+          console.warn("Error fetching rate-limit metrics", e);
           return new Response(JSON.stringify({ error: "Internal error" }), {
             status: 500,
             headers: addOnyxHeaders(
@@ -1685,7 +1685,7 @@ const onyx_handler: any = {
               wallet_address: payload.wallet_address,
               timestamp: new Date().toISOString(),
             }),
-          }).catch((e) => console.error("Billing forward failed", e)),
+          }).catch((e) => console.warn("Billing forward failed", e)),
         );
 
         const responseBody = JSON.stringify({
@@ -1769,7 +1769,7 @@ const onyx_handler: any = {
                 backendSuccess = true;
               }
             } catch (backendError) {
-              console.error("Backend heartbeat error:", backendError);
+              console.warn("Backend heartbeat error:", backendError);
             }
           }
 
@@ -1843,7 +1843,7 @@ const onyx_handler: any = {
             },
           );
         } catch (e: any) {
-          console.error("Error processing heartbeat", e);
+          console.warn("Error processing heartbeat", e);
           return new Response(JSON.stringify({ error: "Internal error" }), {
             status: 500,
             headers: addOnyxHeaders(
@@ -2190,7 +2190,7 @@ const onyx_handler: any = {
               );
             } else {
               const errorData = await claudeResponse.text();
-              console.error("Anthropic API Error:", errorData);
+              console.warn("Anthropic API Error:", errorData);
               return new Response(
                 JSON.stringify({ error: "Upstream API error" }),
                 {
@@ -2209,7 +2209,7 @@ const onyx_handler: any = {
             }
           }
         } catch (error) {
-          console.error(
+          console.warn(
             "AXiM Core ingest dropped, timed out, or providers down:",
             error,
           );
@@ -2250,7 +2250,7 @@ const onyx_handler: any = {
                 ),
               });
             } catch (aiError) {
-              console.error("Workers AI fallback failed:", aiError);
+              console.warn("Workers AI fallback failed:", aiError);
             }
           }
 
@@ -2311,7 +2311,7 @@ const onyx_handler: any = {
                 edgeStatus,
               );
             })().catch((e) => {
-              console.error("Stream cache saving failed:", e);
+              console.warn("Stream cache saving failed:", e);
               // Make sure we still close the writer if there's an error so the client doesn't hang
               writer.close().catch(() => {});
             }),
@@ -2498,7 +2498,7 @@ const onyx_handler: any = {
                   indexes: ["hitl_telemetry"],
                 });
               } catch (e) {
-                console.error("HITL Telemetry error", e);
+                console.warn("HITL Telemetry error", e);
               }
               resolve();
             }),
@@ -2517,7 +2517,7 @@ const onyx_handler: any = {
               edgeStatus,
             );
           } catch (e) {
-            console.error("KV put error for approval:", e);
+            console.warn("KV put error for approval:", e);
           }
         }
 
@@ -2704,7 +2704,7 @@ const onyx_handler: any = {
               stmt
                 .run()
                 .catch((e) =>
-                  console.error("Failed to insert CommandAuditLog:", e),
+                  console.warn("Failed to insert CommandAuditLog:", e),
                 ),
             );
           } else {
@@ -2723,7 +2723,7 @@ const onyx_handler: any = {
             ),
           });
         } catch (e) {
-          console.error("Error logging command", e);
+          console.warn("Error logging command", e);
           return new Response(JSON.stringify({ error: "Internal error" }), {
             status: 500,
             headers: addOnyxHeaders(
@@ -2782,7 +2782,7 @@ const onyx_handler: any = {
               }
               return result as T;
             } catch (e) {
-              console.error("KV write error:", e);
+              console.warn("KV write error:", e);
               if (status) status.degraded = true;
               return null;
             }
@@ -2815,7 +2815,7 @@ const onyx_handler: any = {
                 }
                 return result as T;
               } catch (e) {
-                console.error("KV write error:", e);
+                console.warn("KV write error:", e);
                 if (status) status.degraded = true;
                 return null;
               }
@@ -2834,7 +2834,7 @@ const onyx_handler: any = {
             ),
           });
         } catch (e) {
-          console.error("Error fetching command history", e);
+          console.warn("Error fetching command history", e);
           return new Response(JSON.stringify({ error: "Internal error" }), {
             status: 500,
             headers: addOnyxHeaders(
@@ -2876,7 +2876,7 @@ const onyx_handler: any = {
             }
             return result as T;
           } catch (e) {
-            console.error("KV write error:", e);
+            console.warn("KV write error:", e);
             if (status) status.degraded = true;
             return null;
           }
@@ -2992,7 +2992,7 @@ const onyx_handler: any = {
               },
             );
           } catch (e) {
-            console.error("D1 Audit Logs query failed:", e);
+            console.warn("D1 Audit Logs query failed:", e);
             return new Response(
               JSON.stringify({ error: "Failed to fetch audit logs" }),
               {
@@ -3217,7 +3217,7 @@ const onyx_handler: any = {
               return assetResponse;
             }
           } catch (e) {
-            console.error("Error serving static asset", e);
+            console.warn("Error serving static asset", e);
           }
         }
         return new Response("Not Found", {
@@ -3231,7 +3231,7 @@ const onyx_handler: any = {
         });
       }
     } catch (error) {
-      console.error("Worker Error:", error);
+      console.warn("Worker Error:", error);
       return new Response(JSON.stringify({ error: "Internal Server Error" }), {
         status: 500,
         headers: addOnyxHeaders(
@@ -3259,7 +3259,7 @@ export default {
     try {
       response = await onyx_handler._fetch(request, env, ctx);
     } catch (e) {
-      console.error("Route error:", e);
+      console.warn("Route error:", e);
       const traceIdFallback =
         request.headers.get("x-request-id") || crypto.randomUUID();
       response = new Response(
@@ -3301,7 +3301,7 @@ export default {
                 indexes: [response.status >= 400 ? "error" : "success"],
               });
             } catch (e) {
-              console.error("Telemetry error", e);
+              console.warn("Telemetry error", e);
             }
             resolve();
           }),
@@ -3324,7 +3324,7 @@ export default {
               Math.floor(Date.now() / 1000),
             )
             .run()
-            .catch((e) => console.error("Failed to log rate limit breach", e)),
+            .catch((e) => console.warn("Failed to log rate limit breach", e)),
         );
       }
     }
