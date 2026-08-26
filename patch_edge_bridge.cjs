@@ -73,8 +73,8 @@ const intakeEndpoint = `
 `;
 
 code = code.replace(
-  /\} else if \(\n\s*request.method === "POST" &&\n\s*url.pathname === "\/api\/v1\/chat"/,
-  `${intakeEndpoint}      } else if (\n        request.method === "POST" &&\n        url.pathname === "/api/v1/chat"`
+  /\} else if \(request\.method === "POST" && url\.pathname === "\/api\/v1\/chat"\)/,
+  `${intakeEndpoint}      } else if (request.method === "POST" && url.pathname === "/api/v1/chat")`
 );
 
 fs.writeFileSync(path, code);

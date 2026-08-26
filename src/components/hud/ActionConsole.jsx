@@ -38,6 +38,27 @@ export default function ActionConsole({ peerConnection }) {
     else if (status === 'RECONNECTING') voiceColor = 'text-yellow-500';
     else if (status === 'RECONNECT NEEDED' || status === 'DISCONNECTED') voiceColor = 'text-red-500';
 
+        const handleApprove = async (actionId) => {
+        try {
+            updateHitlActionStatus(actionId, 'APPROVING...');
+            const response = await fetch('/api/approve', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer dev-token' // Mock token for now
+                },
+                body: JSON.stringify({ task_id: actionId, signed_payload: 'mock_payload' })
+            });
+            if (response.ok) {
+                updateHitlActionStatus(actionId, 'APPROVED');
+            } else {
+                updateHitlActionStatus(actionId, 'FAILED');
+            }
+        } catch (e) {
+            updateHitlActionStatus(actionId, 'FAILED');
+        }
+    };
+
     return (
         <div className="action-console p-4 bg-slate-900 text-slate-100 flex flex-col gap-4 rounded-lg shadow-xl border border-slate-700">
             <div className="flex justify-between items-center border-b border-slate-700 pb-3">
@@ -61,9 +82,18 @@ export default function ActionConsole({ peerConnection }) {
                         {pendingHitlActions.map(action => (
                             <li key={action.id} className="border border-slate-700 bg-slate-800/50 p-3 rounded hover:bg-slate-800 transition-colors flex justify-between items-start gap-4 text-sm shadow-sm">
                                 <span className="leading-snug">{action.description || 'Unknown Action'}</span>
-                                <span className={`text-[10px] font-mono tracking-wider px-2 py-1 rounded whitespace-nowrap shadow-inner ${action.status === 'EXPIRED' ? 'bg-red-900/50 text-red-300 border border-red-800' : 'bg-amber-900/50 text-amber-300 border border-amber-800'}`}>
-                                    {action.status}
-                                </span>
+                                {action.status === 'PENDING' ? (
+                                    <button
+                                        onClick={() => handleApprove(action.id)}
+                                        className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold tracking-wider px-3 py-1 rounded whitespace-nowrap shadow transition-colors"
+                                    >
+                                        APPROVE
+                                    </button>
+                                ) : (
+                                    <span className={`text-[10px] font-mono tracking-wider px-2 py-1 rounded whitespace-nowrap shadow-inner ${action.status === 'APPROVED' ? 'bg-emerald-900/50 text-emerald-300 border border-emerald-800' : action.status === 'EXPIRED' ? 'bg-red-900/50 text-red-300 border border-red-800' : 'bg-amber-900/50 text-amber-300 border border-amber-800'}`}>
+                                        {action.status}
+                                    </span>
+                                )}
                             </li>
                         ))}
                     </ul>
