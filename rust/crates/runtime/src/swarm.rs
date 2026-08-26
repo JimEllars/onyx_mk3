@@ -200,7 +200,8 @@ impl SwarmWorker {
                                             "execution_time_ms": 10
                                         }),
                                     },
-                                );
+                                )
+                                .await;
                             }
                             Err(e) => {
                                 let _ = write!(
@@ -220,7 +221,8 @@ impl SwarmWorker {
                                             "execution_time_ms": 10
                                         }),
                                     },
-                                );
+                                )
+                                .await;
                             }
                         }
                     }
