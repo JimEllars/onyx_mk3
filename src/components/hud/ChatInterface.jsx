@@ -104,14 +104,14 @@ export default function ChatInterface() {
                                     });
                                 }
                             } catch (err) {
-                                console.error('Error parsing SSE payload:', err);
+                                console.warn('Error parsing SSE payload:', err);
                             }
                         }
                     }
                 }
             }
         } catch (error) {
-            console.error('Error in stream:', error);
+            console.warn('Error in stream:', error);
             if (!hasError) {
                 setStreamStatus('Stream failed. Attempting reconnect without refresh...');
                 setHasError(true);
