@@ -1,12 +1,11 @@
 use async_trait::async_trait;
+use chrono::Utc;
 use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::fs;
-use chrono::Utc;
 
 use crate::micro_program::MicroProgram;
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LocalTokenQueue {
@@ -119,11 +118,11 @@ impl BillingFallback {
         existing_queue.push(queue_item);
 
         let json_str = serde_json::to_string_pretty(&existing_queue)
-            .map_err(|e| format!("Serialization error: {}", e))?;
+            .map_err(|e| format!("Serialization error: {e}"))?;
 
         fs::write(&path, json_str)
             .await
-            .map_err(|e| format!("File write error: {}", e))?;
+            .map_err(|e| format!("File write error: {e}"))?;
 
         Ok(())
     }

@@ -130,72 +130,6 @@ function getCorsHeaders(request: Request, env?: Env) {
   };
 }
 
-function old_getCorsHeaders(request: Request, env?: Env) {
-  const origin = request.headers.get("Origin") || "";
-  let isAllowed = false;
-
-  if (env && env.ALLOWED_ORIGIN) {
-    if (origin === env.ALLOWED_ORIGIN) {
-      isAllowed = true;
-    }
-  } else {
-    const ALLOWED_ORIGINS = [
-      "https://axim.us.com",
-      "https://api.axim.us.com",
-      "http://localhost:3141",
-      "http://localhost:8787",
-      "https://quickdemandletter.com",
-      "https://ellars.us.com",
-      "https://piratefederation.org",
-    ];
-
-    const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
-
-    async function kvWriteWithTimeout<T>(
-      promise: Promise<T>,
-      timeoutMs = 500,
-      status?: { degraded: boolean },
-    ): Promise<T | null> {
-      try {
-        const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
-          setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
-        );
-        const result = await Promise.race([promise, timeout]);
-        if (result === TIMEOUT_SYMBOL) {
-          void 0;
-          if (status) status.degraded = true;
-          return null;
-        }
-        return result as T;
-      } catch (e) {
-        void 0;
-        if (status) status.degraded = true;
-        return null;
-      }
-    }
-
-    isAllowed =
-      ALLOWED_ORIGINS.includes(origin) ||
-      origin.endsWith(".axim.us.com") ||
-      origin.endsWith(".workers.dev");
-  }
-
-  if (!isAllowed && origin) {
-    const ip = request.headers.get("cf-connecting-ip") || "unknown";
-    void 0;
-  }
-
-  return {
-    "Access-Control-Allow-Origin": isAllowed
-      ? origin
-      : env && env.ALLOWED_ORIGIN
-        ? env.ALLOWED_ORIGIN
-        : "https://axim.us.com",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  };
-}
-
 function addOnyxHeaders(
   headers: HeadersInit,
   status: { degraded: boolean; startTime?: number },
@@ -715,13 +649,6 @@ const onyx_handler: any = {
                 ...getCorsHeaders(request, env),
                 "Content-Type": "application/json",
               },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          },
-        );
-      },
               edgeStatus,
               cacheStatus,
               traceId,
