@@ -81,11 +81,12 @@ pub fn render_status_bar_text(
         |b| format!("{b:?}"),
     );
     let identity_str = if let Some(addr) = web3_wallet_address {
-        if addr.len() >= 42 {
+        let addr_short = if addr.len() >= 42 {
             format!("{}...{}", &addr[0..6], &addr[38..42])
         } else {
             addr.to_string()
-        }
+        };
+        format!("[33mBilling Queue Fallback ({addr_short})[0m")
     } else {
         "Standard Auth".to_string()
     };
@@ -408,7 +409,9 @@ pub fn draw_status_bar(
 
         let (bg, fg) = if d1_timeout_count > 0 {
             (Color::Magenta, Color::White)
-        } else if cron_active {
+        } else if web3_wallet_address.is_some() {
+            (Color::Yellow, Color::Black)
+        } else if healthy_providers > 0 && healthy_providers == total_providers || cron_active {
             (Color::DarkGreen, Color::White)
         } else if edge_ready {
             (Color::DarkBlue, Color::White)
@@ -420,8 +423,6 @@ pub fn draw_status_bar(
             (Color::DarkGreen, Color::White)
         } else if q_depth > 0 {
             (Color::Yellow, Color::Black)
-        } else if web3_wallet_address.is_some() {
-            (Color::DarkBlue, Color::Cyan)
         } else if pulse_active {
             (Color::DarkGreen, Color::White)
         } else if let Some(focus) = focus_state {
