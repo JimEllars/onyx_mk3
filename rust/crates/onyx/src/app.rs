@@ -227,7 +227,10 @@ pub(crate) fn run_repl(
                 cache_creation_input_tokens: 0,
                 cache_read_input_tokens: 0,
             };
-            tui::status_bar::draw_status_bar(
+            let active_content = "AXiM Shell Active...";
+            let system_logs = "Telemetry Connected";
+            let mut manager = crate::tui::layout::TuiManager::new().unwrap();
+            let status_line = crate::tui::status_bar::render_status_bar_text(
                 None,
                 &model_clone,
                 &session_id_clone,
@@ -239,13 +242,19 @@ pub(crate) fn run_repl(
                 Some(&focus_state_clone),
                 web3_wallet_address_clone.as_deref(),
             );
+            manager
+                .draw_layout(active_content, system_logs, &status_line)
+                .unwrap();
         }
     });
 
     let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
     print!("\x1b[0;{}r", rows.saturating_sub(2));
 
-    tui::status_bar::draw_status_bar(
+    let active_content = "AXiM Shell Active...";
+    let system_logs = "Telemetry Connected";
+    let mut manager = crate::tui::layout::TuiManager::new().unwrap();
+    let status_line = crate::tui::status_bar::render_status_bar_text(
         cli.runtime.session().brand_id.as_ref(),
         &cli.model,
         &cli.session.id,
@@ -257,6 +266,9 @@ pub(crate) fn run_repl(
         Some(&cli.focus_state),
         cli.runtime.session().web3_wallet_address.as_deref(),
     );
+    manager
+        .draw_layout(active_content, system_logs, &status_line)
+        .unwrap();
 
     loop {
         let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
@@ -277,7 +289,10 @@ pub(crate) fn run_repl(
             }
             continue;
         }
-        tui::status_bar::draw_status_bar(
+        let active_content = "AXiM Shell Active...";
+        let system_logs = "Telemetry Connected";
+        let mut manager = crate::tui::layout::TuiManager::new().unwrap();
+        let status_line = crate::tui::status_bar::render_status_bar_text(
             cli.runtime.session().brand_id.as_ref(),
             &cli.model,
             &cli.session.id,
@@ -289,6 +304,9 @@ pub(crate) fn run_repl(
             Some(&cli.focus_state),
             cli.runtime.session().web3_wallet_address.as_deref(),
         );
+        manager
+            .draw_layout(active_content, system_logs, &status_line)
+            .unwrap();
         editor.set_completions(cli.repl_completion_candidates().unwrap_or_default());
         match editor.read_line()? {
             input::ReadOutcome::Submit(input) => {
