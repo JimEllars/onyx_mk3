@@ -1,9 +1,19 @@
 use async_trait::async_trait;
+use chrono::Utc;
 use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tokio::fs;
 
 use crate::micro_program::MicroProgram;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LocalTokenQueue {
+    pub timestamp: String,
+    pub provider: String,
+    pub model: String,
+    pub token_count: usize,
+}
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct BillingFallbackRequest {
@@ -86,6 +96,37 @@ impl MicroProgram for BillingFallback {
 }
 
 impl BillingFallback {
+    pub async fn queue_failed_transaction(
+        provider: &str,
+        model: &str,
+        token_count: usize,
+    ) -> Result<(), String> {
+        let queue_item = LocalTokenQueue {
+            timestamp: Utc::now().to_rfc3339(),
+            provider: provider.to_string(),
+            model: model.to_string(),
+            token_count,
+        };
+
+        let path = std::path::PathBuf::from("billing_fallback.json");
+
+        let mut existing_queue: Vec<LocalTokenQueue> = match fs::read_to_string(&path).await {
+            Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+            Err(_) => Vec::new(),
+        };
+
+        existing_queue.push(queue_item);
+
+        let json_str = serde_json::to_string_pretty(&existing_queue)
+            .map_err(|e| format!("Serialization error: {e}"))?;
+
+        fs::write(&path, json_str)
+            .await
+            .map_err(|e| format!("File write error: {e}"))?;
+
+        Ok(())
+    }
+
     fn verify_arbitrum_transaction_stub(tx_hash: &str) -> bool {
         // Stub: assume transaction is valid if it starts with "0x"
         tx_hash.starts_with("0x") && tx_hash.len() > 10
