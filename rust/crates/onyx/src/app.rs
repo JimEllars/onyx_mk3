@@ -209,9 +209,12 @@ pub(crate) fn run_repl(
         }
     }
 
+
+    let active_content = std::sync::Arc::new(std::sync::Mutex::new(String::from("AXiM Shell Active...")));
+    let system_logs = std::sync::Arc::new(std::sync::Mutex::new(String::from("Telemetry Connected")));
     let (redraw_tx, redraw_rx) = std::sync::mpsc::channel::<()>();
     if let Ok(mut guard) = crate::REDRAW_TX.lock() {
-        *guard = Some(redraw_tx);
+        *guard = Some(redraw_tx.clone());
     }
 
     // Start a thread to instantly update TUI columns when REDRAW_TX receives a pulse
@@ -219,6 +222,14 @@ pub(crate) fn run_repl(
     let session_id_clone = cli.session.id.clone();
     let focus_state_clone = cli.focus_state;
     let web3_wallet_address_clone = cli.runtime.session().web3_wallet_address.clone();
+
+    let active_content_clone = active_content.clone();
+    let system_logs_clone = system_logs.clone();
+    let model_clone = cli.model.clone();
+    let session_id_clone = cli.session.id.clone();
+    let focus_state_clone = cli.focus_state;
+    let web3_wallet_address_clone = cli.runtime.session().web3_wallet_address.clone();
+
     std::thread::spawn(move || {
         while redraw_rx.recv().is_ok() {
             let dummy_usage = runtime::TokenUsage {
@@ -227,8 +238,8 @@ pub(crate) fn run_repl(
                 cache_creation_input_tokens: 0,
                 cache_read_input_tokens: 0,
             };
-            let active_content = "AXiM Shell Active...";
-            let system_logs = "Telemetry Connected";
+            let content_guard = active_content_clone.lock().unwrap();
+            let logs_guard = system_logs_clone.lock().unwrap();
             let mut manager = crate::tui::layout::TuiManager::new().unwrap();
             let status_line = crate::tui::status_bar::render_status_bar_text(
                 None,
@@ -243,16 +254,34 @@ pub(crate) fn run_repl(
                 web3_wallet_address_clone.as_deref(),
             );
             manager
-                .draw_layout(active_content, system_logs, &status_line)
+                .draw_layout(&content_guard, &logs_guard, &status_line)
                 .unwrap();
         }
     });
 
+    let system_logs_telemetry = system_logs.clone();
+    let redraw_tx_telemetry = redraw_tx.clone();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut state_rx = telemetry::metrics::AGENT_STATE_TX.subscribe();
+            while let Ok(state_msg) = state_rx.recv().await {
+                if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&state_msg) {
+                    let msg_type = payload.get("type").and_then(|t| t.as_str());
+                    if msg_type == Some("login_success") || msg_type == Some("api_handshake") {
+                        let mut logs_guard = system_logs_telemetry.lock().unwrap();
+                        if let Some(msg) = payload.get("message").and_then(|m| m.as_str()) {
+                            *logs_guard = format!("{}\n> [SUCCESS] {}", *logs_guard, msg);
+                        }
+                        let _ = redraw_tx_telemetry.send(());
+                    }
+                }
+            }
+        });
+    });
     let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
     print!("\x1b[0;{}r", rows.saturating_sub(2));
 
-    let active_content = "AXiM Shell Active...";
-    let system_logs = "Telemetry Connected";
     let mut manager = crate::tui::layout::TuiManager::new().unwrap();
     let status_line = crate::tui::status_bar::render_status_bar_text(
         cli.runtime.session().brand_id.as_ref(),
@@ -267,7 +296,7 @@ pub(crate) fn run_repl(
         cli.runtime.session().web3_wallet_address.as_deref(),
     );
     manager
-        .draw_layout(active_content, system_logs, &status_line)
+        .draw_layout(&active_content.lock().unwrap(), &system_logs.lock().unwrap(), &status_line)
         .unwrap();
 
     loop {
@@ -289,8 +318,6 @@ pub(crate) fn run_repl(
             }
             continue;
         }
-        let active_content = "AXiM Shell Active...";
-        let system_logs = "Telemetry Connected";
         let mut manager = crate::tui::layout::TuiManager::new().unwrap();
         let status_line = crate::tui::status_bar::render_status_bar_text(
             cli.runtime.session().brand_id.as_ref(),
@@ -305,7 +332,7 @@ pub(crate) fn run_repl(
             cli.runtime.session().web3_wallet_address.as_deref(),
         );
         manager
-            .draw_layout(active_content, system_logs, &status_line)
+            .draw_layout(&active_content.lock().unwrap(), &system_logs.lock().unwrap(), &status_line)
             .unwrap();
         editor.set_completions(cli.repl_completion_candidates().unwrap_or_default());
         match editor.read_line()? {
@@ -333,7 +360,36 @@ pub(crate) fn run_repl(
                 }
                 editor.push_history(input);
                 cli.record_prompt_history(&trimmed);
-                cli.run_turn(&trimmed)?;
+
+                {
+                    let mut content_guard = active_content.lock().unwrap();
+                    *content_guard = format!("> {}\n\n[Thinking...]", trimmed);
+                }
+                let _ = redraw_tx.send(());
+
+                match cli.run_turn_tui(&trimmed) {
+                    Ok(_) => {
+                        let final_text = cli.runtime.session().messages.last()
+                            .map(|m| {
+                                m.blocks.iter().filter_map(|b| match b {
+                                    runtime::ContentBlock::Text { text } => Some(text.clone()),
+                                    _ => None
+                                }).collect::<Vec<_>>().join("\n")
+                            }).unwrap_or_default();
+                        let mut content_guard = active_content.lock().unwrap();
+                        *content_guard = format!("> {}\n\n{}", trimmed, final_text);
+
+                        let _ = telemetry::metrics::AGENT_STATE_TX.send(serde_json::to_string(&serde_json::json!({
+                            "type": "api_handshake",
+                            "message": "API Handshake Established"
+                        })).unwrap());
+                    }
+                    Err(e) => {
+                        let mut content_guard = active_content.lock().unwrap();
+                        *content_guard = format!("> {}\n\nError: {}", trimmed, e);
+                    }
+                }
+                let _ = redraw_tx.send(());
             }
             input::ReadOutcome::Cancel => {}
             input::ReadOutcome::Exit => {
@@ -536,6 +592,24 @@ impl LiveCli {
         Ok(())
     }
 
+
+    fn run_turn_tui(&mut self, input: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let (mut runtime, hook_abort_monitor) = self.prepare_turn_runtime(true)?;
+        let mut permission_prompter = CliPermissionPrompter::new(self.permission_mode);
+        let result = runtime.run_turn(input, Some(&mut permission_prompter));
+        hook_abort_monitor.stop();
+        match result {
+            Ok(_) => {
+                self.replace_runtime(runtime)?;
+                self.persist_session()?;
+                Ok(())
+            }
+            Err(error) => {
+                runtime.shutdown_plugins()?;
+                Err(Box::new(error))
+            }
+        }
+    }
     fn run_turn(&mut self, input: &str) -> Result<(), Box<dyn std::error::Error>> {
         let (mut runtime, hook_abort_monitor) = self.prepare_turn_runtime(true)?;
         let mut spinner = Spinner::new();
