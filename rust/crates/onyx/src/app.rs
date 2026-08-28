@@ -209,9 +209,10 @@ pub(crate) fn run_repl(
         }
     }
 
-
-    let active_content = std::sync::Arc::new(std::sync::Mutex::new(String::from("AXiM Shell Active...")));
-    let system_logs = std::sync::Arc::new(std::sync::Mutex::new(String::from("Telemetry Connected")));
+    let active_content =
+        std::sync::Arc::new(std::sync::Mutex::new(String::from("AXiM Shell Active...")));
+    let system_logs =
+        std::sync::Arc::new(std::sync::Mutex::new(String::from("Telemetry Connected")));
     let (redraw_tx, redraw_rx) = std::sync::mpsc::channel::<()>();
     if let Ok(mut guard) = crate::REDRAW_TX.lock() {
         *guard = Some(redraw_tx.clone());
@@ -296,7 +297,11 @@ pub(crate) fn run_repl(
         cli.runtime.session().web3_wallet_address.as_deref(),
     );
     manager
-        .draw_layout(&active_content.lock().unwrap(), &system_logs.lock().unwrap(), &status_line)
+        .draw_layout(
+            &active_content.lock().unwrap(),
+            &system_logs.lock().unwrap(),
+            &status_line,
+        )
         .unwrap();
 
     loop {
@@ -332,7 +337,11 @@ pub(crate) fn run_repl(
             cli.runtime.session().web3_wallet_address.as_deref(),
         );
         manager
-            .draw_layout(&active_content.lock().unwrap(), &system_logs.lock().unwrap(), &status_line)
+            .draw_layout(
+                &active_content.lock().unwrap(),
+                &system_logs.lock().unwrap(),
+                &status_line,
+            )
             .unwrap();
         editor.set_completions(cli.repl_completion_candidates().unwrap_or_default());
         match editor.read_line()? {
@@ -369,20 +378,32 @@ pub(crate) fn run_repl(
 
                 match cli.run_turn_tui(&trimmed) {
                     Ok(_) => {
-                        let final_text = cli.runtime.session().messages.last()
+                        let final_text = cli
+                            .runtime
+                            .session()
+                            .messages
+                            .last()
                             .map(|m| {
-                                m.blocks.iter().filter_map(|b| match b {
-                                    runtime::ContentBlock::Text { text } => Some(text.clone()),
-                                    _ => None
-                                }).collect::<Vec<_>>().join("\n")
-                            }).unwrap_or_default();
+                                m.blocks
+                                    .iter()
+                                    .filter_map(|b| match b {
+                                        runtime::ContentBlock::Text { text } => Some(text.clone()),
+                                        _ => None,
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("\n")
+                            })
+                            .unwrap_or_default();
                         let mut content_guard = active_content.lock().unwrap();
                         *content_guard = format!("> {}\n\n{}", trimmed, final_text);
 
-                        let _ = telemetry::metrics::AGENT_STATE_TX.send(serde_json::to_string(&serde_json::json!({
-                            "type": "api_handshake",
-                            "message": "API Handshake Established"
-                        })).unwrap());
+                        let _ = telemetry::metrics::AGENT_STATE_TX.send(
+                            serde_json::to_string(&serde_json::json!({
+                                "type": "api_handshake",
+                                "message": "API Handshake Established"
+                            }))
+                            .unwrap(),
+                        );
                     }
                     Err(e) => {
                         let mut content_guard = active_content.lock().unwrap();
@@ -591,7 +612,6 @@ impl LiveCli {
         self.runtime = runtime;
         Ok(())
     }
-
 
     fn run_turn_tui(&mut self, input: &str) -> Result<(), Box<dyn std::error::Error>> {
         let (mut runtime, hook_abort_monitor) = self.prepare_turn_runtime(true)?;
