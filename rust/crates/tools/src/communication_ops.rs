@@ -357,3 +357,44 @@ pub async fn escalate_to_creator(message: &str, urgency: &str) -> Result<String,
         .map(|()| "Successfully dispatched escalation email to creator.".to_string())
     }
 }
+
+pub async fn send_email_it_message(
+    to: &str,
+    subject: &str,
+    html: &str,
+) -> Result<serde_json::Value, String> {
+    let api_key =
+        std::env::var("EMAILIT_API_KEY").map_err(|_| "EMAILIT_API_KEY not set".to_string())?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to build reqwest client: {e}"))?;
+
+    let url = "https://api.emailit.com/v1/email/send".to_string();
+
+    let payload = serde_json::json!({
+        "to": to,
+        "subject": subject,
+        "html": html,
+    });
+
+    let res = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    if res.status().is_success() {
+        let data: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {e}"))?;
+        Ok(data)
+    } else {
+        Err(format!("EmailIt API error: {}", res.status()))
+    }
+}

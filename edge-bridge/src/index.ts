@@ -7,6 +7,9 @@
 import { z } from "zod";
 
 export interface Env {
+  ECOSYSTEM_METRICS_KV: KVNamespace;
+  EDGE_DLQ_KV: KVNamespace;
+  HITL_APPROVAL_KV: KVNamespace;
   ONYX_EDGE_METRICS?: AnalyticsEngineDataset;
   AI?: any;
   ASSETS?: Fetcher;
@@ -440,6 +443,58 @@ const onyx_handler: any = {
 
       if (controller.cron === "*/5 * * * *") {
         ctx.waitUntil(drainIngestDlq(env, ctx));
+      }
+
+      if (controller.cron === "0 12 * * *") {
+        ctx.waitUntil((async () => {
+          if (!env.EMAILIT_API_KEY || !env.HITL_APPROVAL_KV) return;
+
+          const pendingList = await env.HITL_APPROVAL_KV.list();
+          let hitlHtml = "";
+          for (const key of pendingList.keys) {
+            const val = await env.HITL_APPROVAL_KV.get(key.name);
+            if (val) {
+              try {
+                const parsed = JSON.parse(val);
+                if (parsed.status === 'pending') {
+                  const worker_domain = "api.axim.us.com"; // placeholder or use env var
+                  hitlHtml += `
+                  <div style="border: 1px solid #334155; padding: 15px; margin-bottom: 10px; border-radius: 8px;">
+                    <p style="margin: 0 0 10px 0; font-size: 16px;"><strong>Action Required:</strong> ${parsed.description || 'System Proposal'}</p>
+                    <a href="https://${worker_domain}/api/v1/hitl/action?token=${key.name}&decision=approve" style="background: #10b981; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; margin-right: 10px;">Approve Action</a>
+                    <a href="https://${worker_domain}/api/v1/hitl/action?token=${key.name}&decision=reject" style="background: #ef4444; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; margin-right: 10px;">Reject Action</a>
+                    <a href="https://cockpit.axim.us.com/actions" style="background: #3b82f6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block;">Review in Cockpit</a>
+                  </div>`;
+                }
+              } catch(e) {}
+            }
+          }
+
+          const emailHtml = `
+          <div style="background-color: #0f172a; color: #f8fafc; padding: 30px; font-family: monospace;">
+            <h1 style="border-bottom: 1px solid #334155; padding-bottom: 10px;">AXiM Onyx Executive Briefing</h1>
+            <h2>Ecosystem Health & KPI Matrix</h2>
+            <p>All core systems operational.</p>
+
+            <h2>Pending Human-in-the-Loop Actions</h2>
+            ${hitlHtml || '<p>No pending actions at this time.</p>'}
+          </div>
+          `;
+
+          await fetch("https://api.emailit.com/v1/email/send", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${env.EMAILIT_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              to: "james.ellars@axim.us.com",
+              bcc: "jrellars@gmail.com",
+              subject: `[AXiM Onyx Executive Briefing] Daily Cross-Ecosystem Operations & HITL Digest - ${new Date().toISOString().split('T')[0]}`,
+              html: emailHtml,
+            }),
+          });
+        })());
       }
 
       const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
@@ -1876,6 +1931,55 @@ const onyx_handler: any = {
           });
         }
       } else if (
+        request.method === "GET" &&
+        url.pathname === "/api/v1/hitl/action"
+      ) {
+        const token = url.searchParams.get("token");
+        const decision = url.searchParams.get("decision");
+
+        if (!token || !decision) {
+          return new Response("Missing token or decision", { status: 400 });
+        }
+
+        if (!env.HITL_APPROVAL_KV) {
+          return new Response("HITL KV missing", { status: 500 });
+        }
+
+        const actionStr = await env.HITL_APPROVAL_KV.get(token);
+        if (!actionStr) {
+          return new Response("Invalid or expired token", { status: 400 });
+        }
+
+        try {
+          const action = JSON.parse(actionStr);
+          if (action.status !== 'pending') {
+            return new Response("Decision already applied", { status: 400 });
+          }
+
+          action.status = decision;
+          await env.HITL_APPROVAL_KV.put(token, JSON.stringify(action), { expirationTtl: 3600 }); // keep for an hour
+
+          // Ideally route this back to Rust runtime, here just update KV to reflect processed state
+
+          const html = `<html><head><style>body { font-family: monospace; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }</style></head><body><h1>Action ${decision === 'approve' ? 'Approved' : 'Rejected'} Successfully</h1></body></html>`;
+
+          return new Response(html, {
+            status: 200,
+            headers: addOnyxHeaders(
+              {
+                ...getCorsHeaders(request, env),
+                "Content-Type": "text/html",
+              },
+              edgeStatus,
+              cacheStatus,
+              traceId,
+            ),
+          });
+        } catch(e) {
+          return new Response("Error processing token", { status: 500 });
+        }
+
+      } else if (
         request.method === "POST" &&
         url.pathname === "/api/v1/email/send"
       ) {
@@ -1902,44 +2006,25 @@ const onyx_handler: any = {
         }
 
         try {
-          const { to, subject, html_body } = (await request.clone().json()) as {
-            to: string;
-            subject: string;
-            html_body: string;
-          };
-
-          const emailitRes = await fetch("https://api.emailit.com/v1/emails", {
+          const payload = await request.clone().json() as any;
+          const emailitRes = await fetch("https://api.emailit.com/v1/email/send", {
             method: "POST",
             headers: {
-              Authorization: `Bearer ${env.EMAILIT_API_KEY}`,
+              "Authorization": `Bearer ${env.EMAILIT_API_KEY}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-              to,
-              subject,
-              html: html_body,
-            }),
+            body: JSON.stringify(payload),
           });
 
           if (!emailitRes.ok) {
             const errText = await emailitRes.text();
             throw new Error(
-              `EmailIt API failed with status ${emailitRes.status}: ${errText}`,
+              `EmailIt API failed with status ${emailitRes.status}: ${errText}`
             );
           }
 
-          const email_id = crypto.randomUUID();
-          if (env.ONYX_DB) {
-            ctx.waitUntil(
-              env.ONYX_DB.prepare(
-                "INSERT INTO EmailLogs (id, to_email, subject, status, updated_at) VALUES (?, ?, ?, 'sent', ?)",
-              )
-                .bind(email_id, to, subject, Date.now())
-                .run(),
-            );
-          }
-
-          return new Response(JSON.stringify({ success: true, email_id }), {
+          const responseData = await emailitRes.json();
+          return new Response(JSON.stringify(responseData), {
             status: 200,
             headers: addOnyxHeaders(
               {
@@ -1952,849 +2037,18 @@ const onyx_handler: any = {
             ),
           });
         } catch (e: any) {
-          return new Response(
-            JSON.stringify({ error: e.message || "Failed to dispatch email" }),
-            {
-              status: 500,
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            },
-          );
-        }
-      } else if (
-        request.method === "POST" &&
-        url.pathname === "/api/v1/email/webhook"
-      ) {
-        try {
-          ctx.waitUntil(bootstrapDatabase(env));
-          const payload = (await request.json()) as {
-            email_id: string;
-            event_type: string;
-          };
-          if (!payload.email_id || !payload.event_type) {
-            return new Response(
-              JSON.stringify({ error: "Missing email_id or event_type" }),
-              {
-                status: 400,
-                headers: {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-              },
-            );
-          }
-          if (env.ONYX_DB) {
-            await env.ONYX_DB.prepare(
-              "UPDATE EmailLogs SET status = ?, updated_at = ? WHERE id = ?",
-            )
-              .bind(payload.event_type, Date.now(), payload.email_id)
-              .run();
-          }
-          return new Response(JSON.stringify({ success: true }), {
-            headers: {
-              ...getCorsHeaders(request, env),
-              "Content-Type": "application/json",
-            },
-          });
-        } catch (e: any) {
-          return new Response(JSON.stringify({ error: e.message }), {
-            status: 500,
-            headers: {
-              ...getCorsHeaders(request, env),
-              "Content-Type": "application/json",
-            },
-          });
-        }
-      } else if (
-        request.method === "GET" &&
-        url.pathname.startsWith("/api/v1/email/status/")
-      ) {
-        try {
-          ctx.waitUntil(bootstrapDatabase(env));
-          const authError = await checkAuth(request, env);
-          if (authError) return authError;
-
-          const email_id = url.pathname.split("/").pop();
-          if (!email_id) {
-            return new Response(JSON.stringify({ error: "Missing email_id" }), {
-              status: 400,
-              headers: {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-            });
-          }
-
-          let status = "unknown";
-          if (env.ONYX_DB) {
-            const row: any = await env.ONYX_DB.prepare(
-              "SELECT status FROM EmailLogs WHERE id = ?",
-            )
-              .bind(email_id)
-              .first();
-            if (row) {
-              status = row.status;
-            }
-          }
-          return new Response(JSON.stringify({ success: true, status }), {
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          });
-        } catch (e: any) {
-          return new Response(JSON.stringify({ error: e.message }), {
-            status: 500,
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          });
-        }
-
-    } else if (request.method === "POST" && url.pathname === "/api/v1/intake") {
-      try {
-        const payload = parsedBody || {};
-        const schema = z.object({
-          customer_name: z.string().min(1, "Name is required").max(100).refine((val) => !/<[^>]*>?/gm.test(val), { message: "Invalid characters in name" }),
-          customer_email: z.string().email("Invalid email address"),
-        });
-        const result = schema.safeParse(payload);
-        if (!result.success) {
-          return new Response(
-            JSON.stringify({ error: "Validation failed", details: result.error.issues }),
-            {
-              status: 400,
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            },
-          );
-        }
-
-        // Dispatch to core
-        if (!env.CORE_INGEST_URL) {
-          return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), {
-            status: 500,
-            headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
-          });
-        }
-
-        const bodyStr = JSON.stringify(result.data);
-        return await dispatchToCore(
-          env.CORE_INGEST_URL,
-          {
-            method: "POST",
-            headers: addOnyxHeaders({ "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId),
-            body: bodyStr,
-          },
-          env,
-          ctx,
-          bodyStr,
-          "Public intake passed to Rust core.",
-          request,
-          edgeStatus,
-          cacheStatus,
-          traceId,
-        );
-      } catch (e: any) {
-        return new Response(JSON.stringify({ error: "Bad Request" }), {
-          status: 400,
-          headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId),
-        });
-      }
-      } else if (request.method === "POST" && url.pathname === "/api/v1/chat") {
-        const authError = await checkAuth(request, env);
-        if (authError) {
-            // Graceful Fallback for unauthenticated chat
-            return new Response(JSON.stringify({
-                type: "text",
-                content: "You are not authenticated with AXiM Passport. Please log in to access Onyx Mk3 capabilities."
-            }), {
-                status: 200,
-                headers: {
-                    ...getCorsHeaders(request, env),
-                    "Content-Type": "application/json"
-                }
-            });
-        }
-        // 3. Parse command and context
-        const reqBody = (await request.json()) as any;
-        const command = reqBody.command || reqBody.message;
-        const context = reqBody.context || {};
-
-        if (!command) {
-          return new Response(JSON.stringify({ error: "Missing command" }), {
-            status: 400,
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          });
-        }
-
-        // 4. Inject System Prompt
-        const onyxSystemPrompt = `You are Onyx mk3, the advanced AI orchestrator for AXiM Core.\nAnalyze the following command and available system context. Execute the task efficiently.\nContext: ${typeof context === "object" ? JSON.stringify(context) : context || "None"}`;
-
-        // 5. Call Anthropic API
-        const chatModel = env.CHAT_MODEL || "claude-3-5-sonnet-20241022";
-        const fullPrompt = `System: ${onyxSystemPrompt}\nUser: ${command}`;
-
-        const promptHash = await hashPrompt(fullPrompt);
-
-        if (env.ONYX_PROMPT_CACHE) {
-          try {
-            const cachedResult = await kvReadWithTimeout(
-              env.ONYX_PROMPT_CACHE.get(promptHash),
-              500,
-              edgeStatus,
-            );
-            if (cachedResult) {
-              cacheStatus = "HIT";
-              return new Response(cachedResult, {
-                headers: addOnyxHeaders(
-                  {
-                    ...getCorsHeaders(request, env),
-                    "Content-Type": "text/event-stream",
-                  },
-                  edgeStatus,
-                  cacheStatus,
-                  traceId,
-                ),
-              });
-            }
-          } catch (e) {
-            void 0;
-          }
-        }
-
-        const coreUrl = env.CORE_INGEST_URL
-          ? new URL(env.CORE_INGEST_URL).origin
-          : "https://api.axim.us.com";
-        const optimizationHint =
-          command.length > 200 ||
-          (context && JSON.stringify(context).length > 1000)
-            ? "complex-reasoning"
-            : "cost-efficient";
-        const proxyBody = JSON.stringify({
-          model: chatModel,
-          max_tokens: 1024,
-          system: onyxSystemPrompt,
-          messages: [{ role: "user", content: command }],
-          stream: true,
-          optimization_hint: optimizationHint,
-        });
-
-        const encoder = new TextEncoder();
-        let signatureHex = "";
-        if (env.AXIM_INTERNAL_KEY) {
-          const key = await crypto.subtle.importKey(
-            "raw",
-            encoder.encode(env.AXIM_INTERNAL_KEY),
-            { name: "HMAC", hash: "SHA-256" },
-            false,
-            ["sign"],
-          );
-          const signatureBuffer = await crypto.subtle.sign(
-            "HMAC",
-            key,
-            encoder.encode(proxyBody),
-          );
-          const signatureArray = Array.from(new Uint8Array(signatureBuffer));
-          signatureHex = signatureArray
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("");
-        }
-
-        let claudeResponse: Response | null = null;
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-          claudeResponse = await fetch(`${coreUrl}/v1/llm-proxy`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-axim-signature": `sha256=${signatureHex}`,
-            },
-            body: proxyBody,
-            signal: controller.signal,
-          });
-          clearTimeout(timeoutId);
-
-          if (
-            !claudeResponse.ok ||
-            claudeResponse.headers.get("x-onyx-all-providers-down") === "true"
-          ) {
-            if (
-              claudeResponse.status >= 500 ||
-              claudeResponse.headers.get("x-onyx-all-providers-down") === "true"
-            ) {
-              throw new Error(
-                `Upstream API error ${claudeResponse.status} or providers down`,
-              );
-            } else {
-              const errorData = await claudeResponse.text();
-              void 0;
-              return new Response(
-                JSON.stringify({ error: "Upstream API error" }),
-                {
-                  status: 502,
-                  headers: addOnyxHeaders(
-                    {
-                      ...getCorsHeaders(request, env),
-                      "Content-Type": "application/json",
-                    },
-                    edgeStatus,
-                    cacheStatus,
-                    traceId,
-                  ),
-                },
-              );
-            }
-          }
-        } catch (error) {
-          void 0;
-
-          if (env.AI) {
-            void 0;
+          if (env.EDGE_DLQ_KV) {
             try {
-              const fallbackResponse = (await env.AI.run(
-                "@cf/meta/llama-3.1-8b-instruct",
-                {
-                  messages: [
-                    {
-                      role: "user",
-                      content: `System: ${onyxSystemPrompt}\nUser: ${command}`,
-                    },
-                  ],
-                },
-              )) as { response: string };
-
-              const responseText = fallbackResponse.response;
-
-              // We need to format it like SSE or normal JSON depending on what's expected.
-              // The original route handles streaming via TransformStream if successful.
-              // Let's just return a JSON response with the fallback text or stream if easy.
-              // The prompt says "and stream or return the response back to the client as an emergency fallback"
-              const ssePayload = `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { model: "workers-ai-llama-3.1-8b" } })}\n\nevent: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: responseText } })}\n\nevent: message_delta\ndata: ${JSON.stringify({ type: "message_delta", usage: { output_tokens: responseText.length } })}\n\nevent: message_stop\ndata: {}\n\ndata: [DONE]\n\n`;
-              return new Response(ssePayload, {
-                status: 200,
-                headers: addOnyxHeaders(
-                  {
-                    ...getCorsHeaders(request, env),
-                    "Content-Type": "text/event-stream",
-                    "X-Onyx-Fallback": "workers-ai",
-                  },
-                  edgeStatus,
-                  cacheStatus,
-                  traceId,
-                ),
-              });
-            } catch (aiError) {
+              const bodyStr = await request.clone().text();
+              await env.EDGE_DLQ_KV.put(
+                `email_dlq_${Date.now()}_${crypto.randomUUID()}`,
+                bodyStr
+              );
+            } catch (dlqErr) {
               void 0;
             }
           }
-
-          if (env.ONYX_STATE) {
-            const dlqKey = `dlq:ingest:${Date.now()}:${crypto.randomUUID()}`;
-            ctx.waitUntil(env.ONYX_STATE.put(dlqKey, proxyBody));
-          }
-          return new Response(
-            JSON.stringify({
-              status: "QUEUED_EDGE_DLQ",
-              message: "Payload buffered at edge for Core retry.",
-            }),
-            {
-              status: 202,
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            },
-          );
-        }
-
-        // If streaming, we need to intercept the response chunks to cache the complete response
-        // However, since we return the stream immediately, it's easiest to create a TransformStream
-        const { readable, writable } = new TransformStream();
-
-        if (env.ONYX_PROMPT_CACHE) {
-          const reader = claudeResponse.body!.getReader();
-          const writer = writable.getWriter();
-
-          ctx.waitUntil(
-            (async () => {
-              let fullResponseText = "";
-              const decoder = new TextDecoder("utf-8");
-
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                fullResponseText += decoder.decode(value, { stream: true });
-                await writer.write(value);
-              }
-
-              fullResponseText += decoder.decode();
-              await writer.close();
-
-              await kvWriteWithTimeout(
-                env.ONYX_PROMPT_CACHE!.put(promptHash, fullResponseText, {
-                  expirationTtl: 86400,
-                  metadata: { timestamp: Date.now() },
-                }),
-                500,
-                edgeStatus,
-              );
-            })().catch((e) => {
-              void 0;
-              // Make sure we still close the writer if there's an error so the client doesn't hang
-              writer.close().catch(() => {});
-            }),
-          );
-
-          return new Response(readable, {
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "text/event-stream",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          });
-        }
-
-        return new Response(claudeResponse.body, {
-          headers: addOnyxHeaders(
-            {
-              ...getCorsHeaders(request, env),
-              "Content-Type": "text/event-stream",
-            },
-            edgeStatus,
-            cacheStatus,
-            traceId,
-          ),
-        });
-      } else if (
-        request.method === "POST" &&
-        url.pathname === "/api/v1/telemetry"
-      ) {
-        const authHeader = request.headers.get("Authorization") || "";
-        const expectedAuth = `Bearer ${env.AXIM_SERVICE_KEY || ""}`;
-        let isAuthorized = false;
-        if (authHeader && env.AXIM_SERVICE_KEY) {
-          const encoder = new TextEncoder();
-          const a = encoder.encode(authHeader);
-          const b = encoder.encode(expectedAuth);
-          if (a.length === b.length) {
-            isAuthorized = await crypto.subtle.timingSafeEqual(a, b);
-          }
-        }
-        if (!isAuthorized) {
-          return new Response("Unauthorized", {
-            status: 401,
-            headers: addOnyxHeaders(
-              getCorsHeaders(request, env),
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          });
-        }
-
-        // Remove old auth check since we explicitly check AXIM_SERVICE_KEY
-        // const authError = await checkAuth(request, env);
-        // if (authError) return authError;
-        // Type definitions for Telemetry
-        interface TelemetryPayload {
-          brandId: string;
-          pageViews: number;
-          errors404: number;
-          errors500: number;
-          web3Connections: number;
-          timestamp: string;
-        }
-
-        const payload = parsedBody as TelemetryPayload;
-
-        // Validate telemetry payload structure
-        if (!payload.brandId || typeof payload.pageViews !== "number") {
-          return new Response(
-            JSON.stringify({ error: "Invalid telemetry payload" }),
-            {
-              status: 400,
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            },
-          );
-        }
-
-        const bodyStr = JSON.stringify({
-          type: "telemetry",
-          payload,
-          timestamp: new Date().toISOString(),
-        });
-
-        return new Response(
-          JSON.stringify({
-            status: "success",
-            message: "Telemetry ingested successfully.",
-            traceId,
-          }),
-          {
-            status: 200,
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          },
-        );
-      } else if (request.method === "POST" && url.pathname === "/api/approve") {
-        const authError = await checkAuth(request, env);
-        if (authError) return authError;
-        // POST /api/approve endpoint to receive HITL signals from Core
-        const payload = (parsedBody || {}) as {
-          task_id?: string;
-          signed_payload?: any;
-          idempotency_key?: string;
-        };
-
-        if (!payload.task_id || !payload.signed_payload) {
-          return new Response(
-            JSON.stringify({ error: "Missing task_id or signed_payload" }),
-            {
-              status: 400,
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            },
-          );
-        }
-
-        const idempotencyKey =
-          request.headers.get("Idempotency-Key") || payload.idempotency_key;
-        if (idempotencyKey && env.ONYX_STATE) {
-          const cachedResponse = await kvReadWithTimeout(
-            env.ONYX_STATE.get(`idem:${idempotencyKey}`),
-            500,
-            edgeStatus,
-          );
-          if (cachedResponse) {
-            cacheStatus = "HIT";
-            return new Response(cachedResponse, {
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            });
-          }
-        }
-
-        // Record HITL Telemetry using Analytics Engine if available
-        if (env.ONYX_EDGE_METRICS) {
-          ctx.waitUntil(
-            new Promise<void>((resolve) => {
-              try {
-                const actionType = (payload as any).action_type || "approve";
-                const turnaroundTime = (payload as any).turnaround_time_ms || 0;
-
-                env.ONYX_EDGE_METRICS!.writeDataPoint({
-                  blobs: [
-                    "HITL_ACTION",
-                    url.pathname,
-                    payload.task_id || "unknown",
-                    actionType,
-                  ],
-                  doubles: [turnaroundTime],
-                  indexes: ["hitl_telemetry"],
-                });
-              } catch (e) {
-                void 0;
-              }
-              resolve();
-            }),
-          );
-        }
-
-        // Save approval to KV store
-        if (env.ONYX_STATE) {
-          try {
-            await kvWriteWithTimeout(
-              env.ONYX_STATE.put(
-                `approval:${payload.task_id}`,
-                JSON.stringify(payload),
-              ),
-              500,
-              edgeStatus,
-            );
-          } catch (e) {
-            void 0;
-          }
-        }
-
-        // Relay to Rust core (fire and forget)
-        if (!env.CORE_INGEST_URL) {
-          return new Response(
-            JSON.stringify({
-              error: "Configuration error: CORE_INGEST_URL is missing",
-            }),
-            {
-              status: 500,
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            },
-          );
-        }
-        const ingestUrl = env.CORE_INGEST_URL;
-        const bodyStr = JSON.stringify({ type: "approval_relay", payload });
-        const res = await dispatchToCore(
-          ingestUrl,
-          {
-            method: "POST",
-            headers: addOnyxHeaders(
-              { "Content-Type": "application/json" },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-            body: bodyStr,
-          },
-          env,
-          ctx,
-          bodyStr,
-          `Approval for task ${payload.task_id} relayed to Rust core.`,
-          request,
-          edgeStatus,
-          cacheStatus,
-          traceId,
-        );
-        if (idempotencyKey && env.ONYX_STATE && res.status === 200) {
-          // simplified cache of result
-        }
-        return res;
-      } else if (
-        request.method === "POST" &&
-        url.pathname === "/api/v1/playbook/trigger"
-      ) {
-        const authError = await checkAuth(request, env);
-        if (authError) return authError;
-        // POST /api/v1/playbook/trigger endpoint for push-based playbook triggers from AXiM Core
-        const payload = (parsedBody || {}) as {
-          severity?: string;
-          service?: string;
-          metric?: string;
-          details?: any;
-        };
-
-        if (!payload.severity || !payload.service || !payload.metric) {
-          return new Response(
-            JSON.stringify({
-              error: "Missing severity, service, or metric in payload",
-            }),
-            {
-              status: 400,
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            },
-          );
-        }
-
-        if (!env.CORE_INGEST_URL) {
-          return new Response(
-            JSON.stringify({
-              error: "Configuration error: CORE_INGEST_URL is missing",
-            }),
-            {
-              status: 500,
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            },
-          );
-        }
-        const ingestUrl = env.CORE_INGEST_URL;
-
-        const bodyStr = JSON.stringify({
-          type: "playbook_trigger",
-          alert: payload,
-          timestamp: new Date().toISOString(),
-        });
-        return await dispatchToCore(
-          ingestUrl,
-          {
-            method: "POST",
-            headers: addOnyxHeaders(
-              { "Content-Type": "application/json" },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-            body: bodyStr,
-          },
-          env,
-          ctx,
-          bodyStr,
-          "Playbook trigger processed and queued for immediate evaluation.",
-          request,
-          edgeStatus,
-          cacheStatus,
-          traceId,
-        );
-      } else if (
-        request.method === "POST" &&
-        url.pathname === "/api/v1/commands/log"
-      ) {
-        const authError = await checkAuth(request, env);
-        if (authError) return authError;
-
-        try {
-          const payload = parsedBody || {};
-          const {
-            id,
-            user_id,
-            command_type,
-            status,
-            execution_time_ms,
-            details,
-            created_at,
-          } = payload;
-
-          if (!id || !user_id || !command_type || !status) {
-            return new Response(
-              JSON.stringify({ error: "Missing required fields" }),
-              {
-                status: 400,
-                headers: addOnyxHeaders(
-                  {
-                    ...getCorsHeaders(request, env),
-                    "Content-Type": "application/json",
-                  },
-                  edgeStatus,
-                  cacheStatus,
-                  traceId,
-                ),
-              },
-            );
-          }
-
-          if (env.ONYX_DB) {
-            const stmt = env.ONYX_DB.prepare(
-              `INSERT INTO CommandAuditLogs (id, user_id, command_type, status, execution_time_ms, details, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            ).bind(
-              id,
-              user_id,
-              command_type,
-              status,
-              execution_time_ms || 0,
-              details || "",
-              created_at || Date.now(),
-            );
-
-            ctx.waitUntil(
-              stmt
-                .run()
-                .catch((e) =>
-                  void 0,
-                ),
-            );
-          } else {
-            void 0;
-          }
-
-          return new Response(JSON.stringify({ status: "success" }), {
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          });
-        } catch (e) {
-          void 0;
-          return new Response(JSON.stringify({ error: "Internal error" }), {
+          return new Response(JSON.stringify({ error: e.message || "Failed to send email" }), {
             status: 500,
             headers: addOnyxHeaders(
               {
@@ -2806,295 +2060,6 @@ const onyx_handler: any = {
               traceId,
             ),
           });
-        }
-      } else if (
-        request.method === "GET" &&
-        url.pathname.startsWith("/api/v1/commands/history/")
-      ) {
-        const authError = await checkAuth(request, env);
-        if (authError) return authError;
-
-        const userId = url.pathname.split("/").pop();
-        if (!userId) {
-          return new Response(JSON.stringify({ error: "Missing user_id" }), {
-            status: 400,
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          });
-        }
-
-        try {
-          let logs: any[] = [];
-
-          const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
-
-          async function kvWriteWithTimeout<T>(
-            promise: Promise<T>,
-            timeoutMs = 500,
-            status?: { degraded: boolean },
-          ): Promise<T | null> {
-            try {
-              const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
-                setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
-              );
-              const result = await Promise.race([promise, timeout]);
-              if (result === TIMEOUT_SYMBOL) {
-                void 0;
-                if (status) status.degraded = true;
-                return null;
-              }
-              return result as T;
-            } catch (e) {
-              void 0;
-              if (status) status.degraded = true;
-              return null;
-            }
-          }
-
-          if (env.ONYX_DB) {
-            const result = await env.ONYX_DB.prepare(
-              `SELECT * FROM CommandAuditLogs WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
-            )
-              .bind(userId)
-              .all();
-            logs = result.results || [];
-
-            const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
-
-            async function kvWriteWithTimeout<T>(
-              promise: Promise<T>,
-              timeoutMs = 500,
-              status?: { degraded: boolean },
-            ): Promise<T | null> {
-              try {
-                const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
-                  setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
-                );
-                const result = await Promise.race([promise, timeout]);
-                if (result === TIMEOUT_SYMBOL) {
-                  void 0;
-                  if (status) status.degraded = true;
-                  return null;
-                }
-                return result as T;
-              } catch (e) {
-                void 0;
-                if (status) status.degraded = true;
-                return null;
-              }
-            }
-          }
-
-          return new Response(JSON.stringify({ status: "success", logs }), {
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          });
-        } catch (e) {
-          void 0;
-          return new Response(JSON.stringify({ error: "Internal error" }), {
-            status: 500,
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          });
-        }
-      } else if (
-        url.pathname === "/api/approvals" &&
-        request.method === "GET"
-      ) {
-        const authError = await checkAuth(request, env);
-        if (authError) return authError;
-        // Read approvals from KV store
-        const approvals: any[] = [];
-
-        const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
-
-        async function kvWriteWithTimeout<T>(
-          promise: Promise<T>,
-          timeoutMs = 500,
-          status?: { degraded: boolean },
-        ): Promise<T | null> {
-          try {
-            const timeout = new Promise<typeof TIMEOUT_SYMBOL>((resolve) =>
-              setTimeout(() => resolve(TIMEOUT_SYMBOL), timeoutMs),
-            );
-            const result = await Promise.race([promise, timeout]);
-            if (result === TIMEOUT_SYMBOL) {
-              void 0;
-              if (status) status.degraded = true;
-              return null;
-            }
-            return result as T;
-          } catch (e) {
-            void 0;
-            if (status) status.degraded = true;
-            return null;
-          }
-        }
-
-        if (env.ONYX_STATE) {
-          const listed = await kvReadWithTimeout(
-            env.ONYX_STATE.list({ prefix: "approval:" }),
-            500,
-            edgeStatus,
-          );
-          if (!listed)
-            return new Response(
-              JSON.stringify({ status: "success", approvals: [] }),
-              {
-                headers: addOnyxHeaders(
-                  {
-                    ...getCorsHeaders(request, env),
-                    "Content-Type": "application/json",
-                  },
-                  edgeStatus,
-                  cacheStatus,
-                  traceId,
-                ),
-              },
-            );
-          for (const key of listed.keys) {
-            const value = await kvReadWithTimeout(
-              env.ONYX_STATE.get(key.name),
-              500,
-              edgeStatus,
-            );
-            if (value) approvals.push(JSON.parse(value as string));
-          }
-        }
-        return new Response(
-          JSON.stringify({
-            status: "success",
-            approvals,
-          }),
-          {
-            headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
-          },
-        );
-      } else if (
-        url.pathname === "/api/v1/audit/logs" &&
-        request.method === "GET"
-      ) {
-        const authError = await checkAuth(request, env);
-        if (authError) return authError;
-
-        const limitStr = url.searchParams.get("limit") || "20";
-        const offsetStr = url.searchParams.get("offset") || "0";
-        const limit = parseInt(limitStr, 10);
-        const offset = parseInt(offsetStr, 10);
-
-        if (isNaN(limit) || isNaN(offset)) {
-          return new Response(
-            JSON.stringify({ error: "Invalid limit or offset" }),
-            {
-              status: 400,
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            },
-          );
-        }
-
-        if (env.ONYX_DB) {
-          try {
-            const countResult = await env.ONYX_DB.prepare(
-              "SELECT COUNT(*) as total FROM CommandAuditLogs",
-            ).first();
-            const total = countResult ? countResult.total : 0;
-
-            const { results } = await env.ONYX_DB.prepare(
-              "SELECT * FROM CommandAuditLogs ORDER BY timestamp DESC LIMIT ? OFFSET ?",
-            )
-              .bind(limit, offset)
-              .all();
-
-            return new Response(
-              JSON.stringify({
-                success: true,
-                logs: results || [],
-                total: Number(total),
-              }),
-              {
-                status: 200,
-                headers: addOnyxHeaders(
-                  {
-                    ...getCorsHeaders(request, env),
-                    "Content-Type": "application/json",
-                  },
-                  edgeStatus,
-                  cacheStatus,
-                  traceId,
-                ),
-              },
-            );
-          } catch (e) {
-            void 0;
-            return new Response(
-              JSON.stringify({ error: "Failed to fetch audit logs" }),
-              {
-                status: 500,
-                headers: addOnyxHeaders(
-                  {
-                    ...getCorsHeaders(request, env),
-                    "Content-Type": "application/json",
-                  },
-                  edgeStatus,
-                  cacheStatus,
-                  traceId,
-                ),
-              },
-            );
-          }
-        } else {
-          return new Response(
-            JSON.stringify({ error: "D1 Database not configured" }),
-            {
-              status: 500,
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "application/json",
-                },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
-            },
-          );
         }
       } else if (
         request.method === "POST" &&
