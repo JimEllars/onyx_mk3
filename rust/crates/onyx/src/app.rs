@@ -372,12 +372,12 @@ pub(crate) fn run_repl(
 
                 {
                     let mut content_guard = active_content.lock().unwrap();
-                    *content_guard = format!("> {}\n\n[Thinking...]", trimmed);
+                    *content_guard = format!("> {trimmed}\n\n[Thinking...]");
                 }
                 let _ = redraw_tx.send(());
 
                 match cli.run_turn_tui(&trimmed) {
-                    Ok(_) => {
+                    Ok(()) => {
                         let final_text = cli
                             .runtime
                             .session()
@@ -395,7 +395,7 @@ pub(crate) fn run_repl(
                             })
                             .unwrap_or_default();
                         let mut content_guard = active_content.lock().unwrap();
-                        *content_guard = format!("> {}\n\n{}", trimmed, final_text);
+                        *content_guard = format!("> {trimmed}\n\n{final_text}");
 
                         let _ = telemetry::metrics::AGENT_STATE_TX.send(
                             serde_json::to_string(&serde_json::json!({
@@ -407,7 +407,7 @@ pub(crate) fn run_repl(
                     }
                     Err(e) => {
                         let mut content_guard = active_content.lock().unwrap();
-                        *content_guard = format!("> {}\n\nError: {}", trimmed, e);
+                        *content_guard = format!("> {trimmed}\n\nError: {e}");
                     }
                 }
                 let _ = redraw_tx.send(());
@@ -917,6 +917,10 @@ impl LiveCli {
                 false
             }
             SlashCommand::Approve { .. } | SlashCommand::Reject { .. } => false,
+            SlashCommand::DemandLetter { .. }
+            | SlashCommand::Nda { .. }
+            | SlashCommand::PayStub { .. }
+            | SlashCommand::BillingFallback { .. } => true,
         })
     }
 

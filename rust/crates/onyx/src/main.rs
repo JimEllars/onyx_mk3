@@ -3904,7 +3904,11 @@ pub(crate) fn run_resume_command(
         | SlashCommand::Fleet
         | SlashCommand::Approve { .. }
         | SlashCommand::Metrics
-        | SlashCommand::Reject { .. } => Err("unsupported resumed slash command".into()),
+        | SlashCommand::Reject { .. }
+        | SlashCommand::DemandLetter { .. }
+        | SlashCommand::Nda { .. }
+        | SlashCommand::PayStub { .. }
+        | SlashCommand::BillingFallback { .. } => Err("unsupported resumed slash command".into()),
     }
 }
 

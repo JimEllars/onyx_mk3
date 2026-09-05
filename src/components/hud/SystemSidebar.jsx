@@ -117,7 +117,7 @@ export default function SystemSidebar() {
             <div className="mt-auto flex flex-col gap-2 pt-4 border-t border-slate-700/50">
                 <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-slate-500 uppercase tracking-widest">Voice Trunk</span>
-                    <span className={`text-[10px] font-bold tracking-wider ${activeVoiceTrunk === 'ACTIVE' ? 'text-emerald-500' : 'text-slate-500'}`}>{activeVoiceTrunk}</span>
+                    <span className={`text-[10px] font-bold tracking-wider ${activeVoiceTrunk === 'ACTIVE' ? 'text-emerald-500' : activeVoiceTrunk === 'RECONNECTING' ? 'text-yellow-500' : 'text-slate-500'}`}>{activeVoiceTrunk}</span>
                 </div>
                 <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-slate-500 uppercase tracking-widest">Agent Mode</span>

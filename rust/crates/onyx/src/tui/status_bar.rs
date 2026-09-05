@@ -371,7 +371,7 @@ pub fn draw_status_bar(
             .replace("[32m", "")
             .replace("[1;31m", "")
             .replace("[36;1m", "");
-        let truncated_text = if stripped_text.chars().count() > cols as usize {
+        let truncated_text = if stripped_text.chars().count() >= cols as usize {
             let width = cols.saturating_sub(2) as usize;
             if width == 0 {
                 ""
@@ -412,7 +412,7 @@ pub fn draw_status_bar(
         } else if web3_wallet_address.is_some() {
             (Color::Yellow, Color::Black)
         } else if healthy_providers > 0 && healthy_providers == total_providers || cron_active {
-            (Color::DarkGreen, Color::White)
+            (Color::Green, Color::Black)
         } else if edge_ready {
             (Color::DarkBlue, Color::White)
         } else if edge_heartbeat_intercepts > 0 {
@@ -420,11 +420,11 @@ pub fn draw_status_bar(
         } else if (session_active && !session_success) || rl_val > 0 {
             (Color::Yellow, Color::Black)
         } else if session_active && session_success {
-            (Color::DarkGreen, Color::White)
+            (Color::Green, Color::Black)
         } else if q_depth > 0 {
             (Color::Yellow, Color::Black)
         } else if pulse_active {
-            (Color::DarkGreen, Color::White)
+            (Color::Green, Color::Black)
         } else if let Some(focus) = focus_state {
             match focus {
                 crate::app::FocusState::CommandPalette => (Color::DarkBlue, Color::White), // Vibrant Active
@@ -439,7 +439,7 @@ pub fn draw_status_bar(
         let _ = out.queue(Print(format!(
             " {:<width$} ",
             truncated_text,
-            width = cols.saturating_sub(2) as usize
+            width = cols.saturating_sub(2).max(1) as usize
         )));
         let _ = out.queue(ResetColor);
         let _ = out.queue(RestorePosition);

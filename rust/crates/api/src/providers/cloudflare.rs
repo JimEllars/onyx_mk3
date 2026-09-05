@@ -54,7 +54,15 @@ impl Provider for CloudflareProvider {
         &'a self,
         request: &'a MessageRequest,
     ) -> ProviderFuture<'a, MessageResponse> {
-        let url = format!("{}/{}/ai/run", self.base_url, self.account_id);
+        let mut url = format!("{}/{}/ai/run", self.base_url, self.account_id);
+
+        let mut cf_aig_token = None;
+        if let Ok(token) = std::env::var("CF_AIG_TOKEN") {
+            // Re-route through Cloudflare AI Gateway
+            // format: https://gateway.ai.cloudflare.com/v1/{account_id}/onyx-gateway/{provider}
+            url = format!("https://gateway.ai.cloudflare.com/v1/{}/onyx-gateway/cloudflare/run", self.account_id);
+            cf_aig_token = Some(token);
+        }
 
         let mut messages = Vec::new();
         if let Some(system_prompt) = &request.system {
@@ -90,11 +98,17 @@ impl Provider for CloudflareProvider {
         let api_key = self.api_key.clone();
 
         Box::pin(async move {
-            let res = http
+            let mut req = http
                 .post(&url)
                 .header("X-Request-ID", uuid::Uuid::new_v4().to_string())
                 .header("Authorization", format!("Bearer {api_key}"))
-                .header("cf-aig-gateway-id", "default")
+                .header("cf-aig-gateway-id", "default");
+
+            if let Some(token) = &cf_aig_token {
+                req = req.header("cf-aig-authorization", format!("Bearer {token}"));
+            }
+
+            let res = req
                 .json(&payload)
                 .send()
                 .await
