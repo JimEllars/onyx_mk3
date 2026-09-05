@@ -16,6 +16,7 @@ export interface Env {
   ONYX_SESSION_STATE: KVNamespace;
   ONYX_DISPATCH_LOCKS: KVNamespace;
   ONYX_PROMPT_CACHE: KVNamespace;
+  ONYX_KV: KVNamespace;
   AXIM_ONYX_SECRET: string;
   ANTHROPIC_API_KEY: string;
   CORE_INGEST_URL: string;
@@ -1652,6 +1653,86 @@ const onyx_handler: any = {
             cacheStatus,
             traceId,
           ),
+        });
+      } else if (request.method === "GET" && url.pathname.startsWith("/api/v1/playbooks/")) {
+        const authError = await checkAuth(request, env);
+        if (authError) return authError;
+
+        const playbookId = url.pathname.split("/").pop();
+        if (!playbookId) {
+          return new Response(JSON.stringify({ error: "Missing playbook ID" }), {
+            status: 400,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        }
+
+        const cacheKey = `playbook:${playbookId}`;
+
+        if (env.ONYX_KV) {
+          const cachedPlaybook = await kvReadWithTimeout(env.ONYX_KV.get(cacheKey), 500, { degraded: false });
+          if (cachedPlaybook) {
+            cacheStatus = "HIT";
+            return new Response(cachedPlaybook, {
+              status: 200,
+              headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+            });
+          }
+        }
+
+        if (!env.CORE_INGEST_URL) {
+          return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), { status: 500, headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId) });
+        }
+
+        // Use backend to fetch
+        const backendUrl = env.CORE_INGEST_URL.replace(/\/v1\/functions\/telemetry-ingest$/, "") + `/api/v1/playbooks/${playbookId}`;
+
+        try {
+          const res = await fetch(backendUrl, {
+            headers: {
+              "Authorization": request.headers.get("Authorization") || ""
+            }
+          });
+
+          if (res.ok) {
+            const data = await res.text();
+            if (env.ONYX_KV) {
+               ctx.waitUntil(kvWriteWithTimeout(env.ONYX_KV.put(cacheKey, data, { expirationTtl: 3600 }), 500, { degraded: false }));
+            }
+            return new Response(data, {
+              status: 200,
+              headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+            });
+          } else {
+             return new Response(JSON.stringify({ error: "Failed to fetch playbook" }), {
+                status: res.status,
+                headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+             });
+          }
+        } catch (e) {
+           return new Response(JSON.stringify({ error: "Internal Server Error while fetching playbook" }), {
+             status: 500,
+             headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+           });
+        }
+      } else if (
+        request.method === "POST" &&
+        url.pathname === "/api/v1/commands/dispatch"
+      ) {
+        const authError = await checkAuth(request, env);
+        if (authError) return authError;
+
+        const payload = parsedBody || {};
+        if (!payload.task) {
+          return new Response(JSON.stringify({ error: "Missing 'task' in dispatch payload" }), {
+            status: 400,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        }
+
+        const bodyStr = JSON.stringify(payload);
+        return new Response(JSON.stringify({ status: "dispatched", task: payload.task, args: payload.args }), {
+          status: 200,
+          headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
         });
       } else if (
         request.method === "POST" &&

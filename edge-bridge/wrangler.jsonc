@@ -52,6 +52,10 @@
     {
       "binding": "ONYX_DISPATCH_LOCKS",
       "id": "4b72094b034d4732adbbfeaad4d33b2c"
+    },
+    {
+      "binding": "ONYX_KV",
+      "id": "playbooks_cache_id_placeholder"
     }
   ],
   "triggers": {

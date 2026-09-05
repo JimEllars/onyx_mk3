@@ -58,6 +58,34 @@ pub enum SkillSlashDispatch {
 
 const SLASH_COMMAND_SPECS: &[SlashCommandSpec] = &[
     SlashCommandSpec {
+        name: "demand-letter",
+        aliases: &[],
+        summary: "Initialize Demand Letter micro-program",
+        argument_hint: Some("[args]"),
+        resume_supported: false,
+    },
+    SlashCommandSpec {
+        name: "nda",
+        aliases: &[],
+        summary: "Initialize NDA Generator micro-program",
+        argument_hint: Some("[args]"),
+        resume_supported: false,
+    },
+    SlashCommandSpec {
+        name: "pay-stub",
+        aliases: &[],
+        summary: "Initialize Pay Stub micro-program",
+        argument_hint: Some("[args]"),
+        resume_supported: false,
+    },
+    SlashCommandSpec {
+        name: "billing-fallback",
+        aliases: &[],
+        summary: "Initialize Billing Fallback recovery playbook",
+        argument_hint: Some("[args]"),
+        resume_supported: false,
+    },
+    SlashCommandSpec {
         name: "fleet",
         aliases: &["swarm"],
         summary: "Show the AXiM Swarm Radar for active Onyx nodes",
@@ -1215,6 +1243,18 @@ pub enum SlashCommand {
     History {
         count: Option<String>,
     },
+    DemandLetter {
+        args: Option<String>,
+    },
+    Nda {
+        args: Option<String>,
+    },
+    PayStub {
+        args: Option<String>,
+    },
+    BillingFallback {
+        args: Option<String>,
+    },
     Unknown(String),
 }
 
@@ -1456,6 +1496,10 @@ pub fn validate_slash_command_input(
         "tag" => SlashCommand::Tag { label: remainder },
         "output-style" => SlashCommand::OutputStyle { style: remainder },
         "add-dir" => SlashCommand::AddDir { path: remainder },
+        "demand-letter" => SlashCommand::DemandLetter { args: remainder },
+        "nda" => SlashCommand::Nda { args: remainder },
+        "pay-stub" => SlashCommand::PayStub { args: remainder },
+        "billing-fallback" => SlashCommand::BillingFallback { args: remainder },
         "history" => SlashCommand::History {
             count: optional_single_arg(command, &args, "[count]")?,
         },
@@ -4049,6 +4093,115 @@ pub fn handle_slash_command(
         | SlashCommand::History { .. }
         | SlashCommand::Metrics
         | SlashCommand::Unknown(_) => None,
+
+        SlashCommand::DemandLetter { args } => {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let payload = serde_json::json!({
+                    "task": "demand_letter",
+                    "args": args
+                });
+                let client = reqwest::Client::new();
+                let _ = client
+                    .post("http://127.0.0.1:8787/api/v1/commands/dispatch")
+                    .header(
+                        "Authorization",
+                        format!(
+                            "Bearer {}",
+                            std::env::var("AXIM_ONYX_SECRET").unwrap_or_default()
+                        ),
+                    )
+                    .json(&payload)
+                    .send()
+                    .await;
+            });
+            Some(SlashCommandResult {
+                message: format!(
+                    "Micro-program 'Demand Letter' dispatched to Edge Bridge with args: {args:?}"
+                ),
+                session: session.clone(),
+            })
+        }
+        SlashCommand::Nda { args } => {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let payload = serde_json::json!({
+                    "task": "nda",
+                    "args": args
+                });
+                let client = reqwest::Client::new();
+                let _ = client
+                    .post("http://127.0.0.1:8787/api/v1/commands/dispatch")
+                    .header(
+                        "Authorization",
+                        format!(
+                            "Bearer {}",
+                            std::env::var("AXIM_ONYX_SECRET").unwrap_or_default()
+                        ),
+                    )
+                    .json(&payload)
+                    .send()
+                    .await;
+            });
+            Some(SlashCommandResult {
+                message: format!(
+                    "Micro-program 'NDA Generator' dispatched to Edge Bridge with args: {args:?}"
+                ),
+                session: session.clone(),
+            })
+        }
+        SlashCommand::PayStub { args } => {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let payload = serde_json::json!({
+                    "task": "pay_stub",
+                    "args": args
+                });
+                let client = reqwest::Client::new();
+                let _ = client
+                    .post("http://127.0.0.1:8787/api/v1/commands/dispatch")
+                    .header(
+                        "Authorization",
+                        format!(
+                            "Bearer {}",
+                            std::env::var("AXIM_ONYX_SECRET").unwrap_or_default()
+                        ),
+                    )
+                    .json(&payload)
+                    .send()
+                    .await;
+            });
+            Some(SlashCommandResult {
+                message: format!("Micro-program 'Pay Stub Generator' dispatched to Edge Bridge with args: {args:?}"),
+                session: session.clone(),
+            })
+        }
+        SlashCommand::BillingFallback { args } => {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let payload = serde_json::json!({
+                    "task": "billing_fallback",
+                    "args": args
+                });
+                let client = reqwest::Client::new();
+                let _ = client
+                    .post("http://127.0.0.1:8787/api/v1/commands/dispatch")
+                    .header(
+                        "Authorization",
+                        format!(
+                            "Bearer {}",
+                            std::env::var("AXIM_ONYX_SECRET").unwrap_or_default()
+                        ),
+                    )
+                    .json(&payload)
+                    .send()
+                    .await;
+            });
+            Some(SlashCommandResult {
+                message: format!("Micro-program 'Billing Fallback' dispatched to Edge Bridge with args: {args:?}"),
+                session: session.clone(),
+            })
+        }
         SlashCommand::Approve { task_id } => {
             let rt = tokio::runtime::Runtime::new().unwrap();
             let output = rt.block_on(async {
@@ -4610,7 +4763,7 @@ mod tests {
         assert!(help.contains("/agents [list|help]"));
         assert!(help.contains("/skills [list|install <path>|help|<skill> [args]]"));
         assert!(help.contains("aliases: /skill"));
-        assert_eq!(slash_command_specs().len(), 143);
+        assert_eq!(slash_command_specs().len(), 147);
         assert!(resume_supported_slash_commands().len() >= 39);
     }
 

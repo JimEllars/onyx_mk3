@@ -75,6 +75,43 @@ export default function ActionConsole({ peerConnection }) {
         }
     };
 
+    const handleReject = async (actionId) => {
+        try {
+            updateHitlActionStatus(actionId, 'REJECTING...');
+            const response = await fetch('/api/approve', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer dev-token' // Mock token for now
+                },
+                body: JSON.stringify({ task_id: actionId, action: 'reject' })
+            });
+            if (response.ok) {
+                updateHitlActionStatus(actionId, 'REJECTED');
+            } else {
+                updateHitlActionStatus(actionId, 'FAILED');
+            }
+        } catch (e) {
+            updateHitlActionStatus(actionId, 'FAILED');
+        }
+    };
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            const pendingAction = pendingHitlActions.find(a => a.status === 'PENDING');
+            if (pendingAction) {
+                if (e.key === 'Enter' || e.key === 'y' || e.key === 'Y') {
+                    handleApprove(pendingAction.id);
+                } else if (e.key === 'Escape' || e.key === 'n' || e.key === 'N') {
+                    handleReject(pendingAction.id);
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [pendingHitlActions]);
+
     return (
         <div className="action-console w-80 p-5 bg-slate-900 text-slate-100 flex flex-col gap-6 rounded-l-xl shadow-2xl border-l border-t border-b border-slate-800 h-full overflow-hidden font-mono relative z-10">
             <div className="flex flex-col gap-3 border-b border-slate-700/50 pb-4">
@@ -84,7 +121,7 @@ export default function ActionConsole({ peerConnection }) {
                         COMMAND HUB
                     </h2>
                     <div className={`badge border border-slate-700 px-2 py-0.5 rounded text-[10px] tracking-wider ${voiceColor} bg-slate-800/80 shadow-inner`}>
-                        VOICE: {status === 'RECONNECTING' ? 'RECONNECTING' : status}
+                        VOICE: {status === 'RECONNECTING' ? 'RECONNECTING...' : status}
                     </div>
                 </div>
 
@@ -127,19 +164,33 @@ export default function ActionConsole({ peerConnection }) {
                                     </div>
                                 </div>
 
+                                {action.params && (
+                                    <div className="bg-slate-900 rounded p-2 overflow-x-auto text-[10px] text-blue-300 border border-slate-700">
+                                        <pre>{JSON.stringify(action.params, null, 2)}</pre>
+                                    </div>
+                                )}
+
                                 <div className="flex justify-between items-center mt-1 pt-2 border-t border-slate-700/50">
                                     <span className="text-[9px] text-slate-500 uppercase tracking-widest truncate max-w-[120px]">
                                         ID: {action.id.substring(0, 8)}
                                     </span>
                                     {action.status === 'PENDING' ? (
-                                        <button
-                                            onClick={() => handleApprove(action.id)}
-                                            className="bg-emerald-600/90 hover:bg-emerald-500 text-white text-[10px] font-bold tracking-wider px-3 py-1.5 rounded-md whitespace-nowrap shadow-md transition-all active:scale-95 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                                        >
-                                            AUTHORIZE
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => handleReject(action.id)}
+                                                className="bg-red-600/90 hover:bg-red-500 text-white text-[10px] font-bold tracking-wider px-3 py-1.5 rounded-md whitespace-nowrap shadow-md transition-all active:scale-95 focus:outline-none focus:ring-1 focus:ring-red-400"
+                                            >
+                                                REJECT (N)
+                                            </button>
+                                            <button
+                                                onClick={() => handleApprove(action.id)}
+                                                className="bg-emerald-600/90 hover:bg-emerald-500 text-white text-[10px] font-bold tracking-wider px-3 py-1.5 rounded-md whitespace-nowrap shadow-md transition-all active:scale-95 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                            >
+                                                APPROVE (Y)
+                                            </button>
+                                        </div>
                                     ) : (
-                                        <span className={`text-[9px] font-bold tracking-wider px-2 py-1 rounded shadow-inner uppercase ${action.status === 'APPROVED' ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-800/60' : action.status === 'EXPIRED' ? 'bg-red-900/40 text-red-400 border border-red-800/60' : 'bg-amber-900/40 text-amber-400 border border-amber-800/60'}`}>
+                                        <span className={`text-[9px] font-bold tracking-wider px-2 py-1 rounded shadow-inner uppercase ${action.status === 'APPROVED' ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-800/60' : action.status === 'EXPIRED' || action.status === 'REJECTED' ? 'bg-red-900/40 text-red-400 border border-red-800/60' : 'bg-amber-900/40 text-amber-400 border border-amber-800/60'}`}>
                                             {action.status}
                                         </span>
                                     )}
