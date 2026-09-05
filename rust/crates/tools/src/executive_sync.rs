@@ -43,8 +43,10 @@ pub async fn execute_sync_directives(
     directives: &str,
     milestones: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    let base_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
-    let api_key = std::env::var("AXIM_SERVICE_KEY").map_err(|_| "AXIM_SERVICE_KEY not set".to_string())?;
+    let base_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let api_key =
+        std::env::var("AXIM_SERVICE_KEY").map_err(|_| "AXIM_SERVICE_KEY not set".to_string())?;
 
     let url = format!("{base_url}/api/v1/executive/sync");
     let client = reqwest::Client::builder()

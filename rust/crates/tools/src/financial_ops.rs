@@ -73,7 +73,8 @@ pub async fn audit_financial_metrics(timeframe: &str) -> Result<String, ToolErro
 }
 
 pub async fn execute_financial_summary() -> Result<serde_json::Value, String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
 
     let service_key = crate::axim_vault::fetch_temporal_credential("financial_readonly")
         .await

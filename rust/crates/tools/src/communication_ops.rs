@@ -363,7 +363,8 @@ pub async fn send_email_it_message(
     subject: &str,
     html: &str,
 ) -> Result<serde_json::Value, String> {
-    let api_key = std::env::var("EMAILIT_API_KEY").map_err(|_| "EMAILIT_API_KEY not set".to_string())?;
+    let api_key =
+        std::env::var("EMAILIT_API_KEY").map_err(|_| "EMAILIT_API_KEY not set".to_string())?;
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
