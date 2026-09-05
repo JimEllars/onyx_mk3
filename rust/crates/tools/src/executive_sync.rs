@@ -38,3 +38,41 @@ pub async fn run_daily_department_sync(company_update: &str) -> Result<(), Strin
 
     Ok(())
 }
+
+pub async fn execute_sync_directives(
+    directives: &str,
+    milestones: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let base_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let api_key = std::env::var("AXIM_SERVICE_KEY").map_err(|_| "AXIM_SERVICE_KEY not set".to_string())?;
+
+    let url = format!("{base_url}/api/v1/executive/sync");
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to build reqwest client: {e}"))?;
+
+    let payload = serde_json::json!({
+        "directives": directives,
+        "milestones": milestones,
+    });
+
+    let res = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    if res.status().is_success() {
+        let data: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {e}"))?;
+        Ok(data)
+    } else {
+        Err(format!("Axim API error: {}", res.status()))
+    }
+}

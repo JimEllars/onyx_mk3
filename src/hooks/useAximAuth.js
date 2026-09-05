@@ -16,7 +16,7 @@ function parseJwt(token) {
     }
 }
 
-const AUTHORIZED_USERS = ['jamesellars@jkrenewables.com', 'admin@axim.us.com'];
+const AUTHORIZED_USERS = ['james.ellars@axim.us.com', 'jrellars@gmail.com'];
 
 export function useAximAuth() {
   const [authError, setAuthError] = useState('');

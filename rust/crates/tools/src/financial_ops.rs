@@ -71,3 +71,35 @@ pub async fn audit_financial_metrics(timeframe: &str) -> Result<String, ToolErro
 
     Ok(report)
 }
+
+pub async fn execute_financial_summary() -> Result<serde_json::Value, String> {
+    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+
+    let service_key = crate::axim_vault::fetch_temporal_credential("financial_readonly")
+        .await
+        .map_err(|e| format!("Failed to fetch credentials: {e}"))?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to build reqwest client: {e}"))?;
+
+    let url = format!("{axim_core_url}/api/v1/financial/summary");
+
+    let res = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {service_key}"))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    if res.status().is_success() {
+        let data: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse JSON: {e}"))?;
+        Ok(data)
+    } else {
+        Err(format!("Axim API error: {}", res.status()))
+    }
+}
