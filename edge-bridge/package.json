@@ -16,7 +16,7 @@
     "@cloudflare/workers-types": "^5.20260728.1",
     "@types/node": "^26.4.1",
     "@types/pg": "^8.20.3",
-    "miniflare": "^4.20260611.0",
+    "miniflare": "^5.20260903.0-alpha",
     "pg": "^8.22.0",
     "prettier": "^3.9.5",
     "typescript": "^7.0.2",
