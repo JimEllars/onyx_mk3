@@ -4102,14 +4102,23 @@ pub fn handle_slash_command(
                     "args": args
                 });
                 let client = reqwest::Client::new();
-                let _ = client.post("http://127.0.0.1:8787/api/v1/commands/dispatch")
-                    .header("Authorization", format!("Bearer {}", std::env::var("AXIM_ONYX_SECRET").unwrap_or_default()))
+                let _ = client
+                    .post("http://127.0.0.1:8787/api/v1/commands/dispatch")
+                    .header(
+                        "Authorization",
+                        format!(
+                            "Bearer {}",
+                            std::env::var("AXIM_ONYX_SECRET").unwrap_or_default()
+                        ),
+                    )
                     .json(&payload)
                     .send()
                     .await;
             });
             Some(SlashCommandResult {
-                message: format!("Micro-program 'Demand Letter' dispatched to Edge Bridge with args: {args:?}"),
+                message: format!(
+                    "Micro-program 'Demand Letter' dispatched to Edge Bridge with args: {args:?}"
+                ),
                 session: session.clone(),
             })
         }
@@ -4121,14 +4130,23 @@ pub fn handle_slash_command(
                     "args": args
                 });
                 let client = reqwest::Client::new();
-                let _ = client.post("http://127.0.0.1:8787/api/v1/commands/dispatch")
-                    .header("Authorization", format!("Bearer {}", std::env::var("AXIM_ONYX_SECRET").unwrap_or_default()))
+                let _ = client
+                    .post("http://127.0.0.1:8787/api/v1/commands/dispatch")
+                    .header(
+                        "Authorization",
+                        format!(
+                            "Bearer {}",
+                            std::env::var("AXIM_ONYX_SECRET").unwrap_or_default()
+                        ),
+                    )
                     .json(&payload)
                     .send()
                     .await;
             });
             Some(SlashCommandResult {
-                message: format!("Micro-program 'NDA Generator' dispatched to Edge Bridge with args: {args:?}"),
+                message: format!(
+                    "Micro-program 'NDA Generator' dispatched to Edge Bridge with args: {args:?}"
+                ),
                 session: session.clone(),
             })
         }
@@ -4140,8 +4158,15 @@ pub fn handle_slash_command(
                     "args": args
                 });
                 let client = reqwest::Client::new();
-                let _ = client.post("http://127.0.0.1:8787/api/v1/commands/dispatch")
-                    .header("Authorization", format!("Bearer {}", std::env::var("AXIM_ONYX_SECRET").unwrap_or_default()))
+                let _ = client
+                    .post("http://127.0.0.1:8787/api/v1/commands/dispatch")
+                    .header(
+                        "Authorization",
+                        format!(
+                            "Bearer {}",
+                            std::env::var("AXIM_ONYX_SECRET").unwrap_or_default()
+                        ),
+                    )
                     .json(&payload)
                     .send()
                     .await;
@@ -4159,8 +4184,15 @@ pub fn handle_slash_command(
                     "args": args
                 });
                 let client = reqwest::Client::new();
-                let _ = client.post("http://127.0.0.1:8787/api/v1/commands/dispatch")
-                    .header("Authorization", format!("Bearer {}", std::env::var("AXIM_ONYX_SECRET").unwrap_or_default()))
+                let _ = client
+                    .post("http://127.0.0.1:8787/api/v1/commands/dispatch")
+                    .header(
+                        "Authorization",
+                        format!(
+                            "Bearer {}",
+                            std::env::var("AXIM_ONYX_SECRET").unwrap_or_default()
+                        ),
+                    )
                     .json(&payload)
                     .send()
                     .await;

@@ -60,7 +60,10 @@ impl Provider for CloudflareProvider {
         if let Ok(token) = std::env::var("CF_AIG_TOKEN") {
             // Re-route through Cloudflare AI Gateway
             // format: https://gateway.ai.cloudflare.com/v1/{account_id}/onyx-gateway/{provider}
-            url = format!("https://gateway.ai.cloudflare.com/v1/{}/onyx-gateway/cloudflare/run", self.account_id);
+            url = format!(
+                "https://gateway.ai.cloudflare.com/v1/{}/onyx-gateway/cloudflare/run",
+                self.account_id
+            );
             cf_aig_token = Some(token);
         }
 
@@ -108,11 +111,7 @@ impl Provider for CloudflareProvider {
                 req = req.header("cf-aig-authorization", format!("Bearer {token}"));
             }
 
-            let res = req
-                .json(&payload)
-                .send()
-                .await
-                .map_err(ApiError::Http)?;
+            let res = req.json(&payload).send().await.map_err(ApiError::Http)?;
 
             if !res.status().is_success() {
                 let status = res.status();
