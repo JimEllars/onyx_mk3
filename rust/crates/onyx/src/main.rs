@@ -2974,9 +2974,7 @@ pub(crate) fn default_oauth_config() -> OAuthConfig {
         token_url: String::from("https://passport.axim.us.com/api/v1/auth/token"),
         callback_port: None,
         manual_redirect_url: None,
-        scopes: vec![
-            String::from("offline_access"),
-        ],
+        scopes: vec![String::from("offline_access")],
     }
 }
 
