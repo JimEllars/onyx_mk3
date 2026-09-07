@@ -57,11 +57,13 @@ export default function ActionConsole({ peerConnection }) {
     const handleApprove = async (actionId) => {
         try {
             updateHitlActionStatus(actionId, 'APPROVING...');
-            const response = await fetch('/api/approve', {
+            const token = localStorage.getItem('axim_passport_token');
+            const apiUrl = import.meta.env.VITE_ONYX_WORKER_URL || '';
+            const response = await fetch(`${apiUrl}/api/approve`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': 'Bearer dev-token' // Mock token for now
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({ task_id: actionId, signed_payload: 'mock_payload' })
             });
@@ -78,11 +80,13 @@ export default function ActionConsole({ peerConnection }) {
     const handleReject = async (actionId) => {
         try {
             updateHitlActionStatus(actionId, 'REJECTING...');
-            const response = await fetch('/api/approve', {
+            const token = localStorage.getItem('axim_passport_token');
+            const apiUrl = import.meta.env.VITE_ONYX_WORKER_URL || '';
+            const response = await fetch(`${apiUrl}/api/approve`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': 'Bearer dev-token' // Mock token for now
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({ task_id: actionId, action: 'reject' })
             });

@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "onyx-edge-bridge",
   "main": "src/index.ts",
-  "compatibility_date": "2026-07-09",
+  "compatibility_date": "2026-09-01",
   "analytics_engine_datasets": [
     {
       "binding": "ONYX_EDGE_METRICS",
@@ -18,8 +18,8 @@
   },
   "routes": [
     {
-      "pattern": "onyx-edge.axim.us.com",
-      "custom_domain": true
+      "pattern": "onyx-bridge.axim.us.com/*",
+      "zone_name": "axim.us.com"
     }
   ],
   "ai": {

@@ -15,3 +15,8 @@ node_modules/
 node_modules
 node_modules/
 dist
+
+# Session and temp files
+.port_sessions/
+*.log
+dev.pid
