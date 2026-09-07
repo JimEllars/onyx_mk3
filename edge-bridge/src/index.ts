@@ -272,7 +272,7 @@ async function enforceAsguardRateLimit(request: Request, env: Env, url: URL): Pr
   }
 }
 
-async function checkAuth(req: Request, env: Env): Promise<Response | null> {
+async function checkAuth(req: Request, env: Env, requireSuperUser: boolean = false): Promise<Response | null> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) {
     return new Response("Unauthorized", {
@@ -284,7 +284,6 @@ async function checkAuth(req: Request, env: Env): Promise<Response | null> {
   const onyxToken = `Bearer ${env.AXIM_ONYX_SECRET}`;
   const serviceKey = `Bearer ${env.AXIM_SERVICE_KEY}`;
 
-  // Basic Passport JWT validation (heuristic check for structure)
   const isJwt = authHeader.startsWith('Bearer ey') && authHeader.split('.').length === 3;
 
   if (authHeader !== onyxToken && authHeader !== serviceKey && !isJwt) {
@@ -293,6 +292,43 @@ async function checkAuth(req: Request, env: Env): Promise<Response | null> {
       headers: getCorsHeaders(req),
     });
   }
+
+  if (requireSuperUser) {
+    let isSuperUser = false;
+
+    if (isJwt) {
+      try {
+        const tokenParts = authHeader.split(' ')[1].split('.');
+        const payloadStr = atob(tokenParts[1].replace(/-/g, '+').replace(/_/g, '/'));
+        const payload = JSON.parse(payloadStr);
+        if (payload.email === 'james.ellars@axim.us.com' || payload.email === 'jrellars@gmail.com') {
+          isSuperUser = true;
+        }
+      } catch (e) {
+        void 0;
+      }
+    } else if (authHeader === onyxToken || authHeader === serviceKey) {
+      // Internal service keys are considered super-users for these routes
+      isSuperUser = true;
+    }
+
+    if (!isSuperUser) {
+      return new Response(JSON.stringify({
+        type: "about:blank",
+        title: "Forbidden",
+        status: 403,
+        detail: "Super User authorization required",
+        instance: new URL(req.url).pathname
+      }), {
+        status: 403,
+        headers: {
+          ...getCorsHeaders(req, env),
+          "Content-Type": "application/problem+json"
+        },
+      });
+    }
+  }
+
   return null;
 }
 
@@ -836,7 +872,7 @@ const onyx_handler: any = {
       request.method === "POST" &&
       url.pathname === "/api/v1/dlq-drain"
     ) {
-      const authError = await checkAuth(request, env);
+      const authError = await checkAuth(request, env, true);
       if (authError) return authError;
 
       if (!env.ONYX_STATE || !env.CORE_INGEST_URL) {
@@ -1773,7 +1809,7 @@ const onyx_handler: any = {
         request.method === "POST" &&
         url.pathname === "/api/v1/commands/dispatch"
       ) {
-        const authError = await checkAuth(request, env);
+        const authError = await checkAuth(request, env, true);
         if (authError) return authError;
 
         const payload = parsedBody || {};
@@ -1981,10 +2017,77 @@ const onyx_handler: any = {
 
       } else if (
         request.method === "POST" &&
+        url.pathname === "/api/v1/ecosystem/event"
+      ) {
+        // Step 1: Ecosystem Event Ingress
+        const signature = request.headers.get("X-Axim-Signature");
+        if (!signature || !env.AXIM_ONYX_SECRET) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+
+        const rawBody = await request.clone().text();
+        const encoder = new TextEncoder();
+        const key = await crypto.subtle.importKey(
+          "raw",
+          encoder.encode(env.AXIM_ONYX_SECRET),
+          { name: "HMAC", hash: "SHA-256" },
+          false,
+          ["sign", "verify"]
+        );
+        const signatureBuffer = await crypto.subtle.sign(
+          "HMAC",
+          key,
+          encoder.encode(rawBody)
+        );
+        const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+        const signatureHex = signatureArray
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+        const expectedSignature = `sha256=${signatureHex}`;
+
+        if (signature !== signatureHex && signature !== expectedSignature) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+
+        try {
+          const payload = JSON.parse(rawBody);
+          const eventId = crypto.randomUUID();
+          const kvKey = `metric_${payload.source_app || "unknown"}_${Date.now()}_${eventId}`;
+
+          if (env.ECOSYSTEM_METRICS_KV) {
+            ctx.waitUntil(
+              env.ECOSYSTEM_METRICS_KV.put(
+                kvKey,
+                JSON.stringify({
+                  source_app: payload.source_app,
+                  timestamp: payload.timestamp,
+                  event_type: payload.event_type,
+                  payload: payload.payload,
+                  severity: payload.severity,
+                }),
+                { expirationTtl: 604800 }
+              )
+            );
+          }
+
+          return new Response(JSON.stringify({ status: "ingested", event_id: eventId }), {
+            status: 202,
+            headers: addOnyxHeaders(
+              { ...getCorsHeaders(request, env), "Content-Type": "application/json" },
+              edgeStatus,
+              cacheStatus,
+              traceId
+            ),
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ error: "Invalid payload" }), { status: 400 });
+        }
+      } else if (
+        request.method === "POST" &&
         url.pathname === "/api/v1/email/send"
       ) {
         ctx.waitUntil(bootstrapDatabase(env));
-        const authError = await checkAuth(request, env);
+        const authError = await checkAuth(request, env, true);
         if (authError) return authError;
 
         if (!env.EMAILIT_API_KEY) {
@@ -2006,15 +2109,24 @@ const onyx_handler: any = {
         }
 
         try {
-          const payload = await request.clone().json() as any;
-          const emailitRes = await fetch("https://api.emailit.com/v1/email/send", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${env.EMAILIT_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-          });
+          const rawBodyText = await request.clone().text();
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 5000);
+
+          let emailitRes;
+          try {
+            emailitRes = await fetch("https://api.emailit.com/v1/email/send", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${env.EMAILIT_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: rawBodyText,
+              signal: controller.signal
+            });
+          } finally {
+            clearTimeout(timeout);
+          }
 
           if (!emailitRes.ok) {
             const errText = await emailitRes.text();
@@ -2048,12 +2160,20 @@ const onyx_handler: any = {
               void 0;
             }
           }
-          return new Response(JSON.stringify({ error: e.message || "Failed to send email" }), {
+
+          // RFC 7807 problem details
+          return new Response(JSON.stringify({
+            type: "about:blank",
+            title: "Email Dispatch Failed",
+            status: 500,
+            detail: e.message || "Failed to send email",
+            instance: url.pathname
+          }), {
             status: 500,
             headers: addOnyxHeaders(
               {
                 ...getCorsHeaders(request, env),
-                "Content-Type": "application/json",
+                "Content-Type": "application/problem+json",
               },
               edgeStatus,
               cacheStatus,

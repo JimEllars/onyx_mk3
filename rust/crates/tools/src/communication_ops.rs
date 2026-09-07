@@ -358,26 +358,51 @@ pub async fn escalate_to_creator(message: &str, urgency: &str) -> Result<String,
     }
 }
 
-pub async fn send_email_it_message(
+pub async fn send_emailit_notification(
     to: &str,
     subject: &str,
     html: &str,
 ) -> Result<serde_json::Value, String> {
-    let api_key =
-        std::env::var("EMAILIT_API_KEY").map_err(|_| "EMAILIT_API_KEY not set".to_string())?;
-
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("Failed to build reqwest client: {e}"))?;
-
-    let url = "https://api.emailit.com/v1/email/send".to_string();
 
     let payload = serde_json::json!({
         "to": to,
         "subject": subject,
         "html": html,
     });
+
+    // Try Edge Bridge first
+    if let Ok(core_url) = std::env::var("AXIM_CORE_URL") {
+        if let Ok(service_key) = std::env::var("AXIM_SERVICE_KEY") {
+            let url = format!("{core_url}/api/v1/email/send");
+            let res = client
+                .post(&url)
+                .header("Authorization", format!("Bearer {service_key}"))
+                .header("Content-Type", "application/json")
+                .json(&payload)
+                .send()
+                .await;
+
+            if let Ok(response) = res {
+                let status = response.status();
+                if status.is_success() {
+                    log_email_transaction("EmailItNotification_Edge", status.as_u16(), to);
+                    if let Ok(data) = response.json().await {
+                        return Ok(data);
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback to direct EmailIt API dispatch
+    let api_key = std::env::var("EMAILIT_API_KEY")
+        .map_err(|_| "EMAILIT_API_KEY not set and edge bridge failed/unavailable".to_string())?;
+
+    let url = "https://api.emailit.com/v1/email/send".to_string();
 
     let res = client
         .post(&url)
@@ -386,15 +411,18 @@ pub async fn send_email_it_message(
         .json(&payload)
         .send()
         .await
-        .map_err(|e| format!("Request failed: {e}"))?;
+        .map_err(|e| format!("Direct Request failed: {e}"))?;
 
-    if res.status().is_success() {
+    let status = res.status();
+    log_email_transaction("EmailItNotification_Direct", status.as_u16(), to);
+
+    if status.is_success() {
         let data: serde_json::Value = res
             .json()
             .await
             .map_err(|e| format!("Failed to parse response: {e}"))?;
         Ok(data)
     } else {
-        Err(format!("EmailIt API error: {}", res.status()))
+        Err(format!("EmailIt API error: {status}"))
     }
 }
