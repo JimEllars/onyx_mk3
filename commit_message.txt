@@ -1,0 +1,6 @@
+feat(ecosystem): Add ingress route, DLQ for EmailIt, and super user guards
+
+- Implemented POST /api/v1/ecosystem/event in edge-bridge for telemetry ingress, buffered asynchronously to KV with X-Axim-Signature validation.
+- Wired outbound EmailIt delivery in edge-bridge to Cloudflare KV Dead-Letter Queue with RFC 7807 fallback on failure.
+- Updated send_emailit_notification helper in rust tools to route via edge-bridge before falling back to direct API dispatch.
+- Implemented Super User authorization guard restricting administrative and directive-broadcast endpoints exclusively to verified claims for james.ellars@axim.us.com and jrellars@gmail.com.
