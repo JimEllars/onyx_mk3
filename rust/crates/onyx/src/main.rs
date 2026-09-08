@@ -2969,16 +2969,12 @@ pub(crate) fn print_bootstrap_plan(
 
 pub(crate) fn default_oauth_config() -> OAuthConfig {
     OAuthConfig {
-        client_id: String::from("9d1c250a-e61b-44d9-88ed-5944d1962f5e"),
-        authorize_url: String::from("https://platform.claude.com/oauth/authorize"),
-        token_url: String::from("https://platform.claude.com/v1/oauth/token"),
+        client_id: String::from("onyx_cli"),
+        authorize_url: String::from("https://passport.axim.us.com/api/v1/auth/authorize"),
+        token_url: String::from("https://passport.axim.us.com/api/v1/auth/token"),
         callback_port: None,
         manual_redirect_url: None,
-        scopes: vec![
-            String::from("user:profile"),
-            String::from("user:inference"),
-            String::from("user:sessions:claude_code"),
-        ],
+        scopes: vec![String::from("offline_access")],
     }
 }
 

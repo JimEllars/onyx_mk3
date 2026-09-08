@@ -21,35 +21,36 @@ const AUTHORIZED_USERS = ['james.ellars@axim.us.com', 'jrellars@gmail.com'];
 export function useAximAuth() {
   const [authError, setAuthError] = useState('');
 
-  const validateToken = useCallback((jwtToken) => {
+  const validateToken = useCallback(async (jwtToken) => {
     if (!jwtToken) return false;
     if (jwtToken === 'dev-token') return true;
 
-    const payload = parseJwt(jwtToken);
-    if (payload && payload.email) {
-      if (AUTHORIZED_USERS.includes(payload.email)) {
+    try {
+      const response = await fetch('https://passport.axim.us.com/api/v1/auth/verify-token', {
+        headers: {
+          'Authorization': `Bearer ${jwtToken}`
+        }
+      });
+      if (!response.ok) return false;
+      const data = await response.json();
+
+      if (data && data.email && AUTHORIZED_USERS.includes(data.email)) {
         return true;
-      } else {
-        return false; // Error set in effect
       }
+      return false;
+    } catch (e) {
+      console.warn("Failed to contact passport, falling back to local decoding");
+      const payload = parseJwt(jwtToken);
+      if (payload && payload.email && AUTHORIZED_USERS.includes(payload.email)) {
+        return true;
+      }
+      return false;
     }
-    return false;
   }, []);
 
-  const [token, setToken] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlToken = urlParams.get('token');
-      if (urlToken) {
-          if (validateToken(urlToken)) return urlToken;
-      }
-      const storedToken = localStorage.getItem('axim_passport_token');
-      if (storedToken && validateToken(storedToken)) return storedToken;
-    }
-    return null;
-  });
+  const [token, setToken] = useState(null);
 
-  const [isAuthenticated, setIsAuthenticated] = useState(() => !!token);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -58,29 +59,36 @@ export function useAximAuth() {
     const urlParams = new URLSearchParams(window.location.search);
     const urlToken = urlParams.get('token');
 
-    if (urlToken) {
-      if (validateToken(urlToken)) {
-        setToken(urlToken);
-        setIsAuthenticated(true);
-        localStorage.setItem('axim_passport_token', urlToken);
-        setAuthError('');
+    const initializeAuth = async () => {
+      if (urlToken) {
+        const isValid = await validateToken(urlToken);
+        if (isValid) {
+          setToken(urlToken);
+          setIsAuthenticated(true);
+          localStorage.setItem('axim_passport_token', urlToken);
+          setAuthError('');
+        } else {
+          setAuthError('User not in authorized whitelist or invalid token format.');
+        }
+        window.history.replaceState({}, document.title, window.location.pathname);
       } else {
-        setAuthError('User not in authorized whitelist or invalid token format.');
+        const storedToken = localStorage.getItem('axim_passport_token');
+        if (storedToken) {
+            const isValid = await validateToken(storedToken);
+            if (!isValid) {
+                localStorage.removeItem('axim_passport_token');
+                setToken(null);
+                setIsAuthenticated(false);
+                setAuthError('User not in authorized whitelist or invalid token format.');
+            } else {
+                setToken(storedToken);
+                setIsAuthenticated(true);
+                setAuthError('');
+            }
+        }
       }
-      // Clear URL parameters
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else {
-       // Validate stored token on mount to set errors if any
-       const storedToken = localStorage.getItem('axim_passport_token');
-       if (storedToken) {
-           if (!validateToken(storedToken)) {
-               localStorage.removeItem('axim_passport_token');
-               setToken(null);
-               setIsAuthenticated(false);
-               setAuthError('User not in authorized whitelist or invalid token format.');
-           }
-       }
-    }
+    };
+    initializeAuth();
   }, [validateToken]);
 
   const loginWithPassport = useCallback(() => {
