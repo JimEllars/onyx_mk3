@@ -230,7 +230,7 @@ impl OpenAiCompatClient {
                             "OpenAI compat provider failover/retry triggered"
                         );
                         error
-                    },
+                    }
                     Err(error) => return Err(error),
                 },
                 Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => {
@@ -241,7 +241,7 @@ impl OpenAiCompatClient {
                         "OpenAI compat provider failover/retry triggered"
                     );
                     error
-                },
+                }
                 Err(error) => return Err(error),
             };
 

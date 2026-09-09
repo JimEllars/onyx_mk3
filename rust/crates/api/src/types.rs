@@ -16,7 +16,6 @@ pub struct TelemetrySnapshot {
     pub timestamp: u64,
 }
 
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct MessageRequest {
     pub model: String,

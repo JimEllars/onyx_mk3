@@ -299,9 +299,21 @@ impl AnthropicClient {
 
         let http_response = self.send_with_retry(&request).await?;
         let request_id = request_id_from_headers(http_response.headers());
-        let edge_latency = http_response.headers().get("cf-edge-latency-ms").and_then(|h| h.to_str().ok()).and_then(|s| s.parse().ok());
-        let onyx_provider = http_response.headers().get("X-Onyx-Provider").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
-        let cache_status = http_response.headers().get("X-Onyx-Cache-Status").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
+        let edge_latency = http_response
+            .headers()
+            .get("cf-edge-latency-ms")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| s.parse().ok());
+        let onyx_provider = http_response
+            .headers()
+            .get("X-Onyx-Provider")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
+        let cache_status = http_response
+            .headers()
+            .get("X-Onyx-Cache-Status")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
 
         let body = http_response.text().await.map_err(ApiError::from)?;
         let mut response = serde_json::from_str::<MessageResponse>(&body).map_err(|error| {
@@ -330,7 +342,10 @@ impl AnthropicClient {
             provider: onyx_provider,
             model: Some(response.model.clone()),
             cache_status,
-            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
         });
 
         if let Some(prompt_cache) = &self.prompt_cache {

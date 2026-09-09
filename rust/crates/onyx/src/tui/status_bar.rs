@@ -92,18 +92,27 @@ pub fn render_status_bar_text(
     };
     let edge_status_val_conn = telemetry::metrics::EDGE_KV_STATUS.get();
     let is_connected = (edge_status_val_conn - 1.0).abs() < f64::EPSILON;
-    let connectivity_indicator = if is_connected { "[32m●[0m" } else { "[31m■[0m" };
+    let connectivity_indicator = if is_connected {
+        "[32m●[0m"
+    } else {
+        "[31m■[0m"
+    };
     let edge_conn_str = if is_connected {
         "Connected (Cloudflare Edge)"
     } else {
         "Offline"
     };
 
-    let active_provider = telemetry::metrics::get_last_active_provider().unwrap_or_else(|| "unknown".to_string());
+    let active_provider =
+        telemetry::metrics::get_last_active_provider().unwrap_or_else(|| "unknown".to_string());
 
     let edge_latency_val = telemetry::metrics::EDGE_LATENCY_MS.get();
 
-    let latency_str = if edge_latency_val == 0.0 { "--".to_string() } else { format!("{edge_latency_val:.2}") };
+    let latency_str = if edge_latency_val == 0.0 {
+        "--".to_string()
+    } else {
+        format!("{edge_latency_val:.2}")
+    };
     let mut text = format!(
         "{} {} ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ Model: [{}:{}] ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{} ∥ Latency: ⚡ {}ms",
         connectivity_indicator, edge_conn_str, brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
@@ -113,10 +122,20 @@ pub fn render_status_bar_text(
     if let Ok((cols, _)) = size() {
         if cols < 80 {
             // Collapse non-essential widgets
-            let latency_str = if edge_latency_val == 0.0 { "--".to_string() } else { format!("{edge_latency_val:.2}") };
+            let latency_str = if edge_latency_val == 0.0 {
+                "--".to_string()
+            } else {
+                format!("{edge_latency_val:.2}")
+            };
             text = format!(
                 "{} {} ∥ [{}:{}] ∥ {} ∥ Cost: ${:.4} ∥ Latency: ⚡ {}ms",
-                connectivity_indicator, edge_conn_str, active_provider, model, session_id, cost, latency_str
+                connectivity_indicator,
+                edge_conn_str,
+                active_provider,
+                model,
+                session_id,
+                cost,
+                latency_str
             );
         }
     }
