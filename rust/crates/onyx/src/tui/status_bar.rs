@@ -91,24 +91,51 @@ pub fn render_status_bar_text(
         "Standard Auth".to_string()
     };
     let edge_status_val_conn = telemetry::metrics::EDGE_KV_STATUS.get();
-    let edge_conn_str = if (edge_status_val_conn - 1.0).abs() < f64::EPSILON {
+    let is_connected = (edge_status_val_conn - 1.0).abs() < f64::EPSILON;
+    let connectivity_indicator = if is_connected {
+        "[32m●[0m"
+    } else {
+        "[31m■[0m"
+    };
+    let edge_conn_str = if is_connected {
         "Connected (Cloudflare Edge)"
     } else {
         "Offline"
     };
+
+    let active_provider =
+        telemetry::metrics::get_last_active_provider().unwrap_or_else(|| "unknown".to_string());
+
     let edge_latency_val = telemetry::metrics::EDGE_LATENCY_MS.get();
 
+    let latency_str = if edge_latency_val == 0.0 {
+        "--".to_string()
+    } else {
+        format!("{edge_latency_val:.2}")
+    };
     let mut text = format!(
-        "⚡ {} ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ Model: {} ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{} ∥ Latency: {:.2}ms",
-        edge_conn_str, brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
-        model, session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str, edge_latency_val
+        "{} {} ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ Model: [{}:{}] ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{} ∥ Latency: ⚡ {}ms",
+        connectivity_indicator, edge_conn_str, brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
+        active_provider, model, session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str, latency_str
     );
 
     if let Ok((cols, _)) = size() {
         if cols < 80 {
             // Collapse non-essential widgets
+            let latency_str = if edge_latency_val == 0.0 {
+                "--".to_string()
+            } else {
+                format!("{edge_latency_val:.2}")
+            };
             text = format!(
-                "⚡ {edge_conn_str} ∥ {model} ∥ {session_id} ∥ Cost: ${cost:.4} ∥ Lat: {edge_latency_val:.2}ms"
+                "{} {} ∥ [{}:{}] ∥ {} ∥ Cost: ${:.4} ∥ Latency: ⚡ {}ms",
+                connectivity_indicator,
+                edge_conn_str,
+                active_provider,
+                model,
+                session_id,
+                cost,
+                latency_str
             );
         }
     }
