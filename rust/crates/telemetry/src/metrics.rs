@@ -117,6 +117,24 @@ pub static IO_STREAM_ERRORS_TOTAL: LazyLock<CounterVec> = LazyLock::new(|| {
     .unwrap()
 });
 
+
+pub static LAST_ACTIVE_PROVIDER: std::sync::LazyLock<std::sync::RwLock<Option<String>>> = std::sync::LazyLock::new(|| std::sync::RwLock::new(None));
+
+pub fn set_last_active_provider(provider: String) {
+    if let Ok(mut lock) = LAST_ACTIVE_PROVIDER.write() {
+        *lock = Some(provider);
+    }
+}
+
+pub fn get_last_active_provider() -> Option<String> {
+    if let Ok(lock) = LAST_ACTIVE_PROVIDER.read() {
+        lock.clone()
+    } else {
+        None
+    }
+}
+
+
 pub static EDGE_LATENCY_MS: LazyLock<Gauge> = LazyLock::new(|| {
     register_gauge!(
         "onyx_edge_latency_ms",

@@ -2,6 +2,21 @@ use runtime::{pricing_for_model, TokenUsage, UsageCostEstimate};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TelemetrySnapshot {
+    #[serde(default)]
+    pub latency_ms: Option<u64>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub cache_status: Option<String>,
+    #[serde(default)]
+    pub timestamp: u64,
+}
+
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct MessageRequest {
     pub model: String,
@@ -147,6 +162,8 @@ pub struct MessageResponse {
     pub usage: Usage,
     #[serde(default)]
     pub request_id: Option<String>,
+    #[serde(default)]
+    pub telemetry: Option<TelemetrySnapshot>,
 }
 
 impl MessageResponse {
@@ -315,6 +332,7 @@ mod tests {
                 output_tokens: 500_000,
             },
             request_id: None,
+            telemetry: None,
         };
 
         let cost = response.usage.estimated_cost_usd(&response.model);

@@ -222,10 +222,26 @@ impl OpenAiCompatClient {
             let retryable_error = match self.send_raw_request(request).await {
                 Ok(response) => match expect_success(response).await {
                     Ok(response) => return Ok(response),
-                    Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => error,
+                    Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => {
+                        tracing::warn!(
+                            attempt = attempts,
+                            max_retries = self.max_retries,
+                            status = ?error,
+                            "OpenAI compat provider failover/retry triggered"
+                        );
+                        error
+                    },
                     Err(error) => return Err(error),
                 },
-                Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => error,
+                Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => {
+                    tracing::warn!(
+                        attempt = attempts,
+                        max_retries = self.max_retries,
+                        status = ?error,
+                        "OpenAI compat provider failover/retry triggered"
+                    );
+                    error
+                },
                 Err(error) => return Err(error),
             };
 
@@ -444,6 +460,7 @@ impl StreamState {
                         output_tokens: 0,
                     },
                     request_id: None,
+                    telemetry: None,
                 },
             }));
         }
@@ -1036,6 +1053,7 @@ fn normalize_response(
                 .map_or(0, |usage| usage.completion_tokens),
         },
         request_id: None,
+        telemetry: None,
     })
 }
 

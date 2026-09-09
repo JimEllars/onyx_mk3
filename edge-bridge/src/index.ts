@@ -136,12 +136,17 @@ function getCorsHeaders(request: Request, env?: Env) {
 
 function addOnyxHeaders(
   headers: HeadersInit,
-  status: { degraded: boolean; startTime?: number },
+  status: { degraded: boolean; startTime?: number; provider?: string },
   cacheStatus: string = "MISS",
   traceId?: string,
   rayId?: string,
 ): Headers {
   const h = new Headers(headers);
+  if (status.provider) {
+    h.set("X-Onyx-Provider", status.provider);
+  } else if (h.has("X-Onyx-Fallback")) {
+    h.set("X-Onyx-Provider", "cloudflare-workers-ai");
+  }
   if (traceId) {
     h.set("X-Onyx-Trace-Id", traceId);
     h.set("X-Request-ID", traceId);
@@ -152,6 +157,7 @@ function addOnyxHeaders(
   if (status.startTime) {
     const latency = Date.now() - status.startTime;
     h.set("X-Onyx-Edge-Latency", `${latency}ms`);
+    h.set("cf-edge-latency-ms", `${latency}`);
   }
   h.set("X-Onyx-Edge-Health", status.degraded ? "DEGRADED" : "OK");
   h.set("X-Onyx-Cache-Status", cacheStatus);
@@ -2161,24 +2167,30 @@ const onyx_handler: any = {
             }
           }
 
-          // RFC 7807 problem details
+          const errorMsg = e.message || "Failed to send email";
+          const isStreaming = request.headers.get("Accept")?.includes("text/event-stream");
+          if (isStreaming) {
+            const ssePayload = `event: error\ndata: ${JSON.stringify({ type: "error", errorText: errorMsg })}\n\ndata: [DONE]\n\n`;
+            return new Response(ssePayload, {
+              status: 200,
+              headers: addOnyxHeaders(
+                { ...getCorsHeaders(request, env), "Content-Type": "text/event-stream" },
+                edgeStatus, cacheStatus, traceId
+              )
+            });
+          }
           return new Response(JSON.stringify({
             type: "about:blank",
             title: "Email Dispatch Failed",
             status: 500,
-            detail: e.message || "Failed to send email",
+            detail: errorMsg,
             instance: url.pathname
           }), {
             status: 500,
             headers: addOnyxHeaders(
-              {
-                ...getCorsHeaders(request, env),
-                "Content-Type": "application/problem+json",
-              },
-              edgeStatus,
-              cacheStatus,
-              traceId,
-            ),
+              { ...getCorsHeaders(request, env), "Content-Type": "application/problem+json" },
+              edgeStatus, cacheStatus, traceId
+            )
           });
         }
       } else if (
@@ -2415,23 +2427,29 @@ export default {
       response = await onyx_handler._fetch(request, env, ctx);
     } catch (e) {
       void 0;
-      const traceIdFallback =
-        request.headers.get("x-request-id") || crypto.randomUUID();
-      response = new Response(
-        JSON.stringify({ error: "Internal Server Error", fallback: true }),
-        {
-          status: 500,
+      const traceIdFallback = request.headers.get("x-request-id") || crypto.randomUUID();
+      const isStreaming = request.headers.get("Accept")?.includes("text/event-stream");
+      if (isStreaming) {
+        const ssePayload = `event: error\ndata: ${JSON.stringify({ type: "error", errorText: "Internal Server Error" })}\n\ndata: [DONE]\n\n`;
+        response = new Response(ssePayload, {
+          status: 200,
           headers: addOnyxHeaders(
-            {
-              "Content-Type": "application/json",
-              ...getCorsHeaders(request, env),
-            },
-            { degraded: true },
-            "MISS",
-            traceIdFallback,
-          ),
-        },
-      );
+            { ...getCorsHeaders(request, env), "Content-Type": "text/event-stream" },
+            { degraded: true }, "MISS", traceIdFallback
+          )
+        });
+      } else {
+        response = new Response(
+          JSON.stringify({ error: "Internal Server Error", fallback: true }),
+          {
+            status: 500,
+            headers: addOnyxHeaders(
+              { "Content-Type": "application/json", ...getCorsHeaders(request, env) },
+              { degraded: true }, "MISS", traceIdFallback
+            )
+          }
+        );
+      }
     }
     const latency = Date.now() - startTime;
     const url = new URL(request.url);
