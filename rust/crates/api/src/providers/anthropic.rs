@@ -298,10 +298,17 @@ impl AnthropicClient {
         self.preflight_message_request(&request).await?;
 
         let http_response = self.send_with_retry(&request).await?;
-        let request_id = request_id_from_headers(http_response.headers()).or_else(|| http_response.headers().get("x-onyx-trace-id").and_then(|h| h.to_str().ok()).map(std::string::ToString::to_string));
+        let request_id = request_id_from_headers(http_response.headers()).or_else(|| {
+            http_response
+                .headers()
+                .get("x-onyx-trace-id")
+                .and_then(|h| h.to_str().ok())
+                .map(std::string::ToString::to_string)
+        });
         let edge_latency = http_response
             .headers()
-            .get("x-onyx-edge-duration-ms").or_else(|| http_response.headers().get("cf-edge-latency-ms"))
+            .get("x-onyx-edge-duration-ms")
+            .or_else(|| http_response.headers().get("cf-edge-latency-ms"))
             .and_then(|h| h.to_str().ok())
             .and_then(|s| s.parse().ok());
         let onyx_provider = http_response
