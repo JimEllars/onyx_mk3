@@ -298,22 +298,22 @@ impl AnthropicClient {
         self.preflight_message_request(&request).await?;
 
         let http_response = self.send_with_retry(&request).await?;
-        let request_id = request_id_from_headers(http_response.headers());
+        let request_id = request_id_from_headers(http_response.headers()).or_else(|| http_response.headers().get("x-onyx-trace-id").and_then(|h| h.to_str().ok()).map(std::string::ToString::to_string));
         let edge_latency = http_response
             .headers()
-            .get("cf-edge-latency-ms")
+            .get("x-onyx-edge-duration-ms").or_else(|| http_response.headers().get("cf-edge-latency-ms"))
             .and_then(|h| h.to_str().ok())
             .and_then(|s| s.parse().ok());
         let onyx_provider = http_response
             .headers()
             .get("X-Onyx-Provider")
             .and_then(|h| h.to_str().ok())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
         let cache_status = http_response
             .headers()
             .get("X-Onyx-Cache-Status")
             .and_then(|h| h.to_str().ok())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
 
         let body = http_response.text().await.map_err(ApiError::from)?;
         let mut response = serde_json::from_str::<MessageResponse>(&body).map_err(|error| {
@@ -936,12 +936,21 @@ impl MessageStream {
                 return Ok(None);
             }
 
-            match self.response.chunk().await? {
-                Some(chunk) => {
+            match tokio::time::timeout(std::time::Duration::from_secs(15), self.response.chunk())
+                .await
+            {
+                Ok(Ok(Some(chunk))) => {
                     self.pending.extend(self.parser.push(&chunk)?);
                 }
-                None => {
+                Ok(Ok(None)) => {
                     self.done = true;
+                }
+                Ok(Err(e)) => return Err(ApiError::from(e)),
+                Err(_) => {
+                    self.done = true;
+                    return Err(ApiError::StreamTimeout(
+                        "SSE idle read timed out after 15s".to_string(),
+                    ));
                 }
             }
         }

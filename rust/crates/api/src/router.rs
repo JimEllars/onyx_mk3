@@ -46,7 +46,32 @@ pub struct AppState {
     pub auth_token: String,
 }
 
+pub fn start_edge_health_probe() {
+    tokio::spawn(async move {
+        let client = reqwest::Client::new();
+        let url = std::env::var("AXIM_ONYX_EDGE_URL")
+            .unwrap_or_else(|_| "https://api.axim.us.com".to_string())
+            + "/healthz";
+        loop {
+            let is_healthy = match client.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(json) = resp.json::<serde_json::Value>().await {
+                        json.get("status").and_then(|s| s.as_str()) == Some("ok")
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            };
+            crate::providers::CLOUDFLARE_HEALTHY.store(is_healthy, Ordering::Relaxed);
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    });
+}
+
 pub fn create_router(state: AppState) -> Router {
+    start_edge_health_probe();
+
     Router::new()
         .route("/health", get(handle_health_check))
         .route("/api/v1/internal/cron/daily-run", post(handle_daily_cron))

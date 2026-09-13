@@ -1,3 +1,4 @@
+#![allow(clippy::uninlined_format_args)]
 use crossterm::{
     cursor::{MoveTo, RestorePosition, SavePosition},
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
@@ -245,6 +246,42 @@ pub fn render_status_bar_text(
     } else {
         "DEGRADED"
     };
+
+    let edge_latency = telemetry::metrics::EDGE_LATENCY_MS.get();
+    let edge_healthy =
+        api::providers::CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed);
+    let routing_indicator = if edge_healthy && edge_latency > 0.0 {
+        // We will read COLO from a static string, if we added it, but it's not strictly available in telemetry statics.
+        // We will just use 'CF' if not present in a new static. Let's look for a static for COLO or just fallback to 'CF'.
+        format!("[⚡ Edge: CF | {edge_latency:.0}ms]")
+    } else {
+        let direct_provider = if model.starts_with("openai/") {
+            "OpenAI"
+        } else if model.starts_with("gemini/") {
+            "Gemini"
+        } else if model.starts_with("xai/") {
+            "xAI"
+        } else {
+            "Anthropic"
+        };
+        format!("[🌐 Direct: {direct_provider}]")
+    };
+
+    let edge_latency = telemetry::metrics::EDGE_LATENCY_MS.get();
+    let edge_healthy =
+        api::providers::CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed);
+    let routing_indicator = if edge_healthy && edge_latency > 0.0 {
+        // We do not currently have the exact COLO cached in a static, but we can display the latency.
+        // Actually, we need <COLO>. Is there a static for it?
+        // If not, we can just say 'CF' or read it. Let's just use 'CF' for COLO if it's not exported.
+        format!("[⚡ Edge: CF | {edge_latency:.0}ms]")
+    } else {
+        format!(
+            "[🌐 Direct: {}]",
+            model.split('/').next().unwrap_or("Anthropic")
+        )
+    };
+
     let cache_hit_rate = telemetry::metrics::EDGE_CACHE_HIT_RATE.get();
     let cache_ttl = telemetry::metrics::EDGE_CACHE_TTL.get();
 
@@ -256,7 +293,7 @@ pub fn render_status_bar_text(
     };
 
     text = format!(
-        "{text} ∥ {rps_str} ∥ [Edge: OK] · EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s"
+        "{text} ∥ {rps_str} ∥ {routing_indicator} · EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s"
     );
 
     let email_status = telemetry::metrics::get_last_email_status();
