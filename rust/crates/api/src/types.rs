@@ -286,6 +286,7 @@ pub struct MessageStopEvent {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
 pub enum StreamEvent {
     MessageStart(MessageStartEvent),
     MessageDelta(MessageDeltaEvent),

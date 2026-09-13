@@ -136,7 +136,7 @@ function getCorsHeaders(request: Request, env?: Env) {
 
 function addOnyxHeaders(
   headers: HeadersInit,
-  status: { degraded: boolean; startTime?: number; provider?: string },
+  status: { degraded: boolean; startTime?: number; provider?: string; colo?: string },
   cacheStatus: string = "MISS",
   traceId?: string,
   rayId?: string,
@@ -155,7 +155,9 @@ function addOnyxHeaders(
     h.set("X-Onyx-Ray-ID", rayId);
   }
   if (status.startTime) {
-    const latency = Date.now() - status.startTime;
+    const latency = (Date.now() - status.startTime).toFixed(2);
+    h.set("x-onyx-edge-duration-ms", latency);
+    h.set("x-onyx-edge-colo", status.colo || "unknown");
     h.set("X-Onyx-Edge-Latency", `${latency}ms`);
     h.set("cf-edge-latency-ms", `${latency}`);
   }
@@ -264,7 +266,7 @@ async function enforceAsguardRateLimit(request: Request, env: Env, url: URL): Pr
     const limit = 10; // Allow 10 mutating requests per 10s per IP for these endpoints
 
     if (currentCount >= limit) {
-      return new Response(JSON.stringify({ error: "Asguard Rate Limit Exceeded" }), {
+      return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Asguard Rate Limit Exceeded", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
         status: 429,
         headers: { "Content-Type": "application/json", "Retry-After": "10" }
       });
@@ -702,7 +704,7 @@ const onyx_handler: any = {
       request.headers.get("X-Request-ID") ||
       request.headers.get("cf-ray") ||
       crypto.randomUUID();
-    const edgeStatus = { degraded: false, startTime: Date.now() };
+    const edgeStatus = { degraded: false, startTime: Date.now(), colo: (request.cf?.colo as string) ?? "unknown" };
     const rayId = request.headers.get("cf-ray") || "unknown";
     let cacheStatus = "MISS";
 
@@ -739,7 +741,7 @@ const onyx_handler: any = {
       // 1MB Limit
       if (contentLength > 2048000) {
         return new Response(
-          JSON.stringify({ error: "Payload too large. Maximum size is 2MB." }),
+          JSON.stringify({ error: { code: "EDGE_ERROR", message: "Payload too large. Maximum size is 2MB.", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }),
           {
             status: 413,
             headers: addOnyxHeaders(
@@ -757,6 +759,28 @@ const onyx_handler: any = {
     }
 
     const url = new URL(request.url);
+    if (url.pathname === "/healthz") {
+      const durationMs = (Date.now() - edgeStatus.startTime).toFixed(2);
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          edge: "cloudflare",
+          timestamp: Date.now(),
+          region: request.cf?.colo ?? "unknown"
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "x-onyx-trace-id": traceId,
+            "x-onyx-edge-colo": (request.cf?.colo as string) ?? "unknown",
+            "x-onyx-edge-duration-ms": durationMs,
+            ...getCorsHeaders(request, env)
+          }
+        }
+      );
+    }
+
 
       // Asguard Rate-Limiting Shield
       const mutatingEndpoints = ["/v1/commands/dispatch", "/api/approve", "/api/v1/playbook/trigger"];
@@ -883,7 +907,7 @@ const onyx_handler: any = {
 
       if (!env.ONYX_STATE || !env.CORE_INGEST_URL) {
         return new Response(
-          JSON.stringify({ error: "Missing config for DLQ drain" }),
+          JSON.stringify({ error: { code: "EDGE_ERROR", message: "Missing config for DLQ drain", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }),
           {
             status: 500,
             headers: addOnyxHeaders(
@@ -1039,7 +1063,7 @@ const onyx_handler: any = {
         const origin = request.headers.get("Origin") || "unknown";
         const ip = request.headers.get("cf-connecting-ip") || "unknown";
         void 0;
-        return new Response(JSON.stringify({ error: "Unauthorized Access" }), {
+        return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Unauthorized Access", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
           status: 401,
           headers: addOnyxHeaders(
             {
@@ -1262,7 +1286,7 @@ const onyx_handler: any = {
                 .run(),
             );
           }
-          return new Response(JSON.stringify({ error: "Too Many Requests" }), {
+          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Too Many Requests", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
             status: 429,
             headers: addOnyxHeaders(
               {
@@ -1382,7 +1406,7 @@ const onyx_handler: any = {
             }
           } catch (e) {
             return new Response(
-              JSON.stringify({ error: "Structurally invalid JSON payload." }),
+              JSON.stringify({ error: { code: "EDGE_ERROR", message: "Structurally invalid JSON payload.", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }),
               {
                 status: 400,
                 headers: addOnyxHeaders(
@@ -1496,7 +1520,7 @@ const onyx_handler: any = {
         const { token } = payload as { token?: string };
 
         if (!token) {
-          return new Response(JSON.stringify({ error: "Missing token" }), {
+          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Missing token", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
             status: 400,
             headers: addOnyxHeaders({
               ...getCorsHeaders(request, env),
@@ -1549,7 +1573,7 @@ const onyx_handler: any = {
         }
 
         if (!isAuthorized) {
-          return new Response(JSON.stringify({ error: "Unauthorized user or invalid token" }), {
+          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Unauthorized user or invalid token", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
             status: 403,
             headers: addOnyxHeaders({
               ...getCorsHeaders(request, env),
@@ -1587,7 +1611,7 @@ const onyx_handler: any = {
 
         if (!env.ONYX_DB) {
           return new Response(
-            JSON.stringify({ error: "Database not configured" }),
+            JSON.stringify({ error: { code: "EDGE_ERROR", message: "Database not configured", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }),
             {
               status: 500,
               headers: addOnyxHeaders(
@@ -1624,7 +1648,7 @@ const onyx_handler: any = {
           );
         } catch (e) {
           void 0;
-          return new Response(JSON.stringify({ error: "Internal error" }), {
+          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Internal error", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
             status: 500,
             headers: addOnyxHeaders(
               {
@@ -1645,7 +1669,7 @@ const onyx_handler: any = {
         const payload = parsedBody || {};
         if (!payload.tx_hash || !payload.wallet_address) {
           return new Response(
-            JSON.stringify({ error: "Invalid blockchain settlement details" }),
+            JSON.stringify({ error: { code: "EDGE_ERROR", message: "Invalid blockchain settlement details", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }),
             {
               status: 400,
               headers: addOnyxHeaders(
@@ -1757,7 +1781,7 @@ const onyx_handler: any = {
 
         const playbookId = url.pathname.split("/").pop();
         if (!playbookId) {
-          return new Response(JSON.stringify({ error: "Missing playbook ID" }), {
+          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Missing playbook ID", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
             status: 400,
             headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
           });
@@ -1777,7 +1801,7 @@ const onyx_handler: any = {
         }
 
         if (!env.CORE_INGEST_URL) {
-          return new Response(JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }), { status: 500, headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId) });
+          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Configuration error: CORE_INGEST_URL is missing", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), { status: 500, headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId) });
         }
 
         // Use backend to fetch
@@ -1800,13 +1824,13 @@ const onyx_handler: any = {
               headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
             });
           } else {
-             return new Response(JSON.stringify({ error: "Failed to fetch playbook" }), {
+             return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Failed to fetch playbook", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
                 status: res.status,
                 headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
              });
           }
         } catch (e) {
-           return new Response(JSON.stringify({ error: "Internal Server Error while fetching playbook" }), {
+           return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Internal Server Error while fetching playbook", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
              status: 500,
              headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
            });
@@ -1820,7 +1844,7 @@ const onyx_handler: any = {
 
         const payload = parsedBody || {};
         if (!payload.task) {
-          return new Response(JSON.stringify({ error: "Missing 'task' in dispatch payload" }), {
+          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Missing 'task' in dispatch payload", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
             status: 400,
             headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
           });
@@ -1842,7 +1866,7 @@ const onyx_handler: any = {
           const body: any = await request.clone().json();
           if (!body.session_id) {
             return new Response(
-              JSON.stringify({ error: "Missing session_id" }),
+              JSON.stringify({ error: { code: "EDGE_ERROR", message: "Missing session_id", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }),
               {
                 status: 400,
                 headers: addOnyxHeaders(
@@ -1959,7 +1983,7 @@ const onyx_handler: any = {
           );
         } catch (e: any) {
           void 0;
-          return new Response(JSON.stringify({ error: "Internal error" }), {
+          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Internal error", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
             status: 500,
             headers: addOnyxHeaders(
               {
@@ -2086,7 +2110,7 @@ const onyx_handler: any = {
             ),
           });
         } catch (err) {
-          return new Response(JSON.stringify({ error: "Invalid payload" }), { status: 400 });
+          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Invalid payload", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), { status: 400 });
         }
       } else if (
         request.method === "POST" &&
@@ -2098,7 +2122,7 @@ const onyx_handler: any = {
 
         if (!env.EMAILIT_API_KEY) {
           return new Response(
-            JSON.stringify({ error: "EMAILIT_API_KEY is not configured" }),
+            JSON.stringify({ error: { code: "EDGE_ERROR", message: "EMAILIT_API_KEY is not configured", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }),
             {
               status: 500,
               headers: addOnyxHeaders(
@@ -2399,7 +2423,7 @@ const onyx_handler: any = {
       }
     } catch (error) {
       void 0;
-      return new Response(JSON.stringify({ error: "Internal Server Error" }), {
+      return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Internal Server Error", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
         status: 500,
         headers: addOnyxHeaders(
           {
@@ -2435,7 +2459,7 @@ export default {
           status: 200,
           headers: addOnyxHeaders(
             { ...getCorsHeaders(request, env), "Content-Type": "text/event-stream" },
-            { degraded: true }, "MISS", traceIdFallback
+            { degraded: true, startTime, colo: (request.cf?.colo as string) ?? "unknown" }, "MISS", traceIdFallback
           )
         });
       } else {
@@ -2445,7 +2469,7 @@ export default {
             status: 500,
             headers: addOnyxHeaders(
               { "Content-Type": "application/json", ...getCorsHeaders(request, env) },
-              { degraded: true }, "MISS", traceIdFallback
+              { degraded: true, startTime, colo: (request.cf?.colo as string) ?? "unknown" }, "MISS", traceIdFallback
             )
           }
         );
