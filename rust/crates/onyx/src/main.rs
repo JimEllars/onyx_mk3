@@ -4423,12 +4423,38 @@ impl HookAbortMonitor {
                     let _ = stop_rx.recv();
                 });
 
+                let poll_keys = tokio::task::spawn_blocking({
+                    let abort_signal = abort_signal.clone();
+                    move || loop {
+                        if let Ok(true) =
+                            crossterm::event::poll(std::time::Duration::from_millis(100))
+                        {
+                            if let Ok(crossterm::event::Event::Key(key)) = crossterm::event::read()
+                            {
+                                if key.code == crossterm::event::KeyCode::Esc
+                                    || (key.code == crossterm::event::KeyCode::Char('c')
+                                        && key
+                                            .modifiers
+                                            .contains(crossterm::event::KeyModifiers::CONTROL))
+                                {
+                                    abort_signal.abort();
+                                    break;
+                                }
+                            }
+                        }
+                        if abort_signal.is_aborted() {
+                            break;
+                        }
+                    }
+                });
+
                 tokio::select! {
                     result = tokio::signal::ctrl_c() => {
                         if result.is_ok() {
                             abort_signal.abort();
                         }
                     }
+                    _ = poll_keys => {}
                     _ = wait_for_stop => {}
                 }
             });

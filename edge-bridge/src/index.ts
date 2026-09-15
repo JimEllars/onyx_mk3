@@ -209,7 +209,7 @@ async function dispatchToCore(
     void 0;
     if (env.ONYX_STATE) {
       const dlqKey = `dlq:ingest:${Date.now()}:${crypto.randomUUID()}`;
-      ctx.waitUntil(env.ONYX_STATE.put(dlqKey, payloadStr));
+      ctx?.waitUntil?.(env.ONYX_STATE.put(dlqKey, payloadStr));
     }
     return new Response(
       JSON.stringify({
@@ -486,11 +486,11 @@ const onyx_handler: any = {
       void 0;
 
       if (controller.cron === "*/5 * * * *") {
-        ctx.waitUntil(drainIngestDlq(env, ctx));
+        ctx?.waitUntil?.(drainIngestDlq(env, ctx));
       }
 
       if (controller.cron === "0 12 * * *") {
-        ctx.waitUntil((async () => {
+        ctx?.waitUntil?.((async () => {
           if (!env.EMAILIT_API_KEY || !env.HITL_APPROVAL_KV) return;
 
           const pendingList = await env.HITL_APPROVAL_KV.list();
@@ -543,7 +543,7 @@ const onyx_handler: any = {
 
       const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
       if (env.ONYX_DB) {
-        ctx.waitUntil(
+        ctx?.waitUntil?.(
           env.ONYX_DB.batch([
             env.ONYX_DB.prepare(
               "DELETE FROM TelemetryLogs WHERE created_at < ?",
@@ -581,7 +581,7 @@ const onyx_handler: any = {
         : "http://localhost:3000/api/v1/internal/cron/daily-run";
       const cronSecret = env.CRON_SECRET_KEY;
 
-      ctx.waitUntil(
+      ctx?.waitUntil?.(
         fetch(backendCronUrl, {
           method: "POST",
           headers: {
@@ -640,7 +640,7 @@ const onyx_handler: any = {
           )
         : "http://localhost:3000/v1/events/ingress";
       // Wait until telemetry ingest sends it
-      ctx.waitUntil(
+      ctx?.waitUntil?.(
         fetch(coreUrl, {
           method: "POST",
           headers: {
@@ -809,7 +809,7 @@ const onyx_handler: any = {
       request.method === "POST" &&
       url.pathname === "/functions/v1/telemetry-ingress"
     ) {
-      ctx.waitUntil(bootstrapDatabase(env));
+      ctx?.waitUntil?.(bootstrapDatabase(env));
       try {
         const payload = (await request.clone().json()) as {
           session_id?: string;
@@ -820,7 +820,7 @@ const onyx_handler: any = {
         const payloadStr = JSON.stringify(payload);
 
         if (env.ONYX_DB) {
-          ctx.waitUntil(
+          ctx?.waitUntil?.(
             env.ONYX_DB.prepare(
               "INSERT INTO TelemetryLogs (id, session_id, status, payload, synced, created_at) VALUES (?, ?, ?, ?, 0, ?)",
             )
@@ -857,7 +857,7 @@ const onyx_handler: any = {
         const ingestUrl =
           env.CORE_INGEST_URL.replace(/\/$/, "") +
           "/functions/v1/telemetry-ingress";
-        ctx.waitUntil(
+        ctx?.waitUntil?.(
           fetchWithRetry(ingestUrl, {
             method: "POST",
             headers: addOnyxHeaders(
@@ -961,7 +961,7 @@ const onyx_handler: any = {
       request.method === "POST" &&
       url.pathname === "/api/v1/telemetry/flush"
     ) {
-      ctx.waitUntil(bootstrapDatabase(env));
+      ctx?.waitUntil?.(bootstrapDatabase(env));
       if (!env.CORE_INGEST_URL) {
         return new Response(
           JSON.stringify({
@@ -1245,7 +1245,7 @@ const onyx_handler: any = {
               "Cache-Control": `public, max-age=${maxAge}, s-maxage=${maxAge}`,
             },
           });
-          ctx.waitUntil(cache.put(cacheUrl, responseToCache.clone()));
+          ctx?.waitUntil?.(cache.put(cacheUrl, responseToCache.clone()));
           return new Response(responseToCache.body, {
             status: responseToCache.status,
             statusText: responseToCache.statusText,
@@ -1278,7 +1278,7 @@ const onyx_handler: any = {
 
         if (currentHits >= 10) {
           if (env.ONYX_DB) {
-            ctx.waitUntil(
+            ctx?.waitUntil?.(
               env.ONYX_DB.prepare(
                 "INSERT INTO RateLimitLogs (id, ip_address, endpoint, user_id, blocked_at) VALUES (?, ?, ?, ?, ?)",
               )
@@ -1307,7 +1307,7 @@ const onyx_handler: any = {
           });
         }
 
-        ctx.waitUntil(
+        ctx?.waitUntil?.(
           kvWriteWithTimeout(
             env.ONYX_STATE.put(rateLimitKey, (currentHits + 1).toString(), {
               expirationTtl: 60,
@@ -1397,7 +1397,7 @@ const onyx_handler: any = {
                   signature: hookSignature,
                   timestamp: new Date().toISOString(),
                 });
-                ctx.waitUntil(
+                ctx?.waitUntil?.(
                   kvWriteWithTimeout(
                     env.ONYX_STATE.put(
                       `action_hook:${Date.now()}_${Math.random().toString(36).substring(7)}`,
@@ -1735,7 +1735,7 @@ const onyx_handler: any = {
           );
         }
         const ingestUrl = env.CORE_INGEST_URL;
-        ctx.waitUntil(
+        ctx?.waitUntil?.(
           fetchWithRetry(ingestUrl, {
             method: "POST",
             headers: addOnyxHeaders(
@@ -1759,7 +1759,7 @@ const onyx_handler: any = {
         });
 
         if (idempotencyKey && env.ONYX_STATE) {
-          ctx.waitUntil(
+          ctx?.waitUntil?.(
             kvWriteWithTimeout(
               env.ONYX_STATE.put(`idem:${idempotencyKey}`, responseBody, {
                 expirationTtl: 86400,
@@ -1823,7 +1823,7 @@ const onyx_handler: any = {
           if (res.ok) {
             const data = await res.text();
             if (env.ONYX_KV) {
-               ctx.waitUntil(kvWriteWithTimeout(env.ONYX_KV.put(cacheKey, data, { expirationTtl: 3600 }), 500, { degraded: false }));
+               ctx?.waitUntil?.(kvWriteWithTimeout(env.ONYX_KV.put(cacheKey, data, { expirationTtl: 3600 }), 500, { degraded: false }));
             }
             return new Response(data, {
               status: 200,
@@ -1921,7 +1921,7 @@ const onyx_handler: any = {
           if (!backendSuccess) {
             // Synthetic response logic
             if (env.ONYX_SESSION_STATE) {
-              ctx.waitUntil(
+              ctx?.waitUntil?.(
                 kvWriteWithTimeout(
                   env.ONYX_SESSION_STATE.put(
                     body.session_id,
@@ -1938,7 +1938,7 @@ const onyx_handler: any = {
               const telemetryUrl =
                 env.CORE_INGEST_URL.replace(/\/$/, "") +
                 "/api/v1/telemetry/ingest";
-              ctx.waitUntil(
+              ctx?.waitUntil?.(
                 fetch(telemetryUrl, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -2091,7 +2091,7 @@ const onyx_handler: any = {
           const kvKey = `metric_${payload.source_app || "unknown"}_${Date.now()}_${eventId}`;
 
           if (env.ECOSYSTEM_METRICS_KV) {
-            ctx.waitUntil(
+            ctx?.waitUntil?.(
               env.ECOSYSTEM_METRICS_KV.put(
                 kvKey,
                 JSON.stringify({
@@ -2122,7 +2122,7 @@ const onyx_handler: any = {
         request.method === "POST" &&
         url.pathname === "/api/v1/email/send"
       ) {
-        ctx.waitUntil(bootstrapDatabase(env));
+        ctx?.waitUntil?.(bootstrapDatabase(env));
         const authError = await checkAuth(request, env, true);
         if (authError) return authError;
 
@@ -2490,7 +2490,7 @@ export default {
       url.pathname.startsWith("/api/v1/jules/")
     ) {
       if (env.ONYX_EDGE_METRICS) {
-        ctx.waitUntil(
+        ctx?.waitUntil?.(
           new Promise<void>((resolve) => {
             try {
               env.ONYX_EDGE_METRICS!.writeDataPoint({
@@ -2515,7 +2515,7 @@ export default {
       if (env.ONYX_DB) {
         const ip = request.headers.get("cf-connecting-ip") || "unknown";
         const url = new URL(request.url);
-        ctx.waitUntil(
+        ctx?.waitUntil?.(
           env.ONYX_DB.prepare(
             "INSERT INTO RateLimitLogs (id, ip_address, endpoint, user_id, blocked_at) VALUES (?, ?, ?, ?, ?)",
           )
