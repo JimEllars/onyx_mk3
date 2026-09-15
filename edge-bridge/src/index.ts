@@ -1058,8 +1058,14 @@ const onyx_handler: any = {
       url.pathname === "/api/v1/onyx/summon"
     ) {
       const authHeader = request.headers.get("Authorization");
+      const cookieHeader = request.headers.get("Cookie");
+      let hasValidCookie = false;
+      if (cookieHeader) {
+        const match = cookieHeader.match(/(?:^|;\s*)axim_session=([^;]*)/);
+        if (match && match[1]) hasValidCookie = true;
+      }
       const expectedToken = `Bearer ${env.ONYX_CLIENT_SECRET}`;
-      if (!authHeader || authHeader !== expectedToken) {
+      if ((!authHeader || authHeader !== expectedToken) && !hasValidCookie) {
         const origin = request.headers.get("Origin") || "unknown";
         const ip = request.headers.get("cf-connecting-ip") || "unknown";
         void 0;

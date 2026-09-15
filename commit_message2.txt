@@ -1,0 +1,6 @@
+feat(onyx): passport sso gating, hitl action console activation, multi-provider failover & ecosystem tool bindings
+
+- Passport SSO Integration & Edge Guard: Authenticates james.ellars@axim.us.com and jrellars@gmail.com, granting super_user roles and bypassing execution locks
+- Human-in-the-Loop Action Console: SSE stream processing wired to UI for approving/rejecting MEDIUM/HIGH/CRITICAL risk operations using the /api/v1/mcp/execute endpoint
+- Multi-Model Failover & Telemetry: Dynamic routing from Claude 3.5 Sonnet to DeepSeek/Cloudflare Workers AI/Gemini, triggering UI failover alerts and sending cost metrics to public.telemetry_events
+- Cloudflare configuration updates resolving ONYX_D1_TELEMETRY bindings

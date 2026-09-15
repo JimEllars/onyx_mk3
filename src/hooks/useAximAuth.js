@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import useDesktopAgentStore from '../store/useDesktopAgentStore';
 
 // Decodes the JWT without verifying signature (for client-side reading)
 function parseJwt(token) {
@@ -17,6 +18,13 @@ function parseJwt(token) {
 }
 
 const AUTHORIZED_USERS = ['james.ellars@axim.us.com', 'jrellars@gmail.com'];
+
+function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return null;
+}
 
 export function useAximAuth() {
   const [authError, setAuthError] = useState('');
@@ -59,33 +67,36 @@ export function useAximAuth() {
     const urlParams = new URLSearchParams(window.location.search);
     const urlToken = urlParams.get('token');
 
+    // Check for cookie
+    const cookieToken = getCookie('axim_session');
+
+    const activeToken = urlToken || cookieToken || localStorage.getItem('axim_passport_token');
+
     const initializeAuth = async () => {
-      if (urlToken) {
-        const isValid = await validateToken(urlToken);
+      if (activeToken) {
+        const isValid = await validateToken(activeToken);
         if (isValid) {
-          setToken(urlToken);
+          setToken(activeToken);
           setIsAuthenticated(true);
-          localStorage.setItem('axim_passport_token', urlToken);
+          localStorage.setItem('axim_passport_token', activeToken);
           setAuthError('');
+          useDesktopAgentStore.setState({ role: "super_user", is_super_user: true });
         } else {
+          localStorage.removeItem('axim_passport_token');
+          setToken(null);
+          setIsAuthenticated(false);
           setAuthError('User not in authorized whitelist or invalid token format.');
+          useDesktopAgentStore.setState({ role: "user", is_super_user: false });
         }
-        window.history.replaceState({}, document.title, window.location.pathname);
+        if (urlToken) {
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete("token");
+            window.history.replaceState({}, document.title, newUrl.pathname + newUrl.search);
+        }
       } else {
-        const storedToken = localStorage.getItem('axim_passport_token');
-        if (storedToken) {
-            const isValid = await validateToken(storedToken);
-            if (!isValid) {
-                localStorage.removeItem('axim_passport_token');
-                setToken(null);
-                setIsAuthenticated(false);
-                setAuthError('User not in authorized whitelist or invalid token format.');
-            } else {
-                setToken(storedToken);
-                setIsAuthenticated(true);
-                setAuthError('');
-            }
-        }
+        setToken(null);
+        setIsAuthenticated(false);
+        useDesktopAgentStore.setState({ role: "user", is_super_user: false });
       }
     };
     initializeAuth();
@@ -99,6 +110,9 @@ export function useAximAuth() {
     setToken(null);
     setIsAuthenticated(false);
     localStorage.removeItem('axim_passport_token');
+    useDesktopAgentStore.setState({ role: "user", is_super_user: false });
+    // also clear cookie if possible, though it's cross-domain maybe
+    document.cookie = 'axim_session=; Max-Age=0; path=/; domain=.axim.us.com';
   }, []);
 
   return { token, isAuthenticated, loginWithPassport, logout, authError };
