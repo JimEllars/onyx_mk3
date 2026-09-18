@@ -123,14 +123,25 @@ fn main() {
         }
     }
 
-    if wants_json_logs {
+    // Defensive initialization for telemetry
+    let _ = std::fs::create_dir_all(".claw");
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(".claw/telemetry.jsonl");
+
+    if let Ok(file) = log_file {
         tracing_subscriber::fmt()
             .json()
+            .with_writer(file)
+            .init();
+    } else if wants_json_logs {
+        tracing_subscriber::fmt()
+            .json()
+            .with_writer(std::io::stderr)
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .init();
     } else {
-        // Direct to file if not json logs (or simple stdout if preferred, but instructions say: "If the interactive TUI is active, direct tracing events to a log file (or suppress stdout rendering) so structured JSON logs do not corrupt the active terminal screen.")
-        // For simplicity and safety, suppress stdout rendering to terminal by using a null writer or log file.
         let file_appender = tracing_subscriber::fmt::writer::MakeWriterExt::with_max_level(
             tracing_appender::rolling::never(".claw", "onyx.log"),
             tracing::Level::INFO,
