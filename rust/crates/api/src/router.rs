@@ -781,7 +781,39 @@ pub async fn handle_onyx_summon(
             web3_wallet_address: None,
         };
 
-        if let Ok(mut stream) = client.stream_message(&request).await {
+        let mut stream_result = client.stream_message(&request).await;
+        if let Err(ref e) = stream_result {
+            // Check if error is 429 or 5xx
+            let is_failover_candidate = e.to_string().contains("429") || e.to_string().contains("500") || e.to_string().contains("502") || e.to_string().contains("503") || e.to_string().contains("504");
+            if is_failover_candidate {
+                tracing::warn!("Provider failure detected, initiating seamless failover: {}", e);
+                // Mark anthropic as degraded if this is anthropic
+                crate::providers::ANTHROPIC_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed);
+
+                // Notify client of failover
+                let heartbeat_payload = serde_json::json!({
+                    "type": "status",
+                    "state": "PROVIDER_FAILOVER"
+                });
+                let _ = tx
+                    .send(Ok::<_, std::convert::Infallible>(
+                        axum::response::sse::Event::default().data(heartbeat_payload.to_string()),
+                    ))
+                    .await;
+
+                // Simple exponential backoff for the fallback retry
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+                // Fallback to OpenAI compat or another provider
+                if let Ok(fallback_client) = crate::client::ProviderClient::from_model("gpt-4o-mini") {
+                    let mut fallback_request = request.clone();
+                    fallback_request.model = "gpt-4o-mini".to_string();
+                    stream_result = fallback_client.stream_message(&fallback_request).await;
+                }
+            }
+        }
+
+        if let Ok(mut stream) = stream_result {
             loop {
                 match tokio::time::timeout(
                     tokio::time::Duration::from_secs(15),

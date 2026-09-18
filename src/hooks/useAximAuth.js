@@ -100,6 +100,44 @@ export function useAximAuth() {
       }
     };
     initializeAuth();
+
+    // Silent token refresh setup
+    const refreshInterval = setInterval(async () => {
+      const currentToken = localStorage.getItem('axim_passport_token');
+      if (currentToken) {
+        const payload = parseJwt(currentToken);
+        if (payload && payload.exp) {
+          const expiresAt = payload.exp * 1000;
+          const timeUntilExpiry = expiresAt - Date.now();
+          // If token expires in less than 15 minutes, try to refresh silently
+          if (timeUntilExpiry < 15 * 60 * 1000 && timeUntilExpiry > 0) {
+             try {
+                const res = await fetch('https://passport.axim.us.com/api/v1/auth/refresh', {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${currentToken}` }
+                });
+                if (res.ok) {
+                   const data = await res.json();
+                   if (data.token) {
+                      localStorage.setItem('axim_passport_token', data.token);
+                      setToken(data.token);
+                   }
+                }
+             } catch (e) {
+                console.warn("Silent token refresh failed", e);
+             }
+          } else if (timeUntilExpiry <= 0) {
+             // Token already expired, clean up
+             setToken(null);
+             setIsAuthenticated(false);
+             localStorage.removeItem('axim_passport_token');
+             useDesktopAgentStore.setState({ role: "user", is_super_user: false });
+          }
+        }
+      }
+    }, 5 * 60 * 1000); // Check every 5 minutes
+
+    return () => clearInterval(refreshInterval);
   }, [validateToken]);
 
   const loginWithPassport = useCallback(() => {
