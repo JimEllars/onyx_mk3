@@ -91,8 +91,9 @@ pub fn render_status_bar_text(
     } else {
         "Standard Auth".to_string()
     };
+    let is_edge_ready = CACHED_EDGE_BUFFER_READY.load(std::sync::atomic::Ordering::Relaxed);
     let edge_status_val_conn = telemetry::metrics::EDGE_KV_STATUS.get();
-    let is_connected = (edge_status_val_conn - 1.0).abs() < f64::EPSILON;
+    let is_connected = (edge_status_val_conn - 1.0).abs() < f64::EPSILON || is_edge_ready;
     let connectivity_indicator = if is_connected {
         "[32m●[0m"
     } else {

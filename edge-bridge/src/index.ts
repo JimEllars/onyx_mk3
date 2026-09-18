@@ -2406,8 +2406,38 @@ const onyx_handler: any = {
           cacheStatus,
           traceId,
         );
-      } else {
-        if (request.method === "GET" && env.ASSETS) {
+      } else if (request.method === "GET" && url.pathname === "/api/health") {
+        const healthStatus = {
+          status: "healthy",
+          uptime: 0,
+          provider_status: "operational",
+          timestamp: new Date().toISOString()
+        };
+        return new Response(JSON.stringify(healthStatus), {
+          status: 200,
+          headers: addOnyxHeaders(
+            { ...getCorsHeaders(request, env), "Content-Type": "application/json" },
+            edgeStatus,
+            cacheStatus,
+            traceId,
+          ),
+        });
+      } else if (request.method === "GET" && url.pathname === "/api/telemetry/summary") {
+        const telemetrySummary = {
+          requests_current_window: 0,
+          avg_latency_ms: 0,
+          status: "operational"
+        };
+        return new Response(JSON.stringify(telemetrySummary), {
+          status: 200,
+          headers: addOnyxHeaders(
+            { ...getCorsHeaders(request, env), "Content-Type": "application/json" },
+            edgeStatus,
+            cacheStatus,
+            traceId,
+          ),
+        });
+      } else if (request.method === "GET" && env.ASSETS) {
           try {
             const assetResponse = await env.ASSETS.fetch(request);
             if (assetResponse && assetResponse.status !== 404) {
@@ -2416,7 +2446,6 @@ const onyx_handler: any = {
           } catch (e) {
             void 0;
           }
-        }
         return new Response("Not Found", {
           status: 404,
           headers: addOnyxHeaders(
@@ -2427,6 +2456,15 @@ const onyx_handler: any = {
           ),
         });
       }
+      return new Response("Not Found", {
+        status: 404,
+        headers: addOnyxHeaders(
+          getCorsHeaders(request, env),
+          edgeStatus,
+          cacheStatus,
+          traceId,
+        ),
+      });
     } catch (error) {
       void 0;
       return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Internal Server Error", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
@@ -2487,7 +2525,9 @@ export default {
 
     if (
       url.pathname === "/api/v1/chat" ||
-      url.pathname.startsWith("/api/v1/jules/")
+      url.pathname.startsWith("/api/v1/jules/") ||
+      url.pathname === "/api/health" ||
+      url.pathname === "/api/telemetry/summary"
     ) {
       if (env.ONYX_EDGE_METRICS) {
         ctx?.waitUntil?.(
@@ -2499,6 +2539,8 @@ export default {
                   url.pathname,
                   traceId,
                   response.status.toString(),
+                  response.headers.get("X-Onyx-Provider") || "unknown", // record provider target
+                  response.headers.get("X-Onyx-Error-Code") || "none" // record error code if any
                 ],
                 doubles: [latency],
                 indexes: [response.status >= 400 ? "error" : "success"],
