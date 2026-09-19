@@ -17,7 +17,7 @@
       <div style="display: flex; gap: 16px; align-items: center;">
         <span id="telemetry-pulse">R/M: --</span>
         <span id="latency-pulse">LAT: -- ms</span>
-        <span id="provider-pulse">TARGET: AXiM Default</span>
+        <span id="provider-pulse">TARGET: DeepSeek (Anthropic Failover Active)</span>
       </div>
     </div>
 
@@ -30,6 +30,12 @@
               const data = await res.json();
               document.getElementById('telemetry-pulse').innerText = `R/M: ${data.requests_current_window}`;
               document.getElementById('latency-pulse').innerText = `LAT: ${data.avg_latency_ms} ms`;
+              if (data.primary_provider && data.fallback_provider) {
+                  const targetStr = data.primary_provider === "operational" && data.fallback_provider === "active"
+                      ? "TARGET: Anthropic (DeepSeek Fallback Active)"
+                      : "TARGET: DeepSeek (Anthropic Failover Active)";
+                  document.getElementById('provider-pulse').innerText = targetStr;
+              }
               document.getElementById('conn-indicator').style.background = '#10b981';
               document.getElementById('conn-indicator').style.boxShadow = '0 0 8px rgba(16, 185, 129, 0.5)';
               document.getElementById('conn-text').innerText = 'SYSTEM OPERATIONAL';

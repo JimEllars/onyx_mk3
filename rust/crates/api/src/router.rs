@@ -690,9 +690,6 @@ pub async fn handle_event_ingress(
 
     response
 }
-use axum::response::sse::{Event as AxumSseEvent, Sse};
-use std::convert::Infallible;
-use tokio_stream::wrappers::ReceiverStream;
 
 #[axum::debug_handler]
 #[allow(clippy::too_many_lines)]
@@ -701,7 +698,7 @@ pub async fn handle_onyx_summon(
     headers: axum::http::HeaderMap,
     payload_result: Result<Json<serde_json::Value>, JsonRejection>,
 ) -> Result<
-    Sse<ReceiverStream<Result<AxumSseEvent, Infallible>>>,
+    impl IntoResponse,
     (StatusCode, axum::Json<serde_json::Value>),
 > {
     let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
@@ -726,156 +723,219 @@ pub async fn handle_onyx_summon(
         }
     };
 
-    let (tx, rx) = tokio::sync::mpsc::channel(10);
+    let Ok(client) = crate::client::ProviderClient::from_model("deepseek-chat") else {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({"error": "Provider client error"})),
+        ));
+    };
 
-    tokio::spawn(async move {
-        let Ok(client) = crate::client::ProviderClient::from_model("claude-3-7-sonnet-latest")
-        else {
-            return;
-        };
+    let message = payload
+        .get("message")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Hello");
 
-        let message = payload
-            .get("message")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Hello");
+    // Dispatch to swarm
+    let packet = runtime::TaskPacket {
+        job_id: None,
+        worker_id: None,
+        objective: message.to_string(),
+        scope: "global".to_string(),
+        repo: "axim-core".to_string(),
+        branch_policy: "main".to_string(),
+        acceptance_tests: vec![],
+        commit_policy: "strict".to_string(),
+        reporting_contract: "none".to_string(),
+        escalation_policy: "halt".to_string(),
+        context: "Chat Context".to_string(),
+        goal: "Chat Fulfillment".to_string(),
+        expected_schema: serde_json::Value::Null,
+        reasoning_effort: None,
+        web3_wallet_address: None,
+    };
+    let _ = state
+        .dispatcher
+        .dispatch(runtime::dispatch::TaskPriority::Standard, packet)
+        .await;
 
-        // Dispatch to swarm
-        let packet = runtime::TaskPacket {
-            job_id: None,
-            worker_id: None,
-            objective: message.to_string(),
-            scope: "global".to_string(),
-            repo: "axim-core".to_string(),
-            branch_policy: "main".to_string(),
-            acceptance_tests: vec![],
-            commit_policy: "strict".to_string(),
-            reporting_contract: "none".to_string(),
-            escalation_policy: "halt".to_string(),
-            context: "Chat Context".to_string(),
-            goal: "Chat Fulfillment".to_string(),
-            expected_schema: serde_json::Value::Null,
-            reasoning_effort: None,
-            web3_wallet_address: None,
-        };
-        let _ = state
-            .dispatcher
-            .dispatch(runtime::dispatch::TaskPriority::Standard, packet)
-            .await;
+    let request = crate::types::MessageRequest {
+        model: "deepseek-chat".to_string(),
+        max_tokens: 1024,
+        messages: vec![crate::types::InputMessage::user_text(message)],
+        system: Some("You are Onyx Mk3. Reply concisely.".to_string()),
+        tools: None,
+        tool_choice: None,
+        stream: true,
+        temperature: None,
+        top_p: None,
+        frequency_penalty: None,
+        presence_penalty: None,
+        stop: None,
+        reasoning_effort: None,
+        budget_priority: None,
+        response_format: None,
+        web3_wallet_address: None,
+    };
 
-        let request = crate::types::MessageRequest {
-            model: "claude-3-7-sonnet-latest".to_string(),
-            max_tokens: 1024,
-            messages: vec![crate::types::InputMessage::user_text(message)],
-            system: Some("You are Onyx Mk3. Reply concisely.".to_string()),
-            tools: None,
-            tool_choice: None,
-            stream: true,
-            temperature: None,
-            top_p: None,
-            frequency_penalty: None,
-            presence_penalty: None,
-            stop: None,
-            reasoning_effort: None,
-            budget_priority: None,
-            response_format: None,
-            web3_wallet_address: None,
-        };
+        let trace_id = headers
+        .get("x-request-id")
+        .or_else(|| headers.get("x-onyx-trace-id"))
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("unknown");
+    let mut stream_result = client.stream_message(&request).await;
+    let mut do_failover = false;
+    let mut active_provider = "deepseek";
 
-        let mut stream_result = client.stream_message(&request).await;
-        if let Err(ref e) = stream_result {
-            // Check if error is 429 or 5xx
-            let is_failover_candidate = e.to_string().contains("429") || e.to_string().contains("500") || e.to_string().contains("502") || e.to_string().contains("503") || e.to_string().contains("504");
-            if is_failover_candidate {
-                tracing::warn!("Provider failure detected, initiating seamless failover: {}", e);
-                // Mark anthropic as degraded if this is anthropic
-                crate::providers::ANTHROPIC_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed);
+    if let Err(ref e) = stream_result {
+        let e_str = e.to_string();
+        if e_str.contains("429") || e_str.contains("500") || e_str.contains("502") || e_str.contains("503") || e_str.contains("504") {
+            do_failover = true;
+            tracing::warn!("Provider failure detected, initiating seamless failover: {}", e_str);
+        }
+    }
 
-                // Notify client of failover
-                let heartbeat_payload = serde_json::json!({
-                    "type": "status",
-                    "state": "PROVIDER_FAILOVER"
-                });
-                let _ = tx
-                    .send(Ok::<_, std::convert::Infallible>(
-                        axum::response::sse::Event::default().data(heartbeat_payload.to_string()),
-                    ))
-                    .await;
+    if do_failover {
+        crate::providers::OPENAI_HEALTHY.store(false, std::sync::atomic::Ordering::Relaxed);
 
-                // Simple exponential backoff for the fallback retry
-                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-                // Fallback to OpenAI compat or another provider
-                if let Ok(fallback_client) = crate::client::ProviderClient::from_model("gpt-4o-mini") {
-                    let mut fallback_request = request.clone();
-                    fallback_request.model = "gpt-4o-mini".to_string();
-                    stream_result = fallback_client.stream_message(&fallback_request).await;
-                }
-            }
+        let dlq_path = ".claw/telemetry.jsonl";
+        let _ = std::fs::create_dir_all(".claw");
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(dlq_path) {
+            let entry = serde_json::json!({
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "event": "PROVIDER_FAILOVER",
+                "from": "deepseek",
+                "to": "anthropic",
+                "trace_id": trace_id,
+            });
+            let _ = writeln!(file, "{}", entry);
         }
 
-        if let Ok(mut stream) = stream_result {
-            loop {
-                match tokio::time::timeout(
-                    tokio::time::Duration::from_secs(15),
-                    stream.next_event(),
-                )
-                .await
-                {
-                    Ok(Ok(Some(event))) => match event {
-                        crate::types::StreamEvent::ContentBlockDelta(delta_event) => {
-                            if let crate::types::ContentBlockDelta::TextDelta { text } =
-                                delta_event.delta
-                            {
-                                let mut buf = Vec::new();
-                                let payload = crate::sse::SsePayload::new(text, false);
-                                if payload.emit(&mut buf).is_ok() {
-                                    let _ = tx
-                                        .send(Ok::<_, Infallible>(
-                                            AxumSseEvent::default()
-                                                .data(String::from_utf8_lossy(&buf)),
-                                        ))
-                                        .await;
-                                }
-                            }
-                        }
-                        crate::types::StreamEvent::MessageStop(_) => {
+        if let Ok(fallback_client) = crate::client::ProviderClient::from_model("claude-3-5-sonnet-20241022") {
+            let mut fallback_request = request.clone();
+            fallback_request.model = "claude-3-5-sonnet-20241022".to_string();
+            stream_result = fallback_client.stream_message(&fallback_request).await;
+            active_provider = "anthropic";
+        }
+    }
+
+    let mut stream = match stream_result {
+        Ok(s) => s,
+        Err(e) => {
+            return Err((
+                StatusCode::BAD_GATEWAY,
+                axum::Json(serde_json::json!({"error": format!("Providers down or 503: {}", e)})),
+            ));
+        }
+    };
+
+    let (tx, rx) = tokio::sync::mpsc::channel(10);
+
+    // If failover occurred before stream, send the failover status event first
+    if do_failover {
+        let heartbeat_payload = serde_json::json!({
+            "type": "status",
+            "state": "PROVIDER_FAILOVER",
+            "from": "deepseek",
+            "to": "anthropic"
+        });
+        let _ = tx.send(Ok::<_, std::convert::Infallible>(
+            axum::response::sse::Event::default().data(heartbeat_payload.to_string()),
+        )).await;
+    }
+
+    tokio::spawn(async move {
+        loop {
+            match tokio::time::timeout(
+                tokio::time::Duration::from_secs(15),
+                stream.next_event(),
+            )
+            .await
+            {
+                Ok(Ok(Some(event))) => match event {
+                    crate::types::StreamEvent::ContentBlockDelta(delta_event) => {
+                        if let crate::types::ContentBlockDelta::TextDelta { text } =
+                            delta_event.delta
+                        {
                             let mut buf = Vec::new();
-                            let payload = crate::sse::SsePayload::new("", true);
+                            let payload = crate::sse::SsePayload::new(text, false);
                             if payload.emit(&mut buf).is_ok() {
                                 let _ = tx
-                                    .send(Ok::<_, Infallible>(
-                                        AxumSseEvent::default().data(String::from_utf8_lossy(&buf)),
+                                    .send(Ok::<_, std::convert::Infallible>(
+                                        axum::response::sse::Event::default()
+                                            .data(String::from_utf8_lossy(&buf)),
                                     ))
                                     .await;
                             }
-
-                            let _ = tx
-                                .send(Ok::<_, Infallible>(AxumSseEvent::default().data("[DONE]")))
-                                .await;
-                            break;
                         }
-                        _ => {}
-                    },
-                    Ok(Ok(None) | Err(_)) => break,
-                    Err(_) => {
-                        // Timeout hit: stream is idle (e.g. waiting for HITL approval). Emit keep-alive heartbeat.
-                        let heartbeat_payload = serde_json::json!({
-                            "type": "status",
-                            "state": "WAITING_ON_USER"
-                        });
-                        let _ = tx
-                            .send(Ok::<_, Infallible>(
-                                AxumSseEvent::default().data(heartbeat_payload.to_string()),
-                            ))
-                            .await;
                     }
+                    crate::types::StreamEvent::MessageStop(_) => {
+                        let mut buf = Vec::new();
+                        let payload = crate::sse::SsePayload::new("", true);
+                        if payload.emit(&mut buf).is_ok() {
+                            let _ = tx
+                                .send(Ok::<_, std::convert::Infallible>(
+                                    axum::response::sse::Event::default().data(String::from_utf8_lossy(&buf)),
+                                ))
+                                .await;
+                        }
+
+                        let _ = tx
+                            .send(Ok::<_, std::convert::Infallible>(axum::response::sse::Event::default().data("[DONE]")))
+                            .await;
+                        break;
+                    }
+                    _ => {}
+                },
+                Ok(Ok(None) | Err(_)) => break,
+                Err(_) => {
+                    tracing::warn!("Chunk read timeout detected, initiating seamless failover");
+                    let heartbeat_payload = serde_json::json!({
+                        "type": "status",
+                        "state": "PROVIDER_FAILOVER",
+                        "from": "deepseek",
+                        "to": "anthropic"
+                    });
+                    let _ = tx.send(Ok::<_, std::convert::Infallible>(
+                        axum::response::sse::Event::default().data(heartbeat_payload.to_string()),
+                    )).await;
+
+                    let dlq_path = ".claw/telemetry.jsonl";
+                    let _ = std::fs::create_dir_all(".claw");
+                    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(dlq_path) {
+                        let entry = serde_json::json!({
+                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                            "event": "PROVIDER_FAILOVER_TIMEOUT",
+                            "from": "deepseek",
+                            "to": "anthropic",
+                        });
+                        let _ = writeln!(file, "{}", entry);
+                    }
+
+                    if let Ok(fallback_client) = crate::client::ProviderClient::from_model("claude-3-5-sonnet-20241022") {
+                        let mut fallback_request = request.clone();
+                        fallback_request.model = "claude-3-5-sonnet-20241022".to_string();
+                        if let Ok(fallback_stream) = fallback_client.stream_message(&fallback_request).await {
+                            stream = fallback_stream;
+                            continue;
+                        }
+                    }
+                    break;
                 }
             }
         }
     });
 
-    Ok(Sse::new(ReceiverStream::new(rx)))
+    let sse = axum::response::Sse::new(tokio_stream::wrappers::ReceiverStream::new(rx));
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        "X-Onyx-Provider",
+        axum::http::HeaderValue::from_str(active_provider).unwrap(),
+    );
+
+    Ok((headers, sse).into_response())
 }
+
 
 #[axum::debug_handler]
 pub async fn handle_llm_health() -> impl IntoResponse {

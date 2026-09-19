@@ -20,10 +20,10 @@ pub static CACHED_CRON_STATUS_ACTIVE: std::sync::atomic::AtomicBool =
 pub fn spawn_telemetry_polling_loop(port: u16) {
     std::thread::spawn(move || {
         let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(2))
             .build()
             .unwrap_or_default();
-        let url = format!("http://127.0.0.1:{port}/api/v1/telemetry/health");
+        let url = format!("http://127.0.0.1:{port}/api/telemetry/summary");
         loop {
             if let Ok(res) = client.get(&url).send() {
                 if let Ok(json) = res.json::<serde_json::Value>() {
@@ -116,9 +116,9 @@ pub fn render_status_bar_text(
         format!("{edge_latency_val:.2}")
     };
     let mut text = format!(
-        "{} {} ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ Model: [{}:{}] ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{} ∥ Latency: ⚡ {}ms",
+        "{} {} ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ TARGET: DeepSeek ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{} ∥ Latency: ⚡ {}ms",
         connectivity_indicator, edge_conn_str, brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
-        active_provider, model, session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str, latency_str
+session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str, latency_str
     );
 
     if let Ok((cols, _)) = size() {
