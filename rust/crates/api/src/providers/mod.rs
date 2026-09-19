@@ -64,6 +64,16 @@ pub struct ModelTokenLimit {
 
 const MODEL_REGISTRY: &[(&str, ProviderMetadata)] = &[
     (
+        "axim-default",
+        ProviderMetadata {
+            provider: ProviderKind::OpenAi,
+            auth_env: "DEEPSEEK_API_KEY",
+            base_url_env: "DEEPSEEK_BASE_URL",
+            default_base_url: openai_compat::DEFAULT_DEEPSEEK_BASE_URL,
+        },
+    ),
+
+    (
         "opus",
         ProviderMetadata {
             provider: ProviderKind::Anthropic,
@@ -185,7 +195,6 @@ pub fn resolve_model_alias(model: &str) -> String {
                     "opus" => "claude-opus-4-6",
                     "sonnet" => "claude-sonnet-4-6",
                     "haiku" => "claude-haiku-4-5-20251213",
-                    "axim-default" => "claude-3-5-sonnet-20241022",
                     _ => trimmed,
                 },
                 ProviderKind::Xai => match *alias {

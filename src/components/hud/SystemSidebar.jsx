@@ -4,7 +4,7 @@ import useDesktopAgentStore from '../../store/useDesktopAgentStore';
 export default function SystemSidebar() {
     const [llmHealth, setLlmHealth] = useState({ healthy: 0, total: 0 });
     const [status, setStatus] = useState('DEGRADED');
-    const [telemetry, setTelemetry] = useState({ latency: null, gatewayStatus: 'DEGRADED', cacheHitRate: 0 });
+    const [telemetry, setTelemetry] = useState({ latency: null, gatewayStatus: 'DEGRADED', cacheHitRate: 0, target: 'DeepSeek (Anthropic Failover Active)' });
     const activeVoiceTrunk = useDesktopAgentStore((state) => state.activeVoiceTrunk || 'DISCONNECTED');
     const agentMode = useDesktopAgentStore((state) => state.agentMode || 'STANDBY');
 
@@ -29,14 +29,29 @@ export default function SystemSidebar() {
                 const end = performance.now();
                 const latency = Math.round(end - start);
 
+                let target = 'DeepSeek (Anthropic Failover Active)';
+                try {
+                    const sumRes = await fetch('/api/telemetry/summary');
+                    if (sumRes.ok) {
+                        const sumData = await sumRes.json();
+                        if (sumData.primary_provider && sumData.fallback_provider) {
+                            target = sumData.primary_provider === "operational" && sumData.fallback_provider === "active"
+                                ? "Anthropic (DeepSeek Fallback Active)"
+                                : "DeepSeek (Anthropic Failover Active)";
+                        }
+                    }
+                } catch(e) {}
+
                 if (res.ok) {
                     const data = await res.json();
                     setTelemetry({
                         latency,
                         gatewayStatus: data.status === "healthy" || data.status === "success" || data.status === "ok" ? 'OPERATIONAL' : 'DEGRADED',
-                        cacheHitRate: data.cache_hit_rate || 0
+                        cacheHitRate: data.cache_hit_rate || 0,
+                        target
                     });
                 } else {
+                    setTelemetry(prev => ({ ...prev, target }));
                 }
             } catch (err) {
                 /* void 0; */
@@ -122,6 +137,10 @@ export default function SystemSidebar() {
                 <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-slate-500 uppercase tracking-widest">Agent Mode</span>
                     <span className="text-[10px] font-bold tracking-wider text-blue-400">{agentMode}</span>
+                </div>
+                <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] text-slate-500 uppercase tracking-widest">Target</span>
+                    <span className="text-[9px] font-bold tracking-wider text-blue-400 truncate ml-2 text-right" title={telemetry.target || 'DeepSeek (Anthropic Failover Active)'}>{telemetry.target || 'DeepSeek (Anthropic Failover Active)'}</span>
                 </div>
             </div>
         </div>

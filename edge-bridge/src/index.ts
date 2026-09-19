@@ -704,7 +704,7 @@ const onyx_handler: any = {
       request.headers.get("X-Request-ID") ||
       request.headers.get("cf-ray") ||
       crypto.randomUUID();
-    const edgeStatus = { degraded: false, startTime: Date.now(), colo: (request.cf?.colo as string) ?? "unknown" };
+    const edgeStatus: { degraded: boolean; startTime: number; colo: string; provider?: string } = { degraded: false, startTime: Date.now(), colo: (request.cf?.colo as string) ?? "unknown" };
     const rayId = request.headers.get("cf-ray") || "unknown";
     let cacheStatus = "MISS";
 
@@ -1144,42 +1144,48 @@ const onyx_handler: any = {
         }
       } catch (e) {
         void 0;
-        if (env.AI) {
+        if (env.ANTHROPIC_API_KEY) {
           try {
-            const fallbackResponse = (await env.AI.run(
-              "@cf/meta/llama-3.1-8b-instruct",
-              {
-                messages: [
-                  {
-                    role: "user",
-                    content: (payload as any).message || "Hello",
-                  },
-                ],
-              },
-            )) as { response: string };
-
-            const responseText = fallbackResponse.response;
-
-            const ssePayload = `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { model: "workers-ai-llama-3.1-8b" } })}\n\nevent: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: responseText } })}\n\nevent: message_delta\ndata: ${JSON.stringify({ type: "message_delta", usage: { output_tokens: responseText.length } })}\n\nevent: message_stop\ndata: {}\n\ndata: [DONE]\n\n`;
-            return new Response(ssePayload, {
-              status: 200,
-              headers: addOnyxHeaders(
-                {
-                  ...getCorsHeaders(request, env),
-                  "Content-Type": "text/event-stream",
-                  "X-Onyx-Fallback": "workers-ai",
+            const anthropicReq = {
+                model: "claude-3-5-sonnet-20241022",
+                max_tokens: 1024,
+                messages: [{ role: "user", content: (payload as any).message || "Hello" }]
+            };
+            const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-api-key": env.ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01"
                 },
-                edgeStatus,
-                cacheStatus,
-                traceId,
-              ),
+                body: JSON.stringify(anthropicReq)
             });
-          } catch (aiError) {
+            if (anthropicRes.ok) {
+                const anthropicData: any = await anthropicRes.json();
+                const responseText = anthropicData.content[0].text;
+                const ssePayload = `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { model: "claude-3-5-sonnet-20241022" } })}\n\nevent: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: responseText } })}\n\nevent: message_delta\ndata: ${JSON.stringify({ type: "message_delta", usage: { output_tokens: responseText.length } })}\n\nevent: message_stop\ndata: {}\n\ndata: [DONE]\n\n`;
+                edgeStatus.provider = "anthropic";
+                return new Response(ssePayload, {
+                  status: 200,
+                  headers: addOnyxHeaders(
+                    {
+                      ...getCorsHeaders(request, env),
+                      "Content-Type": "text/event-stream",
+                      "X-Onyx-Fallback": "anthropic",
+                    },
+                    edgeStatus,
+                    cacheStatus,
+                    traceId,
+                  ),
+                });
+            }
+          } catch (apiError) {
             void 0;
           }
         }
       }
 
+      edgeStatus.provider = "deepseek";
       return new Response(
         JSON.stringify({
           status: "success",
@@ -2411,6 +2417,8 @@ const onyx_handler: any = {
           status: "healthy",
           uptime: 0,
           provider_status: "operational",
+          primary_provider: "operational",
+          fallback_provider: "standby",
           timestamp: new Date().toISOString()
         };
         return new Response(JSON.stringify(healthStatus), {
@@ -2426,7 +2434,9 @@ const onyx_handler: any = {
         const telemetrySummary = {
           requests_current_window: 0,
           avg_latency_ms: 0,
-          status: "operational"
+          status: "operational",
+          primary_provider: "operational",
+          fallback_provider: "standby"
         };
         return new Response(JSON.stringify(telemetrySummary), {
           status: 200,
