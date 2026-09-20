@@ -828,7 +828,7 @@ pub async fn handle_onyx_summon(
         }
     };
 
-    let (tx, rx) = tokio::sync::mpsc::channel(10);
+    let (tx, rx) = tokio::sync::mpsc::channel(256);
 
     // If failover occurred before stream, send the failover status event first
     if do_failover {

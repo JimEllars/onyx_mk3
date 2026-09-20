@@ -44,6 +44,8 @@ const ALLOWED_ORIGINS = [
 ];
 
 const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
+const WORKER_STARTED_AT = Date.now();
+const UPSTREAM_TIMEOUT_MS = 15_000;
 
 async function kvWriteWithTimeout<T>(
   promise: Promise<T>,
@@ -130,7 +132,10 @@ function getCorsHeaders(request: Request, env?: Env) {
   return {
     "Access-Control-Allow-Origin": isAllowed ? origin : (env?.ALLOWED_ORIGIN || "http://localhost"),
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, X-Correlation-ID, X-Request-ID",
+    "Access-Control-Expose-Headers":
+      "CF-Ray, X-Correlation-ID, X-Onyx-Edge-Latency, X-Onyx-Edge-Health",
   };
 }
 
@@ -150,9 +155,11 @@ function addOnyxHeaders(
   if (traceId) {
     h.set("X-Onyx-Trace-Id", traceId);
     h.set("X-Request-ID", traceId);
+    h.set("X-Correlation-ID", traceId);
   }
   if (rayId) {
     h.set("X-Onyx-Ray-ID", rayId);
+    h.set("CF-Ray", rayId);
   }
   if (status.startTime) {
     const latency = (Date.now() - status.startTime).toFixed(2);
@@ -164,6 +171,32 @@ function addOnyxHeaders(
   h.set("X-Onyx-Edge-Health", status.degraded ? "DEGRADED" : "OK");
   h.set("X-Onyx-Cache-Status", cacheStatus);
   return h;
+}
+
+async function checkReadiness(
+  env: Env,
+): Promise<Record<string, "ready" | "unavailable">> {
+  const probe = async (namespace: KVNamespace | undefined, key: string) => {
+    if (!namespace) return "unavailable" as const;
+    const timeout = new Promise<"unavailable">((resolve) =>
+      setTimeout(() => resolve("unavailable"), 500),
+    );
+    try {
+      return await Promise.race([
+        namespace.get(key).then(() => "ready" as const),
+        timeout,
+      ]);
+    } catch (error) {
+      console.error(`Readiness probe failed for ${key}`, error);
+      return "unavailable" as const;
+    }
+  };
+
+  return {
+    kv: await probe(env.ONYX_STATE, "__readyz_probe"),
+    dispatch_locks: await probe(env.ONYX_DISPATCH_LOCKS, "__readyz_probe"),
+    upstream_routing: env.CORE_INGEST_URL && env.AI ? "ready" : "unavailable",
+  };
 }
 
 async function dispatchToCore(
@@ -232,15 +265,23 @@ async function dispatchToCore(
   }
 }
 
-async function fetchWithRetry(url: string, options: any, maxRetries = 3) {
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3) {
   let lastErr;
   for (let i = 0; i < maxRetries; i++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+    const abortFromCaller = () => controller.abort();
+    options.signal?.addEventListener("abort", abortFromCaller, { once: true });
     try {
-      const res = await fetch(url, options);
+      const res = await fetch(url, { ...options, signal: controller.signal });
       if (res.ok) return res;
+      if (res.status < 500 && res.status !== 429) return res;
       lastErr = new Error(`HTTP error ${res.status}`);
     } catch (e) {
       lastErr = e;
+    } finally {
+      clearTimeout(timeout);
+      options.signal?.removeEventListener("abort", abortFromCaller);
     }
     await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, i)));
   }
@@ -701,6 +742,7 @@ const onyx_handler: any = {
     ctx: ExecutionContext,
   ): Promise<Response> {
     const traceId =
+      request.headers.get("X-Correlation-ID") ||
       request.headers.get("X-Request-ID") ||
       request.headers.get("cf-ray") ||
       crypto.randomUUID();
@@ -759,7 +801,7 @@ const onyx_handler: any = {
     }
 
     const url = new URL(request.url);
-    if (url.pathname === "/healthz") {
+    if (request.method === "GET" && url.pathname === "/healthz") {
       const durationMs = (Date.now() - edgeStatus.startTime).toFixed(2);
       return new Response(
         JSON.stringify({
@@ -778,6 +820,31 @@ const onyx_handler: any = {
             ...getCorsHeaders(request, env)
           }
         }
+      );
+    }
+
+    if (request.method === "GET" && url.pathname === "/readyz") {
+      const dependencies = await checkReadiness(env);
+      const ready = Object.values(dependencies).every(
+        (status) => status === "ready",
+      );
+      return new Response(
+        JSON.stringify({
+          status: ready ? "ready" : "degraded",
+          timestamp: new Date().toISOString(),
+          uptime_ms: Date.now() - WORKER_STARTED_AT,
+          dependencies,
+        }),
+        {
+          status: ready ? 200 : 503,
+          headers: addOnyxHeaders(
+            { "Content-Type": "application/json", ...getCorsHeaders(request, env) },
+            { ...edgeStatus, degraded: !ready },
+            cacheStatus,
+            traceId,
+            rayId,
+          ),
+        },
       );
     }
 
