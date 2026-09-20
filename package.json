@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "vite build && npm --prefix edge-bridge ci --legacy-peer-deps && npm --prefix edge-bridge run build",
-    "deploy": "mkdir -p rust/crates/onyx/static && npm --prefix edge-bridge run deploy",
-    "deploy:dry-run": "npm --prefix edge-bridge run deploy:dry-run"
+    "build": "npm ci && vite build && npm --prefix edge-bridge ci --legacy-peer-deps && npm --prefix edge-bridge run build",
+    "deploy": "npm run build && npm --prefix edge-bridge run deploy",
+    "deploy:dry-run": "npm run build && npm --prefix edge-bridge run deploy:dry-run"
   },
   "dependencies": {
     "react": "^19.2.8",

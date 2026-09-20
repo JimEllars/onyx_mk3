@@ -72,7 +72,6 @@ const MODEL_REGISTRY: &[(&str, ProviderMetadata)] = &[
             default_base_url: openai_compat::DEFAULT_DEEPSEEK_BASE_URL,
         },
     ),
-
     (
         "opus",
         ProviderMetadata {
@@ -203,7 +202,11 @@ pub fn resolve_model_alias(model: &str) -> String {
                     "grok-2" => "grok-2",
                     _ => trimmed,
                 },
-                ProviderKind::OpenAi | ProviderKind::Gemini | ProviderKind::Cloudflare => trimmed,
+                ProviderKind::OpenAi => match *alias {
+                    "axim-default" => "deepseek-chat",
+                    _ => trimmed,
+                },
+                ProviderKind::Gemini | ProviderKind::Cloudflare => trimmed,
             })
         })
         .map_or_else(|| trimmed.to_string(), ToOwned::to_owned)
@@ -726,6 +729,7 @@ mod tests {
         assert_eq!(resolve_model_alias("grok"), "grok-3");
         assert_eq!(resolve_model_alias("grok-mini"), "grok-3-mini");
         assert_eq!(resolve_model_alias("grok-2"), "grok-2");
+        assert_eq!(resolve_model_alias("axim-default"), "deepseek-chat");
     }
 
     #[test]

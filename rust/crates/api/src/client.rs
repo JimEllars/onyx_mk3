@@ -202,7 +202,9 @@ impl ProviderClient {
                             }
                         }
                         "openai" => {
-                            if request.model.contains("deepseek") && std::env::var("ANTHROPIC_API_KEY").is_ok() {
+                            if request.model.contains("deepseek")
+                                && std::env::var("ANTHROPIC_API_KEY").is_ok()
+                            {
                                 Self::from_model("claude-3-5-sonnet-20241022").ok()
                             } else {
                                 None
@@ -337,7 +339,9 @@ impl ProviderClient {
                             }
                         }
                         "openai" => {
-                            if request.model.contains("deepseek") && std::env::var("ANTHROPIC_API_KEY").is_ok() {
+                            if request.model.contains("deepseek")
+                                && std::env::var("ANTHROPIC_API_KEY").is_ok()
+                            {
                                 Self::from_model("claude-3-5-sonnet-20241022").ok()
                             } else {
                                 None

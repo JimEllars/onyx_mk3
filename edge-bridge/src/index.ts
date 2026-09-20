@@ -7,9 +7,9 @@
 import { z } from "zod";
 
 export interface Env {
-  ECOSYSTEM_METRICS_KV: KVNamespace;
-  EDGE_DLQ_KV: KVNamespace;
-  HITL_APPROVAL_KV: KVNamespace;
+  ECOSYSTEM_METRICS_KV?: KVNamespace;
+  EDGE_DLQ_KV?: KVNamespace;
+  HITL_APPROVAL_KV?: KVNamespace;
   ONYX_EDGE_METRICS?: AnalyticsEngineDataset;
   AI?: any;
   ASSETS?: Fetcher;
@@ -19,9 +19,11 @@ export interface Env {
   ONYX_SESSION_STATE: KVNamespace;
   ONYX_DISPATCH_LOCKS: KVNamespace;
   ONYX_PROMPT_CACHE: KVNamespace;
-  ONYX_KV: KVNamespace;
+  ONYX_KV?: KVNamespace;
   AXIM_ONYX_SECRET: string;
-  ANTHROPIC_API_KEY: string;
+  DEEPSEEK_API_KEY?: string;
+  DEEPSEEK_MODEL?: string;
+  ANTHROPIC_API_KEY?: string;
   CORE_INGEST_URL: string;
   GITHUB_WEBHOOK_SECRET: string;
   WP_WEBHOOK_SECRET: string;
@@ -104,6 +106,110 @@ async function hashPrompt(prompt: string): Promise<string> {
   return hashHex;
 }
 
+function promptFromSummonPayload(payload: unknown): string {
+  if (
+    typeof payload === "object" &&
+    payload !== null &&
+    "message" in payload &&
+    typeof payload.message === "string" &&
+    payload.message.trim()
+  ) {
+    return payload.message;
+  }
+
+  return "Hello";
+}
+
+function textSsePayload(model: string, responseText: string): string {
+  return `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { model } })}\n\nevent: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: responseText } })}\n\nevent: message_delta\ndata: ${JSON.stringify({ type: "message_delta", usage: { output_tokens: responseText.length } })}\n\nevent: message_stop\ndata: {}\n\ndata: [DONE]\n\n`;
+}
+
+async function invokeDeepSeek(
+  env: Env,
+  payload: unknown,
+): Promise<{ model: string; text: string } | null> {
+  if (!env.DEEPSEEK_API_KEY) {
+    return null;
+  }
+
+  const model = env.DEEPSEEK_MODEL || "deepseek-chat";
+  try {
+    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: promptFromSummonPayload(payload) }],
+      }),
+    });
+    if (!response.ok) {
+      console.error("DeepSeek fallback request failed", response.status);
+      return null;
+    }
+
+    const body = (await response.json()) as {
+      choices?: Array<{ message?: { content?: unknown } }>;
+    };
+    const text = body.choices?.[0]?.message?.content;
+    if (typeof text !== "string" || !text.trim()) {
+      console.error("DeepSeek fallback returned no text content");
+      return null;
+    }
+
+    return { model, text };
+  } catch (error) {
+    console.error("DeepSeek fallback request errored", error);
+    return null;
+  }
+}
+
+async function invokeAnthropic(
+  env: Env,
+  payload: unknown,
+): Promise<{ model: string; text: string } | null> {
+  if (!env.ANTHROPIC_API_KEY) {
+    return null;
+  }
+
+  const model = "claude-3-5-sonnet-20241022";
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 1024,
+        messages: [{ role: "user", content: promptFromSummonPayload(payload) }],
+      }),
+    });
+    if (!response.ok) {
+      console.error("Anthropic fallback request failed", response.status);
+      return null;
+    }
+
+    const body = (await response.json()) as {
+      content?: Array<{ text?: unknown }>;
+    };
+    const text = body.content?.[0]?.text;
+    if (typeof text !== "string" || !text.trim()) {
+      console.error("Anthropic fallback returned no text content");
+      return null;
+    }
+
+    return { model, text };
+  } catch (error) {
+    console.error("Anthropic fallback request errored", error);
+    return null;
+  }
+}
+
 function equalSecrets(left: string, right: string): boolean {
   if (left.length !== right.length) {
     return false;
@@ -118,19 +224,13 @@ function equalSecrets(left: string, right: string): boolean {
 
 function getCorsHeaders(request: Request, env?: Env) {
   const origin = request.headers.get("Origin") || "";
-  let isAllowed = false;
-
-  const ALLOWED_ORIGINS = [
-    "http://localhost",
-    env?.ALLOWED_ORIGIN,
-  ].filter(Boolean);
-
-  if (origin && (origin.startsWith("http://localhost") || origin === env?.ALLOWED_ORIGIN)) {
-    isAllowed = true;
-  }
+  const isAllowed =
+    origin.startsWith("http://localhost") ||
+    ALLOWED_ORIGINS.includes(origin) ||
+    origin === env?.ALLOWED_ORIGIN;
 
   return {
-    "Access-Control-Allow-Origin": isAllowed ? origin : (env?.ALLOWED_ORIGIN || "http://localhost"),
+    "Access-Control-Allow-Origin": isAllowed ? origin : "null",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers":
       "Content-Type, Authorization, X-Correlation-ID, X-Request-ID",
@@ -1173,7 +1273,7 @@ const onyx_handler: any = {
 
       const ingestUrl = env.CORE_INGEST_URL;
 
-      let payload = {};
+      let payload: unknown = {};
       try {
         const rawBodyText = await request.clone().text();
         if (rawBodyText) {
@@ -1209,50 +1309,53 @@ const onyx_handler: any = {
         ) {
           throw new Error("Providers down or 503");
         }
-      } catch (e) {
-        void 0;
-        if (env.ANTHROPIC_API_KEY) {
-          try {
-            const anthropicReq = {
-                model: "claude-3-5-sonnet-20241022",
-                max_tokens: 1024,
-                messages: [{ role: "user", content: (payload as any).message || "Hello" }]
-            };
-            const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-api-key": env.ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01"
-                },
-                body: JSON.stringify(anthropicReq)
-            });
-            if (anthropicRes.ok) {
-                const anthropicData: any = await anthropicRes.json();
-                const responseText = anthropicData.content[0].text;
-                const ssePayload = `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { model: "claude-3-5-sonnet-20241022" } })}\n\nevent: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: responseText } })}\n\nevent: message_delta\ndata: ${JSON.stringify({ type: "message_delta", usage: { output_tokens: responseText.length } })}\n\nevent: message_stop\ndata: {}\n\ndata: [DONE]\n\n`;
-                edgeStatus.provider = "anthropic";
-                return new Response(ssePayload, {
-                  status: 200,
-                  headers: addOnyxHeaders(
-                    {
-                      ...getCorsHeaders(request, env),
-                      "Content-Type": "text/event-stream",
-                      "X-Onyx-Fallback": "anthropic",
-                    },
-                    edgeStatus,
-                    cacheStatus,
-                    traceId,
-                  ),
-                });
-            }
-          } catch (apiError) {
-            void 0;
-          }
+      } catch (error) {
+        console.error("AXiM Core summon request failed", error);
+        const fallback = await invokeDeepSeek(env, payload) ||
+          await invokeAnthropic(env, payload);
+        if (fallback) {
+          edgeStatus.provider = fallback.model.startsWith("deepseek")
+            ? "deepseek"
+            : "anthropic";
+          return new Response(textSsePayload(fallback.model, fallback.text), {
+            status: 200,
+            headers: addOnyxHeaders(
+              {
+                ...getCorsHeaders(request, env),
+                "Content-Type": "text/event-stream",
+                "X-Onyx-Fallback": edgeStatus.provider,
+              },
+              edgeStatus,
+              cacheStatus,
+              traceId,
+            ),
+          });
         }
+
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: "UPSTREAM_UNAVAILABLE",
+              message: "AXiM Core and configured AI fallbacks are unavailable.",
+              trace_id: traceId,
+            },
+          }),
+          {
+            status: 503,
+            headers: addOnyxHeaders(
+              {
+                ...getCorsHeaders(request, env),
+                "Content-Type": "application/json",
+              },
+              { ...edgeStatus, degraded: true },
+              cacheStatus,
+              traceId,
+            ),
+          },
+        );
       }
 
-      edgeStatus.provider = "deepseek";
+      edgeStatus.provider = "core";
       return new Response(
         JSON.stringify({
           status: "success",

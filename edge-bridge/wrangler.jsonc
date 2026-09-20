@@ -27,7 +27,8 @@
   },
   "vars": {
     "CORE_INGEST_URL": "https://api.axim.us.com/v1/functions/telemetry-ingest",
-    "ALLOWED_ORIGIN": "tauri://localhost"
+    "ALLOWED_ORIGIN": "tauri://localhost",
+    "DEEPSEEK_MODEL": "deepseek-chat"
   },
   "d1_databases": [
     {

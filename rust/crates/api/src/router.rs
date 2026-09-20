@@ -697,10 +697,7 @@ pub async fn handle_onyx_summon(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     payload_result: Result<Json<serde_json::Value>, JsonRejection>,
-) -> Result<
-    impl IntoResponse,
-    (StatusCode, axum::Json<serde_json::Value>),
-> {
+) -> Result<impl IntoResponse, (StatusCode, axum::Json<serde_json::Value>)> {
     let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
     let expected_token = format!("Bearer {}", state.auth_token);
 
@@ -777,7 +774,7 @@ pub async fn handle_onyx_summon(
         web3_wallet_address: None,
     };
 
-        let trace_id = headers
+    let trace_id = headers
         .get("x-request-id")
         .or_else(|| headers.get("x-onyx-trace-id"))
         .and_then(|h| h.to_str().ok())
@@ -788,9 +785,17 @@ pub async fn handle_onyx_summon(
 
     if let Err(ref e) = stream_result {
         let e_str = e.to_string();
-        if e_str.contains("429") || e_str.contains("500") || e_str.contains("502") || e_str.contains("503") || e_str.contains("504") {
+        if e_str.contains("429")
+            || e_str.contains("500")
+            || e_str.contains("502")
+            || e_str.contains("503")
+            || e_str.contains("504")
+        {
             do_failover = true;
-            tracing::warn!("Provider failure detected, initiating seamless failover: {}", e_str);
+            tracing::warn!(
+                "Provider failure detected, initiating seamless failover: {}",
+                e_str
+            );
         }
     }
 
@@ -799,7 +804,11 @@ pub async fn handle_onyx_summon(
 
         let dlq_path = ".claw/telemetry.jsonl";
         let _ = std::fs::create_dir_all(".claw");
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(dlq_path) {
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dlq_path)
+        {
             let entry = serde_json::json!({
                 "timestamp": chrono::Utc::now().to_rfc3339(),
                 "event": "PROVIDER_FAILOVER",
@@ -810,7 +819,9 @@ pub async fn handle_onyx_summon(
             let _ = writeln!(file, "{}", entry);
         }
 
-        if let Ok(fallback_client) = crate::client::ProviderClient::from_model("claude-3-5-sonnet-20241022") {
+        if let Ok(fallback_client) =
+            crate::client::ProviderClient::from_model("claude-3-5-sonnet-20241022")
+        {
             let mut fallback_request = request.clone();
             fallback_request.model = "claude-3-5-sonnet-20241022".to_string();
             stream_result = fallback_client.stream_message(&fallback_request).await;
@@ -838,18 +849,17 @@ pub async fn handle_onyx_summon(
             "from": "deepseek",
             "to": "anthropic"
         });
-        let _ = tx.send(Ok::<_, std::convert::Infallible>(
-            axum::response::sse::Event::default().data(heartbeat_payload.to_string()),
-        )).await;
+        let _ = tx
+            .send(Ok::<_, std::convert::Infallible>(
+                axum::response::sse::Event::default().data(heartbeat_payload.to_string()),
+            ))
+            .await;
     }
 
     tokio::spawn(async move {
         loop {
-            match tokio::time::timeout(
-                tokio::time::Duration::from_secs(15),
-                stream.next_event(),
-            )
-            .await
+            match tokio::time::timeout(tokio::time::Duration::from_secs(15), stream.next_event())
+                .await
             {
                 Ok(Ok(Some(event))) => match event {
                     crate::types::StreamEvent::ContentBlockDelta(delta_event) => {
@@ -874,13 +884,16 @@ pub async fn handle_onyx_summon(
                         if payload.emit(&mut buf).is_ok() {
                             let _ = tx
                                 .send(Ok::<_, std::convert::Infallible>(
-                                    axum::response::sse::Event::default().data(String::from_utf8_lossy(&buf)),
+                                    axum::response::sse::Event::default()
+                                        .data(String::from_utf8_lossy(&buf)),
                                 ))
                                 .await;
                         }
 
                         let _ = tx
-                            .send(Ok::<_, std::convert::Infallible>(axum::response::sse::Event::default().data("[DONE]")))
+                            .send(Ok::<_, std::convert::Infallible>(
+                                axum::response::sse::Event::default().data("[DONE]"),
+                            ))
                             .await;
                         break;
                     }
@@ -895,13 +908,20 @@ pub async fn handle_onyx_summon(
                         "from": "deepseek",
                         "to": "anthropic"
                     });
-                    let _ = tx.send(Ok::<_, std::convert::Infallible>(
-                        axum::response::sse::Event::default().data(heartbeat_payload.to_string()),
-                    )).await;
+                    let _ = tx
+                        .send(Ok::<_, std::convert::Infallible>(
+                            axum::response::sse::Event::default()
+                                .data(heartbeat_payload.to_string()),
+                        ))
+                        .await;
 
                     let dlq_path = ".claw/telemetry.jsonl";
                     let _ = std::fs::create_dir_all(".claw");
-                    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(dlq_path) {
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(dlq_path)
+                    {
                         let entry = serde_json::json!({
                             "timestamp": chrono::Utc::now().to_rfc3339(),
                             "event": "PROVIDER_FAILOVER_TIMEOUT",
@@ -911,10 +931,14 @@ pub async fn handle_onyx_summon(
                         let _ = writeln!(file, "{}", entry);
                     }
 
-                    if let Ok(fallback_client) = crate::client::ProviderClient::from_model("claude-3-5-sonnet-20241022") {
+                    if let Ok(fallback_client) =
+                        crate::client::ProviderClient::from_model("claude-3-5-sonnet-20241022")
+                    {
                         let mut fallback_request = request.clone();
                         fallback_request.model = "claude-3-5-sonnet-20241022".to_string();
-                        if let Ok(fallback_stream) = fallback_client.stream_message(&fallback_request).await {
+                        if let Ok(fallback_stream) =
+                            fallback_client.stream_message(&fallback_request).await
+                        {
                             stream = fallback_stream;
                             continue;
                         }
@@ -935,7 +959,6 @@ pub async fn handle_onyx_summon(
 
     Ok((headers, sse).into_response())
 }
-
 
 #[axum::debug_handler]
 pub async fn handle_llm_health() -> impl IntoResponse {
