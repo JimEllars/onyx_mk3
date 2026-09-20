@@ -131,7 +131,18 @@ fn main() {
         .open(".claw/telemetry.jsonl");
 
     if let Ok(file) = log_file {
-        tracing_subscriber::fmt().json().with_writer(file).init();
+        let (non_blocking, guard) = tracing_appender::non_blocking(file);
+        // We leak the guard so the background thread stays alive for the duration of the program.
+        let _ = guard; // Suppress unused variable warning; // Leak guard
+
+        let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+        tracing_subscriber::fmt()
+            .json()
+            .with_writer(non_blocking)
+            .with_env_filter(env_filter)
+            .init();
     } else if wants_json_logs {
         tracing_subscriber::fmt()
             .json()
@@ -139,12 +150,16 @@ fn main() {
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .init();
     } else {
-        let file_appender = tracing_subscriber::fmt::writer::MakeWriterExt::with_max_level(
-            tracing_appender::rolling::never(".claw", "onyx.log"),
-            tracing::Level::INFO,
-        );
+        let file_appender = tracing_appender::rolling::never(".claw", "onyx.log");
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+        let _ = guard; // Suppress unused variable warning; // Leak guard
         tracing_subscriber::fmt()
-            .with_writer(file_appender)
+            .with_writer(
+                tracing_subscriber::fmt::writer::MakeWriterExt::with_max_level(
+                    non_blocking,
+                    tracing::Level::INFO,
+                ),
+            )
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .init();
     }
