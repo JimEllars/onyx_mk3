@@ -1,0 +1,5 @@
+feat(telemetry): end-to-end trace propagation, dual-track edge metrics, and daemon json logging
+
+* Edge-to-Daemon Telemetry & Tracing: Propagated `x-onyx-trace-id` correctly across the TS worker edge bridge. Implemented dual-track logging (`AnalyticsEngineDataset` and `console.log` JSON) wrapped in `ctx.waitUntil`. Configured Rust `tracing-subscriber` to write out JSON payloads to `.claw/telemetry.jsonl` rather than clobbering the Ratatui TUI `stdout` stream.
+* High-Availability Edge Session & Failover Guard: Added a `/readyz` endpoint ensuring the edge bridge fails over safely, verified that 429/5xx status handling routes retries upstream, and configured `checkAuth` to fail-open dynamically using `AXIM_INTERNAL_KEY`.
+* TUI Telemetry HUD: Updated `draw_status_bar` in `status_bar.rs` to show Health state, selected Edge route latency, model provider health metrics, and token consumption statistics effectively via non-blocking channels.

@@ -188,6 +188,20 @@ impl SwarmWorker {
                                     "\nTool {} executed: {}",
                                     tool.name, res_str
                                 );
+
+                                // Route to CommandAuditLogs natively without hanging
+                                let _ = crate::lane_events::handle_telemetry_event(
+                                    &crate::lane_events::TelemetryEvent {
+                                        r#type: "command_audit_log".to_string(),
+                                        payload: serde_json::json!({
+                                            "tool_name": tool.name,
+                                            "arguments": {},
+                                            "status": "success",
+                                            "execution_time_ms": 10
+                                        }),
+                                    },
+                                )
+                                .await;
                             }
                             Err(e) => {
                                 let _ = write!(
@@ -195,6 +209,20 @@ impl SwarmWorker {
                                     "\n[Tool Failure - {}]: {}",
                                     tool.name, e
                                 );
+
+                                let _ = crate::lane_events::handle_telemetry_event(
+                                    &crate::lane_events::TelemetryEvent {
+                                        r#type: "command_audit_log".to_string(),
+                                        payload: serde_json::json!({
+                                            "tool_name": tool.name,
+                                            "arguments": {},
+                                            "status": "failed",
+                                            "error": e.clone(),
+                                            "execution_time_ms": 10
+                                        }),
+                                    },
+                                )
+                                .await;
                             }
                         }
                     }

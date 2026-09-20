@@ -8,3 +8,15 @@ archive/
 edge-bridge/node_modules
 .env
 edge-bridge/.dev.vars
+.claw/
+.onyx/logs/
+patch_*.py
+node_modules/
+node_modules
+node_modules/
+dist
+
+# Session and temp files
+.port_sessions/
+*.log
+dev.pid

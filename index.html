@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AXiM Onyx Mk3 Dashboard</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+    <div id="system-status-bar" style="position: fixed; bottom: 0; left: 0; right: 0; height: 32px; background: rgba(15, 23, 42, 0.95); border-top: 1px solid rgba(51, 65, 85, 0.8); display: flex; align-items: center; padding: 0 16px; font-family: monospace; font-size: 11px; color: #94a3b8; z-index: 9999; backdrop-filter: blur(8px);">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span id="conn-indicator" style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);"></span>
+        <span id="conn-text" style="font-weight: 600; color: #cbd5e1; letter-spacing: 0.05em;">SYSTEM OPERATIONAL</span>
+      </div>
+      <div style="flex: 1;"></div>
+      <div style="display: flex; gap: 16px; align-items: center;">
+        <span id="telemetry-pulse">R/M: --</span>
+        <span id="latency-pulse">LAT: -- ms</span>
+        <span id="provider-pulse">TARGET: DeepSeek (Anthropic Failover Active)</span>
+      </div>
+    </div>
+
+    <script>
+      (function() {
+        const updateTelemetry = async () => {
+          try {
+            const res = await fetch('/api/telemetry/summary');
+            if (res.ok) {
+              const data = await res.json();
+              document.getElementById('telemetry-pulse').innerText = `R/M: ${data.requests_current_window}`;
+              document.getElementById('latency-pulse').innerText = `LAT: ${data.avg_latency_ms} ms`;
+              if (data.primary_provider && data.fallback_provider) {
+                  const targetStr = data.primary_provider === "operational" && data.fallback_provider === "active"
+                      ? "TARGET: Anthropic (DeepSeek Fallback Active)"
+                      : "TARGET: DeepSeek (Anthropic Failover Active)";
+                  document.getElementById('provider-pulse').innerText = targetStr;
+              }
+              document.getElementById('conn-indicator').style.background = '#10b981';
+              document.getElementById('conn-indicator').style.boxShadow = '0 0 8px rgba(16, 185, 129, 0.5)';
+              document.getElementById('conn-text').innerText = 'SYSTEM OPERATIONAL';
+            }
+          } catch(e) {
+            document.getElementById('conn-indicator').style.background = '#ef4444';
+            document.getElementById('conn-indicator').style.boxShadow = '0 0 8px rgba(239, 68, 68, 0.5)';
+            document.getElementById('conn-text').innerText = 'OFFLINE / RECONNECTING';
+          }
+        };
+        setInterval(updateTelemetry, 15000);
+        setTimeout(updateTelemetry, 1000);
+      })();
+    </script>
+  </body>
+</html>

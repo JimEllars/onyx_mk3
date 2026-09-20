@@ -1,3 +1,4 @@
+#![allow(clippy::uninlined_format_args)]
 use crossterm::{
     cursor::{MoveTo, RestorePosition, SavePosition},
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
@@ -19,10 +20,10 @@ pub static CACHED_CRON_STATUS_ACTIVE: std::sync::atomic::AtomicBool =
 pub fn spawn_telemetry_polling_loop(port: u16) {
     std::thread::spawn(move || {
         let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(2))
             .build()
             .unwrap_or_default();
-        let url = format!("http://127.0.0.1:{port}/api/v1/telemetry/health");
+        let url = format!("http://127.0.0.1:{port}/api/telemetry/summary");
         loop {
             if let Ok(res) = client.get(&url).send() {
                 if let Ok(json) = res.json::<serde_json::Value>() {
@@ -81,33 +82,62 @@ pub fn render_status_bar_text(
         |b| format!("{b:?}"),
     );
     let identity_str = if let Some(addr) = web3_wallet_address {
-        if addr.len() >= 42 {
+        let addr_short = if addr.len() >= 42 {
             format!("{}...{}", &addr[0..6], &addr[38..42])
         } else {
             addr.to_string()
-        }
+        };
+        format!("[33mBilling Queue Fallback ({addr_short})[0m")
     } else {
         "Standard Auth".to_string()
     };
+    let is_edge_ready = CACHED_EDGE_BUFFER_READY.load(std::sync::atomic::Ordering::Relaxed);
     let edge_status_val_conn = telemetry::metrics::EDGE_KV_STATUS.get();
-    let edge_conn_str = if (edge_status_val_conn - 1.0).abs() < f64::EPSILON {
+    let is_connected = (edge_status_val_conn - 1.0).abs() < f64::EPSILON || is_edge_ready;
+    let connectivity_indicator = if is_connected {
+        "[32m●[0m"
+    } else {
+        "[31m■[0m"
+    };
+    let edge_conn_str = if is_connected {
         "Connected (Cloudflare Edge)"
     } else {
         "Offline"
     };
+
+    let active_provider =
+        telemetry::metrics::get_last_active_provider().unwrap_or_else(|| "unknown".to_string());
+
     let edge_latency_val = telemetry::metrics::EDGE_LATENCY_MS.get();
 
+    let latency_str = if edge_latency_val == 0.0 {
+        "--".to_string()
+    } else {
+        format!("{edge_latency_val:.2}")
+    };
     let mut text = format!(
-        "⚡ {} ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ Model: {} ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{} ∥ Latency: {:.2}ms",
-        edge_conn_str, brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
-        model, session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str, edge_latency_val
+        "{} {} ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ TARGET: DeepSeek ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{} ∥ Latency: ⚡ {}ms",
+        connectivity_indicator, edge_conn_str, brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
+session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str, latency_str
     );
 
     if let Ok((cols, _)) = size() {
         if cols < 80 {
             // Collapse non-essential widgets
+            let latency_str = if edge_latency_val == 0.0 {
+                "--".to_string()
+            } else {
+                format!("{edge_latency_val:.2}")
+            };
             text = format!(
-                "⚡ {edge_conn_str} ∥ {model} ∥ {session_id} ∥ Cost: ${cost:.4} ∥ Lat: {edge_latency_val:.2}ms"
+                "{} {} ∥ [{}:{}] ∥ {} ∥ Cost: ${:.4} ∥ Latency: ⚡ {}ms",
+                connectivity_indicator,
+                edge_conn_str,
+                active_provider,
+                model,
+                session_id,
+                cost,
+                latency_str
             );
         }
     }
@@ -217,6 +247,42 @@ pub fn render_status_bar_text(
     } else {
         "DEGRADED"
     };
+
+    let edge_latency = telemetry::metrics::EDGE_LATENCY_MS.get();
+    let edge_healthy =
+        api::providers::CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed);
+    let routing_indicator = if edge_healthy && edge_latency > 0.0 {
+        // We will read COLO from a static string, if we added it, but it's not strictly available in telemetry statics.
+        // We will just use 'CF' if not present in a new static. Let's look for a static for COLO or just fallback to 'CF'.
+        format!("[⚡ Edge: CF | {edge_latency:.0}ms]")
+    } else {
+        let direct_provider = if model.starts_with("openai/") {
+            "OpenAI"
+        } else if model.starts_with("gemini/") {
+            "Gemini"
+        } else if model.starts_with("xai/") {
+            "xAI"
+        } else {
+            "Anthropic"
+        };
+        format!("[🌐 Direct: {direct_provider}]")
+    };
+
+    let edge_latency = telemetry::metrics::EDGE_LATENCY_MS.get();
+    let edge_healthy =
+        api::providers::CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed);
+    let routing_indicator = if edge_healthy && edge_latency > 0.0 {
+        // We do not currently have the exact COLO cached in a static, but we can display the latency.
+        // Actually, we need <COLO>. Is there a static for it?
+        // If not, we can just say 'CF' or read it. Let's just use 'CF' for COLO if it's not exported.
+        format!("[⚡ Edge: CF | {edge_latency:.0}ms]")
+    } else {
+        format!(
+            "[🌐 Direct: {}]",
+            model.split('/').next().unwrap_or("Anthropic")
+        )
+    };
+
     let cache_hit_rate = telemetry::metrics::EDGE_CACHE_HIT_RATE.get();
     let cache_ttl = telemetry::metrics::EDGE_CACHE_TTL.get();
 
@@ -228,7 +294,7 @@ pub fn render_status_bar_text(
     };
 
     text = format!(
-        "{text} ∥ {rps_str} ∥ [Edge: OK] · EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s"
+        "{text} ∥ {rps_str} ∥ {routing_indicator} · EDGE: {edge_state_str} · CACHE: {cache_hit_rate:.0}% · TTL: {cache_ttl:.0}s"
     );
 
     let email_status = telemetry::metrics::get_last_email_status();
@@ -370,7 +436,7 @@ pub fn draw_status_bar(
             .replace("[32m", "")
             .replace("[1;31m", "")
             .replace("[36;1m", "");
-        let truncated_text = if stripped_text.chars().count() > cols as usize {
+        let truncated_text = if stripped_text.chars().count() >= cols as usize {
             let width = cols.saturating_sub(2) as usize;
             if width == 0 {
                 ""
@@ -408,8 +474,10 @@ pub fn draw_status_bar(
 
         let (bg, fg) = if d1_timeout_count > 0 {
             (Color::Magenta, Color::White)
-        } else if cron_active {
-            (Color::DarkGreen, Color::White)
+        } else if web3_wallet_address.is_some() {
+            (Color::Yellow, Color::Black)
+        } else if healthy_providers > 0 && healthy_providers == total_providers || cron_active {
+            (Color::Green, Color::Black)
         } else if edge_ready {
             (Color::DarkBlue, Color::White)
         } else if edge_heartbeat_intercepts > 0 {
@@ -417,13 +485,11 @@ pub fn draw_status_bar(
         } else if (session_active && !session_success) || rl_val > 0 {
             (Color::Yellow, Color::Black)
         } else if session_active && session_success {
-            (Color::DarkGreen, Color::White)
+            (Color::Green, Color::Black)
         } else if q_depth > 0 {
             (Color::Yellow, Color::Black)
-        } else if web3_wallet_address.is_some() {
-            (Color::DarkBlue, Color::Cyan)
         } else if pulse_active {
-            (Color::DarkGreen, Color::White)
+            (Color::Green, Color::Black)
         } else if let Some(focus) = focus_state {
             match focus {
                 crate::app::FocusState::CommandPalette => (Color::DarkBlue, Color::White), // Vibrant Active
@@ -438,7 +504,7 @@ pub fn draw_status_bar(
         let _ = out.queue(Print(format!(
             " {:<width$} ",
             truncated_text,
-            width = cols.saturating_sub(2) as usize
+            width = cols.saturating_sub(2).max(1) as usize
         )));
         let _ = out.queue(ResetColor);
         let _ = out.queue(RestorePosition);

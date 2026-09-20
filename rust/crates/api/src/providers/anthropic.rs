@@ -298,7 +298,30 @@ impl AnthropicClient {
         self.preflight_message_request(&request).await?;
 
         let http_response = self.send_with_retry(&request).await?;
-        let request_id = request_id_from_headers(http_response.headers());
+        let request_id = request_id_from_headers(http_response.headers()).or_else(|| {
+            http_response
+                .headers()
+                .get("x-onyx-trace-id")
+                .and_then(|h| h.to_str().ok())
+                .map(std::string::ToString::to_string)
+        });
+        let edge_latency = http_response
+            .headers()
+            .get("x-onyx-edge-duration-ms")
+            .or_else(|| http_response.headers().get("cf-edge-latency-ms"))
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| s.parse().ok());
+        let onyx_provider = http_response
+            .headers()
+            .get("X-Onyx-Provider")
+            .and_then(|h| h.to_str().ok())
+            .map(std::string::ToString::to_string);
+        let cache_status = http_response
+            .headers()
+            .get("X-Onyx-Cache-Status")
+            .and_then(|h| h.to_str().ok())
+            .map(std::string::ToString::to_string);
+
         let body = http_response.text().await.map_err(ApiError::from)?;
         let mut response = serde_json::from_str::<MessageResponse>(&body).map_err(|error| {
             ApiError::json_deserialize("Anthropic", &request.model, &body, error)
@@ -320,6 +343,17 @@ impl AnthropicClient {
         if response.request_id.is_none() {
             response.request_id = request_id;
         }
+
+        response.telemetry = Some(crate::types::TelemetrySnapshot {
+            latency_ms: edge_latency,
+            provider: onyx_provider,
+            model: Some(response.model.clone()),
+            cache_status,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        });
 
         if let Some(prompt_cache) = &self.prompt_cache {
             let record = prompt_cache.record_response(&request, &response);
@@ -445,6 +479,12 @@ impl AnthropicClient {
                         return Ok(response);
                     }
                     Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => {
+                        tracing::warn!(
+                            attempt = attempts,
+                            max_retries = self.max_retries,
+                            status = ?error,
+                            "Anthropic provider unary failover/retry triggered"
+                        );
                         self.record_request_failure(attempts, &error);
                         last_error = Some(error);
                     }
@@ -455,6 +495,12 @@ impl AnthropicClient {
                     }
                 },
                 Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => {
+                    tracing::warn!(
+                        attempt = attempts,
+                        max_retries = self.max_retries,
+                        status = ?error,
+                        "Anthropic provider stream failover/retry triggered"
+                    );
                     self.record_request_failure(attempts, &error);
                     last_error = Some(error);
                 }
@@ -897,12 +943,21 @@ impl MessageStream {
                 return Ok(None);
             }
 
-            match self.response.chunk().await? {
-                Some(chunk) => {
+            match tokio::time::timeout(std::time::Duration::from_secs(15), self.response.chunk())
+                .await
+            {
+                Ok(Ok(Some(chunk))) => {
                     self.pending.extend(self.parser.push(&chunk)?);
                 }
-                None => {
+                Ok(Ok(None)) => {
                     self.done = true;
+                }
+                Ok(Err(e)) => return Err(ApiError::from(e)),
+                Err(_) => {
+                    self.done = true;
+                    return Err(ApiError::StreamTimeout(
+                        "SSE idle read timed out after 15s".to_string(),
+                    ));
                 }
             }
         }

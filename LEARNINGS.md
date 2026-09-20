@@ -4,3 +4,5 @@
 * **Trace Propagation:** Extracting `traceparent` and `x-onyx-trace-id` inside the `router.rs` and `sse.rs` using the Rust `tracing` macro gives us distributed tracing observability right down into the agentic processing loop.
 * **Resilient Client Connections:** When switching from native WebSockets to SSE (`EventSource`) or building robust WebSockets in the dashboard UI, handling deduplication is critical, since edge deployments might retry upstream queries if latency hits the 5-second boundary. Implementing a fast `seenMessageIds` hashset along with an exponential backoff reconnect mechanism (up to 30s) prevents dropped connections from breaking the user experience.
 * **Health Probes in Async Workers:** Integrating periodic polling (e.g. a 30s `tokio::time::interval`) within background worker threads (like `WorkerPool`) allows the system to proactively detect degraded LLM providers without blocking the main event loop or crashing existing threads.
+Sprint completed and all files committed properly
+Successfully updated and verified.

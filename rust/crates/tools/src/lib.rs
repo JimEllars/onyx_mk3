@@ -442,7 +442,134 @@ fn permission_mode_from_plugin(value: &str) -> Result<PermissionMode, String> {
 #[allow(clippy::too_many_lines)]
 pub fn mvp_tool_specs() -> Vec<ToolSpec> {
     vec![
+
         ToolSpec {
+            name: "execute_escalate_to_admin",
+            description: "Escalate an issue to the administrator via AXiM Core.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "subject": { "type": "string" },
+                    "severity": { "type": "string" },
+                    "message": { "type": "string" }
+                },
+                "required": ["subject", "severity", "message"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "execute_trigger_marketing_loop",
+            description: "Trigger the Roundups connector marketing loop via AXiM Core.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "topic": { "type": "string" }
+                },
+                "required": ["topic"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "execute_reconcile_micro_app_revenue",
+            description: "Reconcile micro-app revenue via AXiM Core.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "limit": { "type": "integer" }
+                },
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "execute_fetch_ecosystem_manifest",
+            description: "Fetch the AXiM ecosystem manifest.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "sync_payment_transaction",
+            description: "Sync a payment transaction to Tabby.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "tx_id": { "type": "string" },
+                    "amount": { "type": "number" },
+                    "currency": { "type": "string" },
+                    "gateway": { "type": "string" }
+                },
+                "required": ["tx_id", "amount", "currency", "gateway"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "query_treasury_balance",
+            description: "Query the treasury balance.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "publish_to_wordpress",
+            description: "Publish content to WordPress.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string" },
+                    "content": { "type": "string" },
+                    "status": { "type": "string" }
+                },
+                "required": ["title", "content", "status"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::Prompt,
+        },
+        ToolSpec {
+            name: "update_wordpress_seo",
+            description: "Update WordPress SEO metadata.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "post_id": { "type": "integer" },
+                    "meta_title": { "type": "string" },
+                    "meta_description": { "type": "string" }
+                },
+                "required": ["post_id", "meta_title", "meta_description"],
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::Prompt,
+        },
+        ToolSpec {
+            name: "purge_cloudflare_cache",
+            description: "Purge the Cloudflare cache.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::Prompt,
+        },
+        ToolSpec {
+            name: "get_cloudflare_metrics",
+            description: "Get Cloudflare metrics.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+            required_permission: PermissionMode::ReadOnly,
+        },
+ToolSpec {
             name: "ExecuteRemoteCommand",
             description: "Execute a command securely on a remote AXiM satellite server using a temporal SSH certificate.",
             input_schema: json!({
@@ -1531,6 +1658,94 @@ fn execute_tool_with_enforcer(
             let res = tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current()
                     .block_on(crate::network_ops::execute_verify_url_status(input))
+            });
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+
+        "execute_escalate_to_admin" => {
+            let input =
+                serde_json::from_value::<crate::axim_ops::EscalateToAdminInput>(input.clone())
+                    .map_err(|e| e.to_string())?;
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(crate::axim_ops::execute_escalate_to_admin(input))
+            });
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "execute_trigger_marketing_loop" => {
+            let input =
+                serde_json::from_value::<crate::axim_ops::TriggerMarketingLoopInput>(input.clone())
+                    .map_err(|e| e.to_string())?;
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(crate::axim_ops::execute_trigger_marketing_loop(input))
+            });
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "execute_reconcile_micro_app_revenue" => {
+            let input = serde_json::from_value::<crate::axim_ops::ReconcileMicroAppRevenueInput>(
+                input.clone(),
+            )
+            .map_err(|e| e.to_string())?;
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(crate::axim_ops::execute_reconcile_micro_app_revenue(input))
+            });
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "execute_fetch_ecosystem_manifest" => {
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(crate::axim_ops::execute_fetch_ecosystem_manifest())
+            });
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "audit_financial_metrics" => {
+            let timeframe = input
+                .get("timeframe")
+                .and_then(|v| v.as_str())
+                .unwrap_or("monthly");
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(crate::financial_ops::audit_financial_metrics(timeframe))
+            });
+            match res {
+                Ok(data) => Ok(data),
+                Err(e) => Err(e.to_string()),
+            }
+        }
+        "publish_to_wordpress" => {
+            let title = input.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let content = input.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            let status = input
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("draft");
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(
+                    crate::wordpress_admin::execute_create_wordpress_post(title, content, status),
+                )
+            });
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "update_wordpress_seo" => {
+            let input = serde_json::from_value::<crate::wordpress_admin::UpdateSeoMetadataInput>(
+                input.clone(),
+            )
+            .map_err(|e| e.to_string())?;
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(crate::wordpress_admin::execute_update_seo_metadata(input))
+            });
+            serde_json::to_string(&res).map_err(|e| e.to_string())
+        }
+        "purge_cloudflare_cache" => {
+            let input =
+                serde_json::from_value::<crate::cloudflare_ops::PurgeZoneCacheInput>(input.clone())
+                    .map_err(|e| e.to_string())?;
+            let res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(crate::cloudflare_ops::execute_purge_zone_cache(input))
             });
             serde_json::to_string(&res).map_err(|e| e.to_string())
         }

@@ -64,6 +64,16 @@ pub struct ModelTokenLimit {
 
 const MODEL_REGISTRY: &[(&str, ProviderMetadata)] = &[
     (
+        "axim-default",
+        ProviderMetadata {
+            provider: ProviderKind::OpenAi,
+            auth_env: "DEEPSEEK_API_KEY",
+            base_url_env: "DEEPSEEK_BASE_URL",
+            default_base_url: openai_compat::DEFAULT_DEEPSEEK_BASE_URL,
+        },
+    ),
+
+    (
         "opus",
         ProviderMetadata {
             provider: ProviderKind::Anthropic,
@@ -185,7 +195,6 @@ pub fn resolve_model_alias(model: &str) -> String {
                     "opus" => "claude-opus-4-6",
                     "sonnet" => "claude-sonnet-4-6",
                     "haiku" => "claude-haiku-4-5-20251213",
-                    "axim-default" => "claude-3-5-sonnet-20241022",
                     _ => trimmed,
                 },
                 ProviderKind::Xai => match *alias {
@@ -631,6 +640,26 @@ pub fn spawn_provider_health_heartbeat() {
             });
         }
     });
+}
+
+async fn check_health(provider: ProviderKind) -> bool {
+    let client = crate::http_client::build_http_client_or_default();
+
+    let url = match provider {
+        ProviderKind::Anthropic => "https://api.anthropic.com/v1/models",
+        ProviderKind::Cloudflare => "https://api.cloudflare.com/client/v4/user",
+        ProviderKind::Gemini => "https://generativelanguage.googleapis.com/v1beta/models",
+        ProviderKind::OpenAi => "https://api.openai.com/v1/models",
+        ProviderKind::Xai => "https://api.x.ai/v1/models",
+    };
+
+    match client.get(url).send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            !status.is_server_error()
+        }
+        Err(_) => false,
+    }
 }
 
 #[cfg(test)]
@@ -1200,25 +1229,5 @@ NO_EQUALS_LINE
             hint.is_none(),
             "empty env var should not trigger the hint sniffer, got {hint:?}"
         );
-    }
-}
-
-async fn check_health(provider: ProviderKind) -> bool {
-    let client = crate::http_client::build_http_client_or_default();
-
-    let url = match provider {
-        ProviderKind::Anthropic => "https://api.anthropic.com/v1/models",
-        ProviderKind::Cloudflare => "https://api.cloudflare.com/client/v4/user",
-        ProviderKind::Gemini => "https://generativelanguage.googleapis.com/v1beta/models",
-        ProviderKind::OpenAi => "https://api.openai.com/v1/models",
-        ProviderKind::Xai => "https://api.x.ai/v1/models",
-    };
-
-    match client.get(url).send().await {
-        Ok(resp) => {
-            let status = resp.status();
-            !status.is_server_error()
-        }
-        Err(_) => false,
     }
 }

@@ -95,3 +95,39 @@ pub async fn create_preventative_maintenance_ticket(
         Err(format!("Request failed with status: {}", response.status()))
     }
 }
+
+pub async fn execute_support_triage_hook(
+    ticket_id: &str,
+    telemetry_data: Value,
+) -> Result<Value, String> {
+    let base_url = env::var("AXIM_CORE_URL").map_err(|_| "AXIM_CORE_URL not set".to_string())?;
+    let api_key =
+        env::var("AXIM_SERVICE_KEY").map_err(|_| "AXIM_SERVICE_KEY not set".to_string())?;
+    let idempotency_key = Uuid::new_v4().to_string();
+
+    let url = format!("{base_url}/api/v1/support/triage-hook");
+
+    let client = Client::new();
+    let request = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Idempotency-Key", idempotency_key)
+        .json(&serde_json::json!({
+            "ticket_id": ticket_id,
+            "telemetry": telemetry_data
+        }));
+
+    let response = send_with_circuit_breaker(request)
+        .await
+        .map_err(|e| format!("Failed to send request: {e}"))?;
+
+    if response.status().is_success() {
+        let json: Value = response
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse JSON: {e}"))?;
+        Ok(json)
+    } else {
+        Err(format!("Request failed with status: {}", response.status()))
+    }
+}

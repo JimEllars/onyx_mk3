@@ -316,6 +316,20 @@ pub async fn send_with_circuit_breaker(request: RequestBuilder) -> Result<Respon
                     }
                 }
 
+                if let Some(provider_hdr) = res.headers().get("X-Onyx-Provider") {
+                    if let Ok(provider_str) = provider_hdr.to_str() {
+                        telemetry::metrics::set_last_active_provider(provider_str.to_string());
+                    }
+                }
+
+                if let Some(edge_latency) = res.headers().get("cf-edge-latency-ms") {
+                    if let Ok(latency_str) = edge_latency.to_str() {
+                        if let Ok(latency) = latency_str.parse::<f64>() {
+                            telemetry::metrics::EDGE_LATENCY_MS.set(latency);
+                        }
+                    }
+                }
+
                 if let Some(edge_health) = res.headers().get("X-Onyx-Edge-Health") {
                     if let Ok(health_str) = edge_health.to_str() {
                         if health_str == "OK" {

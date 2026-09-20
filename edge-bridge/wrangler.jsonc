@@ -2,9 +2,12 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "onyx-edge-bridge",
   "main": "src/index.ts",
-  "compatibility_date": "2026-07-09",
+  "compatibility_date": "2026-09-01",
   "analytics_engine_datasets": [
-    { "binding": "ONYX_EDGE_METRICS", "dataset": "onyx_edge_metrics" }
+    {
+      "binding": "ONYX_EDGE_METRICS",
+      "dataset": "onyx_edge_metrics"
+    }
   ],
   "compatibility_flags": [
     "nodejs_compat"
@@ -15,27 +18,22 @@
   },
   "routes": [
     {
-      "pattern": "onyx-edge.axim.us.com",
-      "custom_domain": true
+      "pattern": "onyx-bridge.axim.us.com/*",
+      "zone_name": "axim.us.com"
     }
   ],
-  "ai": { "binding": "AI" },
+  "ai": {
+    "binding": "AI"
+  },
   "vars": {
     "CORE_INGEST_URL": "https://api.axim.us.com/v1/functions/telemetry-ingest",
     "ALLOWED_ORIGIN": "tauri://localhost"
   },
-  "hyperdrive": [
-    {
-      "binding": "SUPABASE_DB",
-      "id": "e0e290f6a2fb4fb9a12c8ffb089c1622",
-      "localConnectionString": "postgresql://postgres.your_supabase_project_ref:password@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"
-    }
-  ],
   "d1_databases": [
     {
       "binding": "ONYX_DB",
-      "database_name": "onyx-db",
-      "database_id": "8bbbbbbb-8888-8888-8888-888888888888"
+      "database_name": "onyx-asguard-db",
+      "database_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
     }
   ],
   "kv_namespaces": [
@@ -54,11 +52,16 @@
     {
       "binding": "ONYX_DISPATCH_LOCKS",
       "id": "4b72094b034d4732adbbfeaad4d33b2c"
+    },
+    {
+      "binding": "ONYX_KV",
+      "id": "playbooks_cache_id_placeholder"
     }
   ],
   "triggers": {
     "crons": [
-      "0 0 * * *", "*/5 * * * *"
+      "0 0 * * *",
+      "*/5 * * * *"
     ]
   }
 }

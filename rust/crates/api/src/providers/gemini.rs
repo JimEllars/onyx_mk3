@@ -208,6 +208,7 @@ impl GeminiClient {
                 cache_read_input_tokens: 0,
             },
             request_id: None,
+            telemetry: None,
         })
     }
 

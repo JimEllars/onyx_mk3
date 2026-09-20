@@ -39,6 +39,7 @@ pub enum ApiError {
     Auth(String),
     InvalidApiKeyEnv(VarError),
     Http(reqwest::Error),
+    StreamTimeout(String),
     Io(std::io::Error),
     Json {
         provider: String,
@@ -119,6 +120,7 @@ impl ApiError {
     pub fn is_retryable(&self) -> bool {
         match self {
             Self::Http(error) => error.is_connect() || error.is_timeout() || error.is_request(),
+            Self::StreamTimeout(_) => true,
             Self::Api { retryable, .. } => *retryable,
             Self::RetriesExhausted { last_error, .. } => last_error.is_retryable(),
             Self::MissingCredentials { .. }
@@ -147,7 +149,8 @@ impl ApiError {
             | Self::Io(_)
             | Self::Json { .. }
             | Self::InvalidSseFrame(_)
-            | Self::BackoffOverflow { .. } => None,
+            | Self::BackoffOverflow { .. }
+            | Self::StreamTimeout(_) => None,
         }
     }
 
@@ -168,9 +171,10 @@ impl ApiError {
             Self::Api { status, .. } if status.as_u16() == 429 => "provider_rate_limit",
             Self::Api { .. } if self.is_generic_fatal_wrapper() => "provider_internal",
             Self::Api { .. } => "provider_error",
-            Self::Http(_) | Self::InvalidSseFrame(_) | Self::BackoffOverflow { .. } => {
-                "provider_transport"
-            }
+            Self::Http(_)
+            | Self::InvalidSseFrame(_)
+            | Self::BackoffOverflow { .. }
+            | Self::StreamTimeout(_) => "provider_transport",
             Self::InvalidApiKeyEnv(_) | Self::Io(_) | Self::Json { .. } => "runtime_io",
         }
     }
@@ -194,7 +198,8 @@ impl ApiError {
             | Self::Io(_)
             | Self::Json { .. }
             | Self::InvalidSseFrame(_)
-            | Self::BackoffOverflow { .. } => false,
+            | Self::BackoffOverflow { .. }
+            | Self::StreamTimeout(_) => false,
         }
     }
 
@@ -223,7 +228,8 @@ impl ApiError {
             | Self::Io(_)
             | Self::Json { .. }
             | Self::InvalidSseFrame(_)
-            | Self::BackoffOverflow { .. } => false,
+            | Self::BackoffOverflow { .. }
+            | Self::StreamTimeout(_) => false,
         }
     }
 }
@@ -280,6 +286,7 @@ impl Display for ApiError {
                 write!(f, "failed to read credential environment variable: {error}")
             }
             Self::Http(error) => write!(f, "http error: {error}"),
+            Self::StreamTimeout(msg) => write!(f, "stream timeout: {msg}"),
             Self::Io(error) => write!(f, "io error: {error}"),
             Self::Json {
                 provider,

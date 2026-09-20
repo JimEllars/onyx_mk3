@@ -123,14 +123,25 @@ fn main() {
         }
     }
 
-    if wants_json_logs {
+    // Defensive initialization for telemetry
+    let _ = std::fs::create_dir_all(".claw");
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(".claw/telemetry.jsonl");
+
+    if let Ok(file) = log_file {
         tracing_subscriber::fmt()
             .json()
+            .with_writer(file)
+            .init();
+    } else if wants_json_logs {
+        tracing_subscriber::fmt()
+            .json()
+            .with_writer(std::io::stderr)
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .init();
     } else {
-        // Direct to file if not json logs (or simple stdout if preferred, but instructions say: "If the interactive TUI is active, direct tracing events to a log file (or suppress stdout rendering) so structured JSON logs do not corrupt the active terminal screen.")
-        // For simplicity and safety, suppress stdout rendering to terminal by using a null writer or log file.
         let file_appender = tracing_subscriber::fmt::writer::MakeWriterExt::with_max_level(
             tracing_appender::rolling::never(".claw", "onyx.log"),
             tracing::Level::INFO,
@@ -2969,16 +2980,12 @@ pub(crate) fn print_bootstrap_plan(
 
 pub(crate) fn default_oauth_config() -> OAuthConfig {
     OAuthConfig {
-        client_id: String::from("9d1c250a-e61b-44d9-88ed-5944d1962f5e"),
-        authorize_url: String::from("https://platform.claude.com/oauth/authorize"),
-        token_url: String::from("https://platform.claude.com/v1/oauth/token"),
+        client_id: String::from("onyx_cli"),
+        authorize_url: String::from("https://passport.axim.us.com/api/v1/auth/authorize"),
+        token_url: String::from("https://passport.axim.us.com/api/v1/auth/token"),
         callback_port: None,
         manual_redirect_url: None,
-        scopes: vec![
-            String::from("user:profile"),
-            String::from("user:inference"),
-            String::from("user:sessions:claude_code"),
-        ],
+        scopes: vec![String::from("offline_access")],
     }
 }
 
@@ -3904,7 +3911,11 @@ pub(crate) fn run_resume_command(
         | SlashCommand::Fleet
         | SlashCommand::Approve { .. }
         | SlashCommand::Metrics
-        | SlashCommand::Reject { .. } => Err("unsupported resumed slash command".into()),
+        | SlashCommand::Reject { .. }
+        | SlashCommand::DemandLetter { .. }
+        | SlashCommand::Nda { .. }
+        | SlashCommand::PayStub { .. }
+        | SlashCommand::BillingFallback { .. } => Err("unsupported resumed slash command".into()),
     }
 }
 
@@ -4423,12 +4434,38 @@ impl HookAbortMonitor {
                     let _ = stop_rx.recv();
                 });
 
+                let poll_keys = tokio::task::spawn_blocking({
+                    let abort_signal = abort_signal.clone();
+                    move || loop {
+                        if let Ok(true) =
+                            crossterm::event::poll(std::time::Duration::from_millis(100))
+                        {
+                            if let Ok(crossterm::event::Event::Key(key)) = crossterm::event::read()
+                            {
+                                if key.code == crossterm::event::KeyCode::Esc
+                                    || (key.code == crossterm::event::KeyCode::Char('c')
+                                        && key
+                                            .modifiers
+                                            .contains(crossterm::event::KeyModifiers::CONTROL))
+                                {
+                                    abort_signal.abort();
+                                    break;
+                                }
+                            }
+                        }
+                        if abort_signal.is_aborted() {
+                            break;
+                        }
+                    }
+                });
+
                 tokio::select! {
                     result = tokio::signal::ctrl_c() => {
                         if result.is_ok() {
                             abort_signal.abort();
                         }
                     }
+                    _ = poll_keys => {}
                     _ = wait_for_stop => {}
                 }
             });
@@ -10789,6 +10826,7 @@ UU conflicted.rs",
                     cache_read_input_tokens: 0,
                 },
                 request_id: None,
+                telemetry: None,
             },
             &mut out,
         )
@@ -10824,6 +10862,7 @@ UU conflicted.rs",
                     cache_read_input_tokens: 0,
                 },
                 request_id: None,
+                telemetry: None,
             },
             &mut out,
         )
@@ -10863,6 +10902,7 @@ UU conflicted.rs",
                     cache_read_input_tokens: 0,
                 },
                 request_id: None,
+                telemetry: None,
             },
             &mut out,
         )
