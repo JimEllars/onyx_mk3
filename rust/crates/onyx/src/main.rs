@@ -1364,7 +1364,7 @@ pub(crate) fn resolve_model_alias(model: &str) -> &str {
         "opus" => "claude-opus-4-6",
         "sonnet" => "claude-sonnet-4-6",
         "haiku" => "claude-haiku-4-5-20251213",
-        "axim-default" => "claude-3-5-sonnet-20241022",
+        "axim-default" => "deepseek-chat",
         _ => model,
     }
 }
@@ -8702,6 +8702,7 @@ fn main() {
         assert_eq!(resolve_model_alias("opus"), "claude-opus-4-6");
         assert_eq!(resolve_model_alias("sonnet"), "claude-sonnet-4-6");
         assert_eq!(resolve_model_alias("haiku"), "claude-haiku-4-5-20251213");
+        assert_eq!(resolve_model_alias("axim-default"), "deepseek-chat");
         assert_eq!(resolve_model_alias("claude-opus"), "claude-opus");
     }
 

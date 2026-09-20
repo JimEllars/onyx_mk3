@@ -9,7 +9,7 @@ Onyx has two runtime surfaces:
 
 1. Install the stable Rust toolchain with Cargo.
 2. Copy `.env.example` to a local `.env` or export its values in your shell.
-3. Configure one model provider credential (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`, or `DASHSCOPE_API_KEY`), or authenticate with `onyx login`.
+3. Configure `DEEPSEEK_API_KEY` for the default `deepseek-chat` model. `ANTHROPIC_API_KEY` is the automatic fallback. You can instead configure `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`, or `DASHSCOPE_API_KEY` and select that provider's model explicitly, or authenticate with `onyx login`.
 4. Build and start Onyx:
 
    ```bash
@@ -37,6 +37,7 @@ Set the following Worker runtime secrets in the `edge-bridge` directory. Secrets
 ```bash
 npx wrangler secret put AXIM_ONYX_SECRET
 npx wrangler secret put AXIM_SERVICE_KEY
+npx wrangler secret put DEEPSEEK_API_KEY
 npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put GITHUB_WEBHOOK_SECRET
 npx wrangler secret put WP_WEBHOOK_SECRET
@@ -44,7 +45,7 @@ npx wrangler secret put AXIM_INTERNAL_KEY
 npx wrangler secret put CRON_SECRET_KEY
 ```
 
-Add `EMAILIT_API_KEY` and `ONYX_CLIENT_SECRET` only when their corresponding integrations are enabled. Keep `CORE_INGEST_URL` and `ALLOWED_ORIGIN` as non-secret Worker variables in `edge-bridge/wrangler.jsonc`.
+`DEEPSEEK_API_KEY` enables the edge bridge's direct primary fallback if AXiM Core is unavailable; `ANTHROPIC_API_KEY` is used only if that request fails. Add `EMAILIT_API_KEY` and `ONYX_CLIENT_SECRET` only when their corresponding integrations are enabled. Keep `CORE_INGEST_URL`, `ALLOWED_ORIGIN`, and the non-secret `DEEPSEEK_MODEL` override (when needed) as Worker variables in `edge-bridge/wrangler.jsonc`.
 
 For CI deployment, configure repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The token must be authorized for the Worker and every configured binding. Then deploy with:
 
