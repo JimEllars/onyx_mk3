@@ -154,10 +154,12 @@ fn main() {
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
         let _ = guard; // Suppress unused variable warning; // Leak guard
         tracing_subscriber::fmt()
-            .with_writer(tracing_subscriber::fmt::writer::MakeWriterExt::with_max_level(
-                non_blocking,
-                tracing::Level::INFO,
-            ))
+            .with_writer(
+                tracing_subscriber::fmt::writer::MakeWriterExt::with_max_level(
+                    non_blocking,
+                    tracing::Level::INFO,
+                ),
+            )
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .init();
     }
