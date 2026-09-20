@@ -10,6 +10,7 @@ import { Client } from "pg";
 export interface Env {
   AI?: any;
   ASSETS?: Fetcher;
+  ONYX_EDGE_METRICS?: AnalyticsEngineDataset;
   SUPABASE_DB: Hyperdrive;
   AXIM_SERVICE_KEY: string;
   ONYX_DB: D1Database;
@@ -41,6 +42,8 @@ const ALLOWED_ORIGINS = [
 ];
 
 const TIMEOUT_SYMBOL = Symbol("TIMEOUT");
+const WORKER_STARTED_AT = Date.now();
+const UPSTREAM_TIMEOUT_MS = 15_000;
 
 async function kvWriteWithTimeout<T>(
   promise: Promise<T>,
@@ -173,7 +176,10 @@ function getCorsHeaders(request: Request, env?: Env) {
         ? env.ALLOWED_ORIGIN
         : "https://axim.us.com",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, X-Correlation-ID, X-Request-ID",
+    "Access-Control-Expose-Headers":
+      "CF-Ray, X-Correlation-ID, X-Onyx-Edge-Latency, X-Onyx-Edge-Health",
   };
 }
 
@@ -188,9 +194,11 @@ function addOnyxHeaders(
   if (traceId) {
     h.set("X-Onyx-Trace-Id", traceId);
     h.set("X-Request-ID", traceId);
+    h.set("X-Correlation-ID", traceId);
   }
   if (rayId) {
     h.set("X-Onyx-Ray-ID", rayId);
+    h.set("CF-Ray", rayId);
   }
   if (status.startTime) {
     const latency = Date.now() - status.startTime;
@@ -201,6 +209,70 @@ function addOnyxHeaders(
   return h;
 }
 
+async function checkReadiness(
+  env: Env,
+): Promise<Record<string, "ready" | "unavailable">> {
+  const dependencies: Record<string, "ready" | "unavailable"> = {
+    kv: "unavailable",
+    dispatch_locks: "unavailable",
+    upstream_routing: env.CORE_INGEST_URL && env.AI ? "ready" : "unavailable",
+  };
+
+  const probe = async (namespace: KVNamespace | undefined, key: string) => {
+    if (!namespace) return "unavailable" as const;
+    const timeout = new Promise<"unavailable">((resolve) =>
+      setTimeout(() => resolve("unavailable"), 500),
+    );
+    try {
+      return await Promise.race([
+        namespace.get(key).then(() => "ready" as const),
+        timeout,
+      ]);
+    } catch (error) {
+      console.error(`Readiness probe failed for ${key}`, error);
+      return "unavailable" as const;
+    }
+  };
+
+  dependencies.kv = await probe(env.ONYX_STATE, "__readyz_probe");
+  dependencies.dispatch_locks = await probe(
+    env.ONYX_DISPATCH_LOCKS,
+    "__readyz_probe",
+  );
+  return dependencies;
+}
+
+function emitRequestTelemetry(
+  env: Env,
+  request: Request,
+  response: Response,
+  durationMs: number,
+  correlationId: string,
+): void {
+  const route = new URL(request.url).pathname;
+  const fields = {
+    correlation_id: correlationId,
+    route,
+    method: request.method,
+    status: response.status,
+    latency_ms: Math.round(durationMs),
+  };
+
+  if (env.ONYX_EDGE_METRICS) {
+    try {
+      env.ONYX_EDGE_METRICS.writeDataPoint({
+        blobs: [fields.correlation_id, fields.route, fields.method],
+        doubles: [fields.status, fields.latency_ms],
+        indexes: [fields.route],
+      });
+      return;
+    } catch (error) {
+      console.error("Analytics Engine write failed", error);
+    }
+  }
+
+  console.log(JSON.stringify({ event: "edge_request", ...fields }));
+}
 
 async function dispatchToCore(
   url: string,
@@ -239,15 +311,23 @@ async function dispatchToCore(
   }
 }
 
-async function fetchWithRetry(url: string, options: any, maxRetries = 3) {
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3) {
   let lastErr;
   for (let i = 0; i < maxRetries; i++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+    const abortFromCaller = () => controller.abort();
+    options.signal?.addEventListener("abort", abortFromCaller, { once: true });
     try {
-      const res = await fetch(url, options);
+      const res = await fetch(url, { ...options, signal: controller.signal });
       if (res.ok) return res;
+      if (res.status < 500 && res.status !== 429) return res;
       lastErr = new Error(`HTTP error ${res.status}`);
     } catch (e) {
       lastErr = e;
+    } finally {
+      clearTimeout(timeout);
+      options.signal?.removeEventListener("abort", abortFromCaller);
     }
     await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, i)));
   }
@@ -555,21 +635,28 @@ const onyx_handler: any = {
       const response = await this._fetch(request, env, ctx);
       const duration = performance.now() - startTime;
       const traceId =
+        request.headers.get("X-Correlation-ID") ||
         request.headers.get("X-Request-ID") ||
         request.headers.get("cf-ray") ||
-        "unknown";
-      console.log(
-        `[Edge Telemetry] [X-Request-ID: ${traceId}] Path: ${new URL(request.url).pathname} | Method: ${request.method} | Latency: ${duration.toFixed(2)}ms`,
-      );
+        crypto.randomUUID();
+      emitRequestTelemetry(env, request, response, duration, traceId);
       return response;
     } catch (error) {
       const duration = performance.now() - startTime;
       const traceId =
+        request.headers.get("X-Correlation-ID") ||
         request.headers.get("X-Request-ID") ||
         request.headers.get("cf-ray") ||
-        "unknown";
-      console.log(
-        `[Edge Telemetry] [X-Request-ID: ${traceId}] Path: ${new URL(request.url).pathname} | Method: ${request.method} | Latency: ${duration.toFixed(2)}ms`,
+        crypto.randomUUID();
+      console.error(
+        JSON.stringify({
+          event: "edge_request_failed",
+          correlation_id: traceId,
+          route: new URL(request.url).pathname,
+          method: request.method,
+          latency_ms: Math.round(duration),
+          error: error instanceof Error ? error.message : String(error),
+        }),
       );
       throw error;
     }
@@ -581,6 +668,7 @@ const onyx_handler: any = {
     ctx: ExecutionContext,
   ): Promise<Response> {
     const traceId =
+      request.headers.get("X-Correlation-ID") ||
       request.headers.get("X-Request-ID") ||
       request.headers.get("cf-ray") ||
       crypto.randomUUID();
@@ -641,6 +729,50 @@ const onyx_handler: any = {
     }
 
     const url = new URL(request.url);
+
+    if (request.method === "GET" && url.pathname === "/healthz") {
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          timestamp: new Date().toISOString(),
+          uptime_ms: Date.now() - WORKER_STARTED_AT,
+        }),
+        {
+          headers: addOnyxHeaders(
+            { "Content-Type": "application/json" },
+            edgeStatus,
+            cacheStatus,
+            traceId,
+            rayId,
+          ),
+        },
+      );
+    }
+
+    if (request.method === "GET" && url.pathname === "/readyz") {
+      const dependencies = await checkReadiness(env);
+      const ready = Object.values(dependencies).every(
+        (status) => status === "ready",
+      );
+      return new Response(
+        JSON.stringify({
+          status: ready ? "ready" : "degraded",
+          timestamp: new Date().toISOString(),
+          uptime_ms: Date.now() - WORKER_STARTED_AT,
+          dependencies,
+        }),
+        {
+          status: ready ? 200 : 503,
+          headers: addOnyxHeaders(
+            { "Content-Type": "application/json" },
+            { ...edgeStatus, degraded: !ready },
+            cacheStatus,
+            traceId,
+            rayId,
+          ),
+        },
+      );
+    }
 
     if (
       request.method === "POST" &&
@@ -2904,7 +3036,7 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
-    const response = await onyx_handler._fetch(request, env, ctx);
+    const response = await onyx_handler.fetch(request, env, ctx);
     if (response.status === 429) {
       if (env.ONYX_DB) {
         const ip = request.headers.get("cf-connecting-ip") || "unknown";

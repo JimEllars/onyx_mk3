@@ -700,7 +700,7 @@ pub async fn handle_onyx_summon(
         }
     };
 
-    let (tx, rx) = tokio::sync::mpsc::channel(10);
+    let (tx, rx) = tokio::sync::mpsc::channel(256);
 
     tokio::spawn(async move {
         let Ok(client) = crate::client::ProviderClient::from_model("claude-3-7-sonnet-latest")
