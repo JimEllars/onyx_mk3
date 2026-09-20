@@ -131,10 +131,7 @@ fn main() {
         .open(".claw/telemetry.jsonl");
 
     if let Ok(file) = log_file {
-        tracing_subscriber::fmt()
-            .json()
-            .with_writer(file)
-            .init();
+        tracing_subscriber::fmt().json().with_writer(file).init();
     } else if wants_json_logs {
         tracing_subscriber::fmt()
             .json()

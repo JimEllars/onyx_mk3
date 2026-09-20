@@ -72,7 +72,6 @@ const MODEL_REGISTRY: &[(&str, ProviderMetadata)] = &[
             default_base_url: openai_compat::DEFAULT_DEEPSEEK_BASE_URL,
         },
     ),
-
     (
         "opus",
         ProviderMetadata {
