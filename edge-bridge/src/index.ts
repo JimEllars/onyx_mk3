@@ -60,13 +60,13 @@ async function kvWriteWithTimeout<T>(
     );
     const result = await Promise.race([promise, timeout]);
     if (result === TIMEOUT_SYMBOL) {
-      void 0;
+      console.error("error");
       if (status) status.degraded = true;
       return null;
     }
     return result as T;
   } catch (e) {
-    void 0;
+    console.error("error");
     if (status) status.degraded = true;
     return null;
   }
@@ -83,13 +83,13 @@ async function kvReadWithTimeout<T>(
     );
     const result = await Promise.race([promise, timeout]);
     if (result === TIMEOUT_SYMBOL) {
-      void 0;
+      console.error("error");
       status.degraded = true;
       return null;
     }
     return result as T;
   } catch (e) {
-    void 0;
+    console.error("error");
     status.degraded = true;
     return null;
   }
@@ -247,6 +247,12 @@ function addOnyxHeaders(
   rayId?: string,
 ): Headers {
   const h = new Headers(headers);
+
+  if (status.startTime) {
+    const latency = Date.now() - status.startTime;
+    h.set("X-Onyx-Latency-Ms", latency.toString());
+  }
+
   if (status.provider) {
     h.set("X-Onyx-Provider", status.provider);
   } else if (h.has("X-Onyx-Fallback")) {
@@ -339,7 +345,7 @@ async function dispatchToCore(
     );
   } catch (error) {
     clearTimeout(timeoutId);
-    void 0;
+    console.error("error");
     if (env.ONYX_STATE) {
       const dlqKey = `dlq:ingest:${Date.now()}:${crypto.randomUUID()}`;
       ctx?.waitUntil?.(env.ONYX_STATE.put(dlqKey, payloadStr));
@@ -416,7 +422,7 @@ async function enforceAsguardRateLimit(request: Request, env: Env, url: URL): Pr
     await env.ONYX_STATE.put(rateLimitKey, (currentCount + 1).toString(), { expirationTtl: 60 });
     return null;
   } catch (err) {
-    void 0;
+    console.error("error");
     return null; // fail open if KV errors
   }
 }
@@ -454,7 +460,7 @@ async function checkAuth(req: Request, env: Env, requireSuperUser: boolean = fal
           isSuperUser = true;
         }
       } catch (e) {
-        void 0;
+        console.error("error");
       }
     } else if (authHeader === onyxToken || authHeader === serviceKey) {
       // Internal service keys are considered super-users for these routes
@@ -611,7 +617,7 @@ async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
 
       await sleep(50);
     } catch (e) {
-      void 0;
+      console.error("error");
     }
   }
 }
@@ -624,7 +630,7 @@ const onyx_handler: any = {
   ): Promise<void> {
     try {
       // Execute a low-overhead heartbeat sanity evaluation across active KV stores
-      void 0;
+      console.error("error");
 
       if (controller.cron === "*/5 * * * *") {
         ctx?.waitUntil?.(drainIngestDlq(env, ctx));
@@ -796,7 +802,7 @@ const onyx_handler: any = {
           .catch((e) => void 0),
       );
     } catch (e) {
-      void 0;
+      console.error("error");
     }
   },
   async fetch(
@@ -823,7 +829,7 @@ const onyx_handler: any = {
         request.headers.get("X-Request-ID") ||
         request.headers.get("cf-ray") ||
         "unknown";
-      void 0;
+      console.error("error");
       return response;
     } catch (error) {
       const duration = performance.now() - startTime;
@@ -831,7 +837,7 @@ const onyx_handler: any = {
         request.headers.get("X-Request-ID") ||
         request.headers.get("cf-ray") ||
         "unknown";
-      void 0;
+      console.error("error");
       throw error;
     }
   },
@@ -857,7 +863,7 @@ const onyx_handler: any = {
       request.method !== "DELETE" &&
       request.method !== "OPTIONS"
     ) {
-      void 0;
+      console.error("error");
       return new Response("Method Not Allowed", {
         status: 405,
         headers: addOnyxHeaders(
@@ -1108,7 +1114,7 @@ const onyx_handler: any = {
               replayed++;
             }
           } catch (e) {
-            void 0;
+            console.error("error");
           }
         }
       }
@@ -1235,7 +1241,7 @@ const onyx_handler: any = {
       if ((!authHeader || authHeader !== expectedToken) && !hasValidCookie) {
         const origin = request.headers.get("Origin") || "unknown";
         const ip = request.headers.get("cf-connecting-ip") || "unknown";
-        void 0;
+        console.error("error");
         return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Unauthorized Access", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
           status: 401,
           headers: addOnyxHeaders(
@@ -1280,7 +1286,7 @@ const onyx_handler: any = {
           payload = JSON.parse(rawBodyText);
         }
       } catch (e) {
-        void 0;
+        console.error("error");
       }
 
       try {
@@ -1511,7 +1517,7 @@ const onyx_handler: any = {
             edgeStatus,
           );
           if (existingLock) {
-            void 0;
+            console.error("error");
             return new Response(
               JSON.stringify({
                 status: "processing",
@@ -1740,7 +1746,7 @@ const onyx_handler: any = {
             userProfile = { email, wallet };
           }
         } catch (err) {
-          void 0;
+          console.error("error");
           // If token isn't our mock base64, check if it equals some static keys for dev
           if (token === "test_jrellars") {
             isAuthorized = true;
@@ -1829,7 +1835,7 @@ const onyx_handler: any = {
             },
           );
         } catch (e) {
-          void 0;
+          console.error("error");
           return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Internal error", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
             status: 500,
             headers: addOnyxHeaders(
@@ -2090,7 +2096,7 @@ const onyx_handler: any = {
                 backendSuccess = true;
               }
             } catch (backendError) {
-              void 0;
+              console.error("error");
             }
           }
 
@@ -2164,7 +2170,7 @@ const onyx_handler: any = {
             },
           );
         } catch (e: any) {
-          void 0;
+          console.error("error");
           return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Internal error", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
             status: 500,
             headers: addOnyxHeaders(
@@ -2369,7 +2375,7 @@ const onyx_handler: any = {
                 bodyStr
               );
             } catch (dlqErr) {
-              void 0;
+              console.error("error");
             }
           }
 
@@ -2624,7 +2630,7 @@ const onyx_handler: any = {
               return assetResponse;
             }
           } catch (e) {
-            void 0;
+            console.error("error");
           }
         return new Response("Not Found", {
           status: 404,
@@ -2646,7 +2652,7 @@ const onyx_handler: any = {
         ),
       });
     } catch (error) {
-      void 0;
+      console.error("error");
       return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Internal Server Error", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
         status: 500,
         headers: addOnyxHeaders(
@@ -2671,36 +2677,102 @@ export default {
   ): Promise<Response> {
     const startTime = Date.now();
     let response;
+    const url = new URL(request.url);
+
+    const isChatEndpoint = url.pathname === "/api/v1/chat" && request.method === "POST";
+    let isFallbackToAi = false;
+    let originalRequestBody: any;
+
+    if (isChatEndpoint && env.AI) {
+      try {
+        originalRequestBody = await request.clone().json();
+      } catch (e) { }
+    }
+
     try {
       response = await onyx_handler._fetch(request, env, ctx);
+
+      if (isChatEndpoint && env.AI && (response.status === 429 || response.status >= 500)) {
+         throw new Error("Primary provider failed, triggering fallback");
+      }
     } catch (e) {
-      void 0;
-      const traceIdFallback = request.headers.get("x-request-id") || crypto.randomUUID();
-      const isStreaming = request.headers.get("Accept")?.includes("text/event-stream");
-      if (isStreaming) {
-        const ssePayload = `event: error\ndata: ${JSON.stringify({ type: "error", errorText: "Internal Server Error" })}\n\ndata: [DONE]\n\n`;
-        response = new Response(ssePayload, {
-          status: 200,
-          headers: addOnyxHeaders(
-            { ...getCorsHeaders(request, env), "Content-Type": "text/event-stream" },
-            { degraded: true, startTime, colo: (request.cf?.colo as string) ?? "unknown" }, "MISS", traceIdFallback
-          )
-        });
-      } else {
-        response = new Response(
-          JSON.stringify({ error: "Internal Server Error", fallback: true }),
-          {
-            status: 500,
-            headers: addOnyxHeaders(
-              { "Content-Type": "application/json", ...getCorsHeaders(request, env) },
-              { degraded: true, startTime, colo: (request.cf?.colo as string) ?? "unknown" }, "MISS", traceIdFallback
-            )
+      console.error("error");
+
+      if (isChatEndpoint && env.AI && originalRequestBody) {
+        isFallbackToAi = true;
+        const messages = [];
+        if (originalRequestBody.system) messages.push({ role: "system", content: originalRequestBody.system });
+        if (originalRequestBody.messages) messages.push(...originalRequestBody.messages);
+        else if (originalRequestBody.message) messages.push({ role: "user", content: originalRequestBody.message });
+
+        try {
+          const aiResponse = await env.AI.run("@cf/meta/llama-3-8b-instruct", {
+            messages,
+          });
+
+          const isStreaming = request.headers.get("Accept")?.includes("text/event-stream");
+
+          if (isStreaming) {
+             const ssePayload = `event: message-start\ndata: ${JSON.stringify({ type: "message-start", messageId: "msg_fallback" })}\n\nevent: text-delta\ndata: ${JSON.stringify({ type: "text-delta", delta: aiResponse.response })}\n\nevent: text-end\ndata: ${JSON.stringify({ type: "text-end", id: "msg_fallback" })}\n\nevent: finish\ndata: ${JSON.stringify({ type: "finish", finishReason: "stop" })}\n\ndata: [DONE]\n\n`;
+             response = new Response(ssePayload, {
+                status: 200,
+                headers: addOnyxHeaders(
+                  { ...getCorsHeaders(request, env), "Content-Type": "text/event-stream" },
+                  { degraded: true, startTime, provider: "cloudflare_workers_ai", colo: (request.cf?.colo as string) ?? "unknown" }, "MISS", request.headers.get("x-request-id") || crypto.randomUUID()
+                )
+             });
+          } else {
+             response = new Response(
+                JSON.stringify({
+                  data: {
+                    id: "msg_fallback",
+                    role: "assistant",
+                    parts: [ { type: "text", text: aiResponse.response } ],
+                    metadata: { finishReason: "stop" }
+                  }
+                }),
+                {
+                  status: 200,
+                  headers: addOnyxHeaders(
+                    { "Content-Type": "application/json", ...getCorsHeaders(request, env) },
+                    { degraded: true, startTime, provider: "cloudflare_workers_ai", colo: (request.cf?.colo as string) ?? "unknown" }, "MISS", request.headers.get("x-request-id") || crypto.randomUUID()
+                  )
+                }
+             );
           }
-        );
+        } catch (aiErr) {
+             // Fallback failed
+        }
+      }
+
+      if (!isFallbackToAi || !response) {
+          const traceIdFallback = request.headers.get("x-request-id") || crypto.randomUUID();
+          const isStreaming = request.headers.get("Accept")?.includes("text/event-stream");
+          if (isStreaming) {
+            const ssePayload = `event: error\ndata: ${JSON.stringify({ type: "error", errorText: "Internal Server Error" })}\n\ndata: [DONE]\n\n`;
+            response = new Response(ssePayload, {
+              status: 200,
+              headers: addOnyxHeaders(
+                { ...getCorsHeaders(request, env), "Content-Type": "text/event-stream" },
+                { degraded: true, startTime, colo: (request.cf?.colo as string) ?? "unknown" }, "MISS", traceIdFallback
+              )
+            });
+          } else {
+            response = new Response(
+              JSON.stringify({ error: "Internal Server Error", fallback: true }),
+              {
+                status: 500,
+                headers: addOnyxHeaders(
+                  { "Content-Type": "application/json", ...getCorsHeaders(request, env) },
+                  { degraded: true, startTime, colo: (request.cf?.colo as string) ?? "unknown" }, "MISS", traceIdFallback
+                )
+              }
+            );
+          }
       }
     }
+
     const latency = Date.now() - startTime;
-    const url = new URL(request.url);
     const traceId = response.headers.get("X-Onyx-Trace-Id") || "unknown";
 
     if (
@@ -2726,7 +2798,7 @@ export default {
                 indexes: [response.status >= 400 ? "error" : "success"],
               });
             } catch (e) {
-              void 0;
+              console.error("error");
             }
             resolve();
           }),

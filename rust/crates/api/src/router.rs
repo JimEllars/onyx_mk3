@@ -816,7 +816,7 @@ pub async fn handle_onyx_summon(
                 "to": "anthropic",
                 "trace_id": trace_id,
             });
-            let _ = writeln!(file, "{}", entry);
+            let _ = writeln!(file, "{entry}");
         }
 
         if let Ok(fallback_client) =
@@ -928,7 +928,7 @@ pub async fn handle_onyx_summon(
                             "from": "deepseek",
                             "to": "anthropic",
                         });
-                        let _ = writeln!(file, "{}", entry);
+                        let _ = writeln!(file, "{entry}");
                     }
 
                     if let Ok(fallback_client) =

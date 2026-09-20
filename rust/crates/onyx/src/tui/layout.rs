@@ -25,11 +25,20 @@ impl TuiManager {
         status_line: &str,
     ) -> io::Result<()> {
         self.terminal.draw(|f| {
+            let area = f.area();
+            if area.width < 80 || area.height < 24 {
+                let fallback = Paragraph::new("Terminal too small.
+Resize to at least 80x24.")
+                    .style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
+                f.render_widget(fallback, area);
+                return;
+            }
+
             // Base Layout: Main split (content above, status bar below)
             let main_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Min(3), Constraint::Length(1)])
-                .split(f.area());
+                .split(area);
 
             // Top Panel Split (Main content vs System Logs)
             let top_chunks = Layout::default()
@@ -41,12 +50,12 @@ impl TuiManager {
 
             let active_border = Style::default().fg(Color::Cyan); // Modern Cyan
             let success_text = Style::default()
-                .fg(Color::LightGreen)
+                .fg(Color::DarkGray)
                 .add_modifier(Modifier::BOLD);
 
             // Main Chat/Workspace Block
             let main_block = Block::default()
-                .title(" AXiM Workspace ")
+                .title(" Onyx Intelligence ")
                 .borders(Borders::ALL)
                 .border_style(active_border);
             let main_paragraph = Paragraph::new(active_content).block(main_block);
@@ -54,9 +63,9 @@ impl TuiManager {
 
             // Side Panel / System Logs
             let side_block = Block::default()
-                .title(" Onyx Telemetry ")
+                .title(" System Telemetry ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Blue));
+                .border_style(Style::default().fg(Color::Rgb(100, 100, 150)));
             let side_paragraph = Paragraph::new(system_logs)
                 .block(side_block)
                 .style(success_text);
@@ -64,8 +73,7 @@ impl TuiManager {
 
             // Status Bar
             let status_paragraph = Paragraph::new(status_line)
-                // Use CRT Amber for warnings but standard here for now. Status bar takes care of its own colors usually but here we just render it.
-                .style(Style::default().bg(Color::Reset).fg(Color::White));
+                .style(Style::default().bg(Color::Rgb(30, 30, 30)).fg(Color::Cyan));
             f.render_widget(status_paragraph, main_chunks[1]);
         })?;
         Ok(())
