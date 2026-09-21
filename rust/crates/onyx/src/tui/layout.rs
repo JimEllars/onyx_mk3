@@ -26,10 +26,10 @@ impl TuiManager {
     ) -> io::Result<()> {
         self.terminal.draw(|f| {
             let area = f.area();
-            if area.width < 80 || area.height < 24 {
+            if area.width < 45 || area.height < 12 {
                 let fallback = Paragraph::new(
                     "Terminal too small.
-Resize to at least 80x24.",
+Resize to at least 45x12.",
                 )
                 .style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
                 f.render_widget(fallback, area);
