@@ -100,9 +100,21 @@ pub fn render_status_bar_text(
     let edge_status_val_conn = telemetry::metrics::EDGE_KV_STATUS.get();
     let is_connected = (edge_status_val_conn - 1.0).abs() < f64::EPSILON || is_edge_ready;
     let connectivity_indicator = if is_connected {
-        "[32m●[0m"
+        "\x1b[32m●\x1b[0m"
     } else {
-        "[31m■[0m"
+        "\x1b[31m■\x1b[0m"
+    };
+
+    let edge_latency_val = telemetry::metrics::EDGE_LATENCY_MS.get();
+    let edge_healthy =
+        api::providers::CLOUDFLARE_HEALTHY.load(std::sync::atomic::Ordering::Relaxed);
+    let edge_health_indicator = if (edge_status_val_conn - 1.0).abs() < f64::EPSILON && edge_healthy
+    {
+        "\x1b[32mEDGE: OK\x1b[0m"
+    } else if edge_latency_val > 0.0 || edge_healthy {
+        "\x1b[33mEDGE: DEG\x1b[0m"
+    } else {
+        "\x1b[31mEDGE: OFFLINE\x1b[0m"
     };
     let edge_conn_str = if is_connected {
         "Connected (Cloudflare Edge)"
@@ -121,8 +133,8 @@ pub fn render_status_bar_text(
         format!("{edge_latency_val:.2}")
     };
     let mut text = format!(
-        "{} {} ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ TARGET: {} ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cache Hit: {:.1}% ∥ Cost: ${:.4}{} ∥ Latency: ⚡ {}ms",
-        connectivity_indicator, edge_conn_str, brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1), active_provider, session_id, usage.input_tokens, usage.output_tokens, if usage.input_tokens > 0 { (f64::from(usage.cache_read_input_tokens) / f64::from(usage.input_tokens)) * 100.0 } else { 0.0 }, cost, worker_state_str, latency_str
+        "{} {} {} ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ TARGET: {} ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cache Hit: {:.1}% ∥ Cost: ${:.4}{} ∥ Latency: ⚡ {}ms",
+        connectivity_indicator, edge_health_indicator, edge_conn_str, brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1), active_provider, session_id, usage.input_tokens, usage.output_tokens, if usage.input_tokens > 0 { (f64::from(usage.cache_read_input_tokens) / f64::from(usage.input_tokens)) * 100.0 } else { 0.0 }, cost, worker_state_str, latency_str
     );
 
     if let Ok((cols, _)) = size() {
@@ -134,8 +146,9 @@ pub fn render_status_bar_text(
                 format!("{edge_latency_val:.2}")
             };
             text = format!(
-                "{} {} ∥ [{}:{}] ∥ {} ∥ Cost: ${:.4} ∥ Latency: ⚡ {}ms",
+                "{} {} {} ∥ [{}:{}] ∥ {} ∥ Cost: ${:.4} ∥ Latency: ⚡ {}ms",
                 connectivity_indicator,
+                edge_health_indicator,
                 edge_conn_str,
                 active_provider,
                 model,

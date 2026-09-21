@@ -929,7 +929,7 @@ const onyx_handler: any = {
       );
     }
 
-    if (request.method === "GET" && url.pathname === "/readyz") {
+    if (request.method === "GET" && (url.pathname === "/readyz" || url.pathname === "/ready")) {
       const dependencies = await checkReadiness(env);
       const ready = Object.values(dependencies).every(
         (status) => status === "ready",
@@ -2825,6 +2825,18 @@ export default {
         );
       }
     }
+
+    const logEntry = {
+      requestId: request.headers.get("cf-ray") || traceId,
+      method: request.method,
+      path: url.pathname,
+      statusCode: response.status,
+      latencyMs: latency,
+      providerTarget: response.headers.get("X-Onyx-Provider") || (isFallbackToAi ? "cloudflare_workers_ai" : "unknown"),
+      timestamp: new Date().toISOString()
+    };
+    console.log(JSON.stringify(logEntry));
+
     return response;
   },
 

@@ -1,8 +1,7 @@
-
-## Increment 3.1 - Cloudflare Telemetry & Edge-Bridge Hardening
-* **Cloudflare Analytics Engine Integration:** Emitting data points via the Cloudflare Workers bindings (e.g. `env.ONYX_EDGE_METRICS`) is extremely efficient for logging latency, model usage, and HTTP status codes directly at the edge, reducing backend logging overhead.
-* **Trace Propagation:** Extracting `traceparent` and `x-onyx-trace-id` inside the `router.rs` and `sse.rs` using the Rust `tracing` macro gives us distributed tracing observability right down into the agentic processing loop.
-* **Resilient Client Connections:** When switching from native WebSockets to SSE (`EventSource`) or building robust WebSockets in the dashboard UI, handling deduplication is critical, since edge deployments might retry upstream queries if latency hits the 5-second boundary. Implementing a fast `seenMessageIds` hashset along with an exponential backoff reconnect mechanism (up to 30s) prevents dropped connections from breaking the user experience.
-* **Health Probes in Async Workers:** Integrating periodic polling (e.g. a 30s `tokio::time::interval`) within background worker threads (like `WorkerPool`) allows the system to proactively detect degraded LLM providers without blocking the main event loop or crashing existing threads.
-Sprint completed and all files committed properly
-Successfully updated and verified.
+## Edge Bridge and Rust Core Synchronization
+When adding cross-service telemetry and resilient fallback states, ensuring deep synchronization between Edge environments (Cloudflare Workers) and the inner Daemon is critical.
+1. `GET /health` and `GET /ready` act as fundamental uptime checkpoints to verify upstream dependencies seamlessly.
+2. In `edge-bridge/src/index.ts`, logging should strip credentials and output structured JSON, mapping directly to analytics workflows.
+3. Fallback logic within Cloudflare isolates external outages while retaining data transparency (`code: "502" | "504"` for context mapping inside `emailDispatchManager.ts`).
+4. In `rust/crates/api/src/client.rs`, errors from Edge/Providers shouldn't halt the user instance logic or lock TUI frames. Utilizing structured map_err boundaries and logging asynchronous SQLite records ensures observability without UI friction.
+5. In integration tests like `mock-anthropic-service/tests/scenario.rs`, you must replicate the entire mock environment explicitly (e.g. `DEEPSEEK_API_KEY` for the default internal model wrapper fallback) so CI tests won't flake across developers who haven't populated `.env`.

@@ -111,28 +111,32 @@ export class EmailDispatchManager {
    * Main send call: Routes to primary or secondary provider based on system health
    */
   public async send(options: EmailOptions): Promise<DispatchResult> {
-    const now = Date.now();
-    const { isOpen, cooldownUntil } = await this.getCircuitBreakerState();
-
-    if (isOpen) {
-      if (now > cooldownUntil) {
-        await this.setCircuitBreakerState(false, 0);
-      } else {
-        return this.sendViaResend(options, 'Circuit breaker active for EmailIt');
-      }
-    }
-
-    const telemetry = await this.getLatestTelemetry();
-    if (telemetry && telemetry.dailyRemaining <= 0) {
-      return this.sendViaResend(options, 'EmailIt daily sending quota exhausted');
-    }
-
     try {
-      return await this.sendViaEmailIt(options);
-    } catch (error: any) {
-      // Trip circuit breaker for 5 minutes on server errors or failures
-      await this.tripCircuitBreaker(5 * 60 * 1000);
-      return await this.sendViaResend(options, error.message);
+      const now = Date.now();
+      const { isOpen, cooldownUntil } = await this.getCircuitBreakerState();
+
+      if (isOpen) {
+        if (now > cooldownUntil) {
+          await this.setCircuitBreakerState(false, 0);
+        } else {
+          return await this.sendViaResend(options, 'Circuit breaker active for EmailIt');
+        }
+      }
+
+      const telemetry = await this.getLatestTelemetry();
+      if (telemetry && telemetry.dailyRemaining <= 0) {
+        return await this.sendViaResend(options, 'EmailIt daily sending quota exhausted');
+      }
+
+      try {
+        return await this.sendViaEmailIt(options);
+      } catch (error: any) {
+        // Trip circuit breaker for 5 minutes on server errors or failures
+        await this.tripCircuitBreaker(5 * 60 * 1000);
+        return await this.sendViaResend(options, error.message);
+      }
+    } catch (e: any) {
+       throw new Error(JSON.stringify({ error: e.message, code: e.message.includes('timeout') ? "504" : "502", retryable: true }));
     }
   }
 
