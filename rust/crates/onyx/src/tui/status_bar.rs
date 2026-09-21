@@ -46,6 +46,11 @@ pub fn spawn_telemetry_polling_loop(port: u16) {
 
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub fn render_status_bar_text(
+    active_provider: Option<&str>,
+    latency_ms: Option<u64>,
+    cache_hit_ratio: Option<f64>,
+    token_burn_rate: Option<f64>,
+    cloudflare_edge_connected: bool,
     brand_id: Option<&runtime::persona::BrandId>,
     model: &str,
     session_id: &str,
@@ -116,9 +121,8 @@ pub fn render_status_bar_text(
         format!("{edge_latency_val:.2}")
     };
     let mut text = format!(
-        "{} {} ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ TARGET: DeepSeek ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cost: ${:.4}{} ∥ Latency: ⚡ {}ms",
-        connectivity_indicator, edge_conn_str, brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1),
-session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str, latency_str
+        "{} {} ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ TARGET: {} ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cache Hit: {:.1}% ∥ Cost: ${:.4}{} ∥ Latency: ⚡ {}ms",
+        connectivity_indicator, edge_conn_str, brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1), active_provider, session_id, usage.input_tokens, usage.output_tokens, if usage.input_tokens > 0 { (f64::from(usage.cache_read_input_tokens) / f64::from(usage.input_tokens)) * 100.0 } else { 0.0 }, cost, worker_state_str, latency_str
     );
 
     if let Ok((cols, _)) = size() {
@@ -328,6 +332,11 @@ session_id, usage.input_tokens, usage.output_tokens, cost, worker_state_str, lat
 
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub fn draw_status_bar(
+    active_provider: Option<&str>,
+    latency_ms: Option<u64>,
+    cache_hit_ratio: Option<f64>,
+    token_burn_rate: Option<f64>,
+    cloudflare_edge_connected: bool,
     brand_id: Option<&runtime::persona::BrandId>,
     model: &str,
     session_id: &str,
@@ -367,6 +376,11 @@ pub fn draw_status_bar(
     }
 
     let text = render_status_bar_text(
+        active_provider,
+        latency_ms,
+        cache_hit_ratio,
+        token_burn_rate,
+        cloudflare_edge_connected,
         brand_id,
         model,
         session_id,
@@ -526,6 +540,11 @@ mod tests {
         };
         for _ in 0..100 {
             draw_status_bar(
+                None,
+                None,
+                None,
+                None,
+                true,
                 None,
                 "test_model",
                 "test_session",

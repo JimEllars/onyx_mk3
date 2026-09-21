@@ -125,3 +125,8 @@ If a provider degrades:
 1. The probe emits a `tracing::warn!` metric indicating the fraction of healthy providers.
 2. The UI dashboard receives a telemetry packet containing `providerHealth` and visually updates the health badge.
 3. If an upstream LLM API returns a `5xx` or `429` (Rate Limit), the Edge Bridge will autonomously fall back to Cloudflare Workers AI (`@cf/meta/llama-2-7b-chat-int8`) to ensure 100% uptime for chat functions.
+
+### Edge-Bridge & Observability Configuration
+- **Edge Analytics:** A new Cloudflare Analytics Engine binding `ONYX_EDGE_METRICS` has been attached to the worker to support sub-ms aggregation of provider TTFT (time-to-first-token), request routing states, and status code tracking.
+- **SQLite Config:** The local daemon DB enforces `WAL` journal mode natively. It's strictly prohibited to alter `PRAGMA synchronous` configurations manually.
+- **Trace Contexting:** All client interactions must propagate `x-onyx-trace-id`, `x-onyx-session-id`, and `x-onyx-source`.

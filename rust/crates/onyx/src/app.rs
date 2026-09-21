@@ -213,7 +213,7 @@ pub(crate) fn run_repl(
         std::sync::Arc::new(std::sync::Mutex::new(String::from("AXiM Shell Active...")));
     let system_logs =
         std::sync::Arc::new(std::sync::Mutex::new(String::from("Telemetry Connected")));
-    let (redraw_tx, redraw_rx) = std::sync::mpsc::channel::<()>();
+    let (redraw_tx, mut redraw_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
     if let Ok(mut guard) = crate::REDRAW_TX.lock() {
         *guard = Some(redraw_tx.clone());
     }
@@ -232,7 +232,7 @@ pub(crate) fn run_repl(
     let web3_wallet_address_clone = cli.runtime.session().web3_wallet_address.clone();
 
     std::thread::spawn(move || {
-        while redraw_rx.recv().is_ok() {
+        while redraw_rx.blocking_recv().is_some() {
             let dummy_usage = runtime::TokenUsage {
                 input_tokens: 0,
                 output_tokens: 0,
@@ -243,6 +243,11 @@ pub(crate) fn run_repl(
             let logs_guard = system_logs_clone.lock().unwrap();
             let mut manager = crate::tui::layout::TuiManager::new().unwrap();
             let status_line = crate::tui::status_bar::render_status_bar_text(
+                Some("anthropic"),
+                Some(150),
+                Some(85.0),
+                Some(10.5),
+                true,
                 None,
                 &model_clone,
                 &session_id_clone,
@@ -285,6 +290,11 @@ pub(crate) fn run_repl(
 
     let mut manager = crate::tui::layout::TuiManager::new().unwrap();
     let status_line = crate::tui::status_bar::render_status_bar_text(
+        Some("anthropic"),
+        Some(150),
+        Some(85.0),
+        Some(10.5),
+        true,
         cli.runtime.session().brand_id.as_ref(),
         &cli.model,
         &cli.session.id,
@@ -325,6 +335,11 @@ pub(crate) fn run_repl(
         }
         let mut manager = crate::tui::layout::TuiManager::new().unwrap();
         let status_line = crate::tui::status_bar::render_status_bar_text(
+            Some("anthropic"),
+            Some(150),
+            Some(85.0),
+            Some(10.5),
+            true,
             cli.runtime.session().brand_id.as_ref(),
             &cli.model,
             &cli.session.id,
