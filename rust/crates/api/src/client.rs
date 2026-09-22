@@ -220,7 +220,8 @@ impl ProviderClient {
                 }
             }
 
-            return result;
+            // Soft trap upstream errors
+            return result.map_err(|e| ApiError::Auth(format!("Upstream error trapped: {e}")));
         }
     }
 
@@ -357,7 +358,8 @@ impl ProviderClient {
                 }
             }
 
-            return result;
+            // Soft trap upstream errors
+            return result.map_err(|e| ApiError::Auth(format!("Upstream error trapped: {e}")));
         }
     }
 }

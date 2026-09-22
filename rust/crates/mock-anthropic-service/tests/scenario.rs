@@ -70,6 +70,7 @@ async fn axim_headless() {
     );
     command.env("ANTHROPIC_BASE_URL", mock_anthropic.base_url());
     command.env("ANTHROPIC_API_KEY", "test-parity-key");
+    command.env("DEEPSEEK_API_KEY", "test-parity-key");
     command.args(["serve-headless", "--port", &headless_port.to_string()]);
     #[allow(clippy::zombie_processes)]
     let mut child = command.spawn().expect("failed to start headless server");

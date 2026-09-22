@@ -34,6 +34,19 @@ impl Database {
         )?;
 
         conn.execute(
+            "CREATE TABLE IF NOT EXISTS telemetry_events (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                latency_ms INTEGER NOT NULL,
+                tokens_used INTEGER NOT NULL,
+                status_code INTEGER NOT NULL,
+                created_at TEXT NOT NULL
+            )",
+            params![],
+        )?;
+
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
                 session_id TEXT NOT NULL,
@@ -57,6 +70,24 @@ impl Database {
              VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at, title = excluded.title",
             params![session_id, title, now, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn log_telemetry_event(
+        &self,
+        id: &str,
+        session_id: &str,
+        event_type: &str,
+        latency_ms: i64,
+        tokens_used: i64,
+        status_code: i64,
+    ) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "INSERT INTO telemetry_events (id, session_id, event_type, latency_ms, tokens_used, status_code, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![id, session_id, event_type, latency_ms, tokens_used, status_code, now],
         )?;
         Ok(())
     }
