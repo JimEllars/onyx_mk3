@@ -1,7 +1,0 @@
-feat(email): implement EmailIt v2 client with Resend fallback, HITL approval flows, and cron triggers
-
-- Implement `EmailDispatchManager` in `edge-bridge` handling EmailIt v2 with Resend v1 fallback.
-- Track metrics using headers (`ratelimit-remaining`, `ratelimit-daily-remaining`, etc.).
-- Add HMAC-SHA256 signature verification for HITL token actions and trigger executive dispatch emails.
-- Add `edge-bridge/src/index.ts` cron enhancements and a trigger endpoint.
-- Enhance TUI in `rust/crates/onyx/src/tui/status_bar.rs` to show EmailIt status and pending HITL tickets.
