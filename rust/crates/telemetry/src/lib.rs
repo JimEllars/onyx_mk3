@@ -357,6 +357,11 @@ pub struct SessionTraceRecord {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TelemetryEvent {
+    ChatbaseConsultation {
+        app_id: String,
+        event_type: String,
+        metadata: Map<String, Value>,
+    },
     ApiUsageLog {
         session_id: String,
         job_id: Option<String>,
