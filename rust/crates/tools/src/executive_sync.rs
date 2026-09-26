@@ -1,4 +1,4 @@
-use crate::chatbase_ops::{execute_consult_chatbase_agent, ConsultChatbaseAgentInput};
+use crate::chatbase_ops::{execute_consult_chatbase_agent, ConsultDepartmentInput};
 use crate::communication_ops::{execute_dispatch_executive_brief, DispatchExecutiveBriefInput};
 use std::fmt::Write;
 
@@ -10,21 +10,21 @@ pub async fn run_daily_department_sync(company_update: &str) -> Result<(), Strin
     compiled_report.push_str("============================\n\n");
 
     for role in roles {
-        let input = ConsultChatbaseAgentInput {
-            agent_role: role.to_string(),
-            message: company_update.to_string(),
+        let input = ConsultDepartmentInput {
+            department: role.to_string(),
+            query: company_update.to_string(),
             conversation_id: None,
         };
 
         match execute_consult_chatbase_agent(input).await {
             Ok(output) => {
-                let _ = writeln!(compiled_report, "--- Report from {role} ---");
-                compiled_report.push_str(&output.text);
+                let _ = writeln!(compiled_report, "--- Report from {} ---", role);
+                compiled_report.push_str(&output.reply);
                 compiled_report.push_str("\n\n");
             }
             Err(e) => {
-                let _ = writeln!(compiled_report, "--- Error from {role} ---");
-                let _ = write!(compiled_report, "Failed to consult agent: {e}\n\n");
+                let _ = writeln!(compiled_report, "--- Error from {} ---", role);
+                let _ = write!(compiled_report, "Failed to consult agent: {}\n\n", e);
             }
         }
     }
@@ -48,11 +48,11 @@ pub async fn execute_sync_directives(
     let api_key =
         std::env::var("AXIM_SERVICE_KEY").map_err(|_| "AXIM_SERVICE_KEY not set".to_string())?;
 
-    let url = format!("{base_url}/api/v1/executive/sync");
+    let url = format!("{}/api/v1/executive/sync", base_url);
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
-        .map_err(|e| format!("Failed to build reqwest client: {e}"))?;
+        .map_err(|e| format!("Failed to build reqwest client: {}", e))?;
 
     let payload = serde_json::json!({
         "directives": directives,
@@ -61,18 +61,18 @@ pub async fn execute_sync_directives(
 
     let res = client
         .post(&url)
-        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&payload)
         .send()
         .await
-        .map_err(|e| format!("Request failed: {e}"))?;
+        .map_err(|e| format!("Request failed: {}", e))?;
 
     if res.status().is_success() {
         let data: serde_json::Value = res
             .json()
             .await
-            .map_err(|e| format!("Failed to parse response: {e}"))?;
+            .map_err(|e| format!("Failed to parse response: {}", e))?;
         Ok(data)
     } else {
         Err(format!("Axim API error: {}", res.status()))

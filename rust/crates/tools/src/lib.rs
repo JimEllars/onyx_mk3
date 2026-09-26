@@ -451,7 +451,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "properties": {
                     "subject": { "type": "string" },
                     "severity": { "type": "string" },
-                    "message": { "type": "string" }
+                    "query": { "type": "string" }
                 },
                 "required": ["subject", "severity", "message"],
                 "additionalProperties": false
@@ -661,7 +661,7 @@ ToolSpec {
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "agent_role": { "type": "string", "enum": ["CEO", "CTO", "CFO", "COO", "Legal"] },
+                    "department": { "type": "string", "enum": ["CEO", "CTO", "CFO", "COO", "Legal"] },
                     "message": { "type": "string" },
                     "conversation_id": { "type": "string" }
                 },
@@ -1005,7 +1005,7 @@ ToolSpec {
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "query": { "type": "string" },
+                    "message": { "type": "string" },
                     "max_results": { "type": "integer", "minimum": 1 }
                 },
                 "required": ["query"],
@@ -1895,7 +1895,7 @@ fn execute_tool_with_enforcer(
         }
         "consult_chatbase_agent" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
-            from_value::<chatbase_ops::ConsultChatbaseAgentInput>(input).and_then(|i| {
+            from_value::<chatbase_ops::ConsultDepartmentInput>(input).and_then(|i| {
                 tokio::runtime::Handle::current()
                     .block_on(chatbase_ops::execute_consult_chatbase_agent(i))
                     .map_err(|e| e.to_string())

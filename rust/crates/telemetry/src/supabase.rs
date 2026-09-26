@@ -54,6 +54,21 @@ impl TelemetrySink for SupabaseTelemetrySink {
                     }
                 })
             }
+            TelemetryEvent::ChatbaseConsultation {
+                app_id,
+                event_type,
+                metadata,
+            } => {
+                serde_json::json!({
+                    "table": "events_ax2024",
+                    "data": {
+                        "app_id": app_id,
+                        "event_type": event_type,
+                        "metadata": metadata,
+                        "timestamp": crate::current_timestamp_ms(),
+                    }
+                })
+            }
             TelemetryEvent::SubAgentEvent {
                 session_id,
                 event_type,
