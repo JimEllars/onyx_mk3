@@ -67,7 +67,10 @@ pub async fn execute_consult_chatbase_agent(
 
     if let Some(sink) = telemetry::supabase::SupabaseTelemetrySink::new() {
         let mut metadata = serde_json::Map::new();
-        metadata.insert("department".to_string(), serde_json::Value::String(input.department.clone()));
+        metadata.insert(
+            "department".to_string(),
+            serde_json::Value::String(input.department.clone()),
+        );
         if let Some(c) = credits_used {
             if let Ok(c_json) = serde_json::to_value(c) {
                 metadata.insert("credits".to_string(), c_json);
