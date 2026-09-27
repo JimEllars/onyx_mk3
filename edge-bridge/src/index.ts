@@ -908,6 +908,9 @@ const onyx_handler: any = {
     }
 
     const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname === "/health") {
+      return new Response(JSON.stringify({ status: "healthy", service: "onyx-edge-bridge", version: "mk3-2.2", timestamp: new Date().toISOString() }), { status: 200, headers: { "Content-Type": "application/json", ...getCorsHeaders(request, env) } });
+    }
     if (request.method === "GET" && url.pathname === "/healthz") {
       const durationMs = (Date.now() - edgeStatus.startTime).toFixed(2);
       return new Response(
@@ -2647,6 +2650,16 @@ const onyx_handler: any = {
           cacheStatus,
           traceId,
         );
+            } else if (request.method === "GET" && url.pathname === "/health") {
+        return new Response(JSON.stringify({
+          status: 'healthy',
+          service: 'onyx-edge-bridge',
+          version: 'mk3-2.2',
+          timestamp: new Date().toISOString()
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...getCorsHeaders(request, env) }
+        });
       } else if (request.method === "GET" && url.pathname === "/api/health") {
         const healthStatus = {
           status: "healthy",
