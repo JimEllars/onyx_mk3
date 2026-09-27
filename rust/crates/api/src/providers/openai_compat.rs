@@ -844,7 +844,10 @@ fn build_chat_completion_request(request: &MessageRequest, config: OpenAiCompatC
         let mut arr = tools.iter().map(openai_tool_definition).collect::<Vec<_>>();
         if let Some(last) = arr.last_mut() {
             if let Some(obj) = last.as_object_mut() {
-                obj.insert("cache_control".to_string(), serde_json::json!({"type": "ephemeral"}));
+                obj.insert(
+                    "cache_control".to_string(),
+                    serde_json::json!({"type": "ephemeral"}),
+                );
             }
         }
         payload["tools"] = Value::Array(arr);

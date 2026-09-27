@@ -127,10 +127,17 @@ fn main() {
     }));
 
     std::thread::spawn(move || {
-        if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
+        if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
             rt.block_on(async move {
-                if let Ok(mut sigint) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()) {
-                    if let Ok(mut sigterm) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                if let Ok(mut sigint) =
+                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+                {
+                    if let Ok(mut sigterm) =
+                        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    {
                         tokio::select! {
                             _ = sigint.recv() => {
                                 let _ = crossterm::terminal::disable_raw_mode();
