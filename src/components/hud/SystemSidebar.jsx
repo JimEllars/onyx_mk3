@@ -63,12 +63,28 @@ export default function SystemSidebar() {
         checkHealth();
         checkTelemetry();
 
+        const checkSwarmState = async () => {
+            try {
+                const apiUrl = import.meta.env.VITE_ONYX_WORKER_URL || '';
+                const res = await fetch(`${apiUrl}/api/v1/onyx/swarm-state`);
+                if (res.ok) {
+                    const data = await res.json();
+                    useDesktopAgentStore.setState({ swarmLock: data.status === 'READY' ? 'unlocked' : (data.status === 'LOCKED' ? 'locked' : 'contention') });
+                }
+            } catch (err) {
+                /* void 0; */
+            }
+        };
+
+        checkSwarmState();
+        const swarmInterval = setInterval(checkSwarmState, 5000);
         const healthInterval = setInterval(checkHealth, 5000);
         const telemetryInterval = setInterval(checkTelemetry, 15000);
 
         return () => {
             clearInterval(healthInterval);
             clearInterval(telemetryInterval);
+            clearInterval(swarmInterval);
         };
     }, []);
 
@@ -133,8 +149,8 @@ export default function SystemSidebar() {
 
             <div className="mt-auto flex flex-col gap-2 pt-4 border-t border-slate-700/50">
                 <div className="flex items-center justify-between px-1">
-                    <span className="text-[10px] text-slate-500 uppercase tracking-widest flex items-center gap-1">Swarm Lock <span className={`w-1.5 h-1.5 rounded-full ${swarmLock === 'unlocked' ? 'bg-emerald-500' : 'bg-amber-500 animate-ping'} shadow-sm`}></span></span>
-                    <span className={`text-[10px] font-bold tracking-wider ${swarmLock === 'unlocked' ? 'text-emerald-500' : 'text-amber-500'}`}>{swarmLock}</span>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-widest flex items-center gap-1">Swarm Lock <span className={`w-1.5 h-1.5 rounded-full ${swarmLock === 'unlocked' ? 'bg-emerald-500' : swarmLock === 'contention' ? 'bg-red-500' : 'bg-amber-500 animate-ping'} shadow-sm`}></span></span>
+                    <span className={`text-[10px] font-bold tracking-wider ${swarmLock === 'unlocked' ? 'text-emerald-500' : swarmLock === 'contention' ? 'text-red-500' : 'text-amber-500'}`}>{swarmLock === 'unlocked' ? 'READY' : swarmLock === 'contention' ? 'CONTENTION' : 'LOCKED'}</span>
                 </div>
                 <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-slate-500 uppercase tracking-widest">Auth Level</span>

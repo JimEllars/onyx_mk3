@@ -68,7 +68,7 @@ export default function ActionConsole({ peerConnection }) {
                 body: JSON.stringify({ action_id: actionId, decision: 'approved' })
             });
             if (response.ok) {
-                updateHitlActionStatus(actionId, 'APPROVED');
+                updateHitlActionStatus(actionId, 'APPROVED'); setTimeout(() => { useDesktopAgentStore.setState(state => ({ pendingHitlActions: state.pendingHitlActions.filter(a => a.id !== actionId) })) }, 1500);
             } else {
                 updateHitlActionStatus(actionId, 'FAILED');
             }
@@ -91,7 +91,7 @@ export default function ActionConsole({ peerConnection }) {
                 body: JSON.stringify({ action_id: actionId, decision: 'rejected' })
             });
             if (response.ok) {
-                updateHitlActionStatus(actionId, 'REJECTED');
+                updateHitlActionStatus(actionId, 'REJECTED'); setTimeout(() => { useDesktopAgentStore.setState(state => ({ pendingHitlActions: state.pendingHitlActions.filter(a => a.id !== actionId) })) }, 1500);
             } else {
                 updateHitlActionStatus(actionId, 'FAILED');
             }
@@ -117,7 +117,7 @@ export default function ActionConsole({ peerConnection }) {
     }, [pendingHitlActions]);
 
     return (
-        <div className="action-console w-80 p-5 bg-slate-900 text-slate-100 flex flex-col gap-6 rounded-l-xl shadow-2xl border-l border-t border-b border-slate-800 h-full overflow-hidden font-mono relative z-10">
+        <div className="action-console w-80 lg:w-96 p-5 bg-slate-900 text-slate-100 flex flex-col gap-6 rounded-l-xl shadow-2xl border-l border-t border-b border-slate-800 h-full overflow-hidden font-mono relative z-10">
             <div className="flex flex-col gap-3 border-b border-slate-700/50 pb-4">
                 <div className="flex justify-between items-center">
                     <h2 className="font-bold tracking-widest text-sm text-slate-300 flex items-center gap-2">
@@ -160,18 +160,35 @@ export default function ActionConsole({ peerConnection }) {
                 ) : (
                     <ul className="flex flex-col gap-3">
                         {pendingHitlActions.map(action => (
-                            <li key={action.id} className="border border-slate-700/80 bg-slate-800/40 p-3 rounded-lg hover:bg-slate-800/80 transition-all duration-200 flex flex-col gap-3 text-sm shadow-sm group">
+                            <li key={action.id} className={`border p-3 rounded-lg hover:bg-slate-800/80 transition-all duration-500 flex flex-col gap-3 text-sm shadow-sm group overflow-hidden ${
+                                    action.risk_level === 'LOW' ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' :
+                                    action.risk_level === 'MEDIUM' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+                                    action.risk_level === 'HIGH' || action.risk_level === 'CRITICAL' ? 'bg-rose-500/10 border-rose-500/40 text-rose-400 animate-[pulse_2s_ease-in-out_infinite]' :
+                                    'border-slate-700/80 bg-slate-800/40'
+                                } ${action.status === 'APPROVED' || action.status === 'REJECTED' ? 'opacity-0 scale-95 h-0 p-0 m-0 border-0' : 'opacity-100 scale-100'}`}>
                                 <div className="flex justify-between items-start gap-2">
-                                    <span className="leading-snug text-slate-300 text-xs flex-1 line-clamp-3">{action.description || 'System task awaits approval.'}</span>
-                                    <div className="text-[9px] text-slate-500 mt-0.5">
+                                    <div className="flex flex-col gap-1 flex-1">
+                                       <div className="flex items-center gap-2">
+                                         {action.risk_level === 'HIGH' || action.risk_level === 'CRITICAL' ? <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span> : null}
+                                         <span className="font-bold text-[10px] uppercase tracking-wider">{action.risk_level || 'STANDARD'} RISK</span>
+                                       </div>
+                                       <span className="leading-snug text-slate-300 text-xs line-clamp-3">{action.description || 'System task awaits approval.'}</span>
+                                    </div>
+                                    <div className="text-[9px] text-slate-500 mt-0.5 whitespace-nowrap">
                                         {Math.round((Date.now() - action.timestamp) / 1000)}s ago
                                     </div>
                                 </div>
 
                                 {action.params && (
-                                    <div className="bg-slate-900 rounded p-2 overflow-x-auto text-[10px] text-blue-300 border border-slate-700">
-                                        <pre>{JSON.stringify(action.params, null, 2)}</pre>
-                                    </div>
+                                    <details className="text-[10px] mt-1 group">
+                                      <summary className="cursor-pointer font-bold tracking-wider text-slate-400 hover:text-slate-300 transition-colors uppercase select-none flex items-center gap-1">
+                                        <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+                                        Parameters
+                                      </summary>
+                                      <div className="bg-slate-900 rounded p-2 overflow-x-auto text-blue-300 border border-slate-700 mt-2 custom-scrollbar max-h-32">
+                                          <pre className="whitespace-pre-wrap break-all">{JSON.stringify(action.params, null, 2)}</pre>
+                                      </div>
+                                    </details>
                                 )}
 
                                 <div className="flex justify-between items-center mt-1 pt-2 border-t border-slate-700/50">
