@@ -233,10 +233,9 @@ function getCorsHeaders(request: Request, env?: Env) {
   return {
     "Access-Control-Allow-Origin": isAllowed ? origin : "null",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers":
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Onyx-Session-Id, X-Onyx-Trace-Id, X-Correlation-ID, X-Request-ID",
       "Content-Type, Authorization, X-Correlation-ID, X-Request-ID",
-    "Access-Control-Expose-Headers":
-      "CF-Ray, X-Correlation-ID, X-Onyx-Edge-Latency, X-Onyx-Edge-Health",
+    "Access-Control-Expose-Headers": "CF-Ray, X-Correlation-ID, X-Onyx-Session-Id, X-Onyx-Trace-Id, X-Onyx-Edge-Latency, X-Onyx-Edge-Health",
   };
 }
 
@@ -908,8 +907,8 @@ const onyx_handler: any = {
     }
 
     const url = new URL(request.url);
-    if (request.method === "GET" && url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "healthy", service: "onyx-edge-bridge", version: "mk3-2.2", timestamp: new Date().toISOString() }), { status: 200, headers: { "Content-Type": "application/json", ...getCorsHeaders(request, env) } });
+    if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/v1/health")) {
+      return new Response(JSON.stringify({ status: "healthy", upstream: "operational", active_sessions: "unknown", memory_usage: "unknown", service: "onyx-edge-bridge", version: "mk3-2.2", timestamp: new Date().toISOString() }), { status: 200, headers: { "Content-Type": "application/json", ...getCorsHeaders(request, env) } });
     }
     if (request.method === "GET" && url.pathname === "/healthz") {
       const durationMs = (Date.now() - edgeStatus.startTime).toFixed(2);
@@ -1688,7 +1687,7 @@ const onyx_handler: any = {
           ),
         });
       }
-      if (request.method === "GET" && url.pathname === "/health") {
+      if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/v1/health")) {
         try {
           const supabaseUrl = env.CORE_INGEST_URL
             ? new URL(env.CORE_INGEST_URL).origin
@@ -2730,9 +2729,12 @@ const onyx_handler: any = {
           cacheStatus,
           traceId,
         );
-            } else if (request.method === "GET" && url.pathname === "/health") {
+            } else if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/v1/health")) {
         return new Response(JSON.stringify({
           status: 'healthy',
+          upstream: 'operational',
+          active_sessions: 'unknown',
+          memory_usage: 'unknown',
           service: 'onyx-edge-bridge',
           version: 'mk3-2.2',
           timestamp: new Date().toISOString()
@@ -2933,29 +2935,7 @@ export default {
       url.pathname === "/api/health" ||
       url.pathname === "/api/telemetry/summary"
     ) {
-      if (env.ONYX_EDGE_METRICS) {
-        ctx?.waitUntil?.(
-          new Promise<void>((resolve) => {
-            try {
-              env.ONYX_EDGE_METRICS!.writeDataPoint({
-                blobs: [
-                  request.method,
-                  url.pathname,
-                  traceId,
-                  response.status.toString(),
-                  response.headers.get("X-Onyx-Provider") || "unknown", // record provider target
-                  response.headers.get("X-Onyx-Error-Code") || "none" // record error code if any
-                ],
-                doubles: [latency],
-                indexes: [response.status >= 400 ? "error" : "success"],
-              });
-            } catch (e) {
-              console.error("error");
-            }
-            resolve();
-          }),
-        );
-      }
+
     }
     if (response.status === 429) {
       if (env.ONYX_DB) {
@@ -2978,6 +2958,7 @@ export default {
       }
     }
 
+
     const logEntry = {
       requestId: request.headers.get("cf-ray") || traceId,
       method: request.method,
@@ -2985,9 +2966,35 @@ export default {
       statusCode: response.status,
       latencyMs: latency,
       providerTarget: response.headers.get("X-Onyx-Provider") || (isFallbackToAi ? "cloudflare_workers_ai" : "unknown"),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      tokens: response.headers.get("X-Onyx-Token-Count") || 0,
+      errorTrace: response.headers.get("X-Onyx-Error-Trace") || "none",
     };
     console.log(JSON.stringify(logEntry));
+    if (env.ONYX_EDGE_METRICS) {
+      ctx?.waitUntil?.(
+        new Promise<void>((resolve) => {
+          try {
+            env.ONYX_EDGE_METRICS!.writeDataPoint({
+              blobs: [
+                logEntry.method,
+                logEntry.path,
+                logEntry.requestId,
+                logEntry.statusCode.toString(),
+                logEntry.providerTarget,
+                logEntry.errorTrace.toString()
+              ],
+              doubles: [logEntry.latencyMs, Number(logEntry.tokens)],
+              indexes: [logEntry.statusCode >= 400 ? "error" : "success"],
+            });
+          } catch (e) {
+            console.error("Telemetry write failed", e);
+          }
+          resolve();
+        })
+      );
+    }
+
 
     return response;
   },
