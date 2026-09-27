@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use telemetry::TelemetrySink;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsultDepartmentInput {
@@ -56,7 +57,9 @@ pub async fn execute_consult_chatbase_agent(
     let body: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
 
     let reply = body["reply"].as_str().unwrap_or("").to_string();
-    let conversation_id = body["conversation_id"].as_str().map(|s| s.to_string());
+    let conversation_id = body["conversation_id"]
+        .as_str()
+        .map(std::string::ToString::to_string);
     let credits_used = body["credits"].as_f64();
 
     let output = ConsultDepartmentOutput {
@@ -77,7 +80,6 @@ pub async fn execute_consult_chatbase_agent(
             }
         }
 
-        use telemetry::TelemetrySink;
         sink.record(telemetry::TelemetryEvent::ChatbaseConsultation {
             app_id: "onyx_mk3".to_string(),
             event_type: "chatbase_consultation".to_string(),

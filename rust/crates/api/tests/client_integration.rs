@@ -569,7 +569,7 @@ async fn retries_multiple_retryable_failures_with_exponential_backoff_and_jitter
                 "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}",
             ),
             http_response(
-                "500 Internal Server Error",
+                "529 Too Many Requests",
                 "application/json",
                 "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"boom\"}}",
             ),
