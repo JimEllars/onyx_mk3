@@ -234,7 +234,6 @@ function getCorsHeaders(request: Request, env?: Env) {
     "Access-Control-Allow-Origin": isAllowed ? origin : "null",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Onyx-Session-Id, X-Onyx-Trace-Id, X-Correlation-ID, X-Request-ID",
-      "Content-Type, Authorization, X-Correlation-ID, X-Request-ID",
     "Access-Control-Expose-Headers": "CF-Ray, X-Correlation-ID, X-Onyx-Session-Id, X-Onyx-Trace-Id, X-Onyx-Edge-Latency, X-Onyx-Edge-Health",
   };
 }
