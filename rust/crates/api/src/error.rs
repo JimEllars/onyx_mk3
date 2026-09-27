@@ -121,7 +121,10 @@ impl ApiError {
         match self {
             Self::Http(error) => error.is_connect() || error.is_timeout() || error.is_request(),
             Self::StreamTimeout(_) => true,
-            Self::Api { retryable, .. } => *retryable,
+            Self::Api { status, .. } => {
+                let code = status.as_u16();
+                code == 429 || code == 503 || code == 529
+            }
             Self::RetriesExhausted { last_error, .. } => last_error.is_retryable(),
             Self::MissingCredentials { .. }
             | Self::ContextWindowExceeded { .. }

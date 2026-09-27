@@ -455,6 +455,9 @@ impl AnthropicClient {
 
         loop {
             attempts += 1;
+
+            let mut retry_after_duration = None;
+
             if let Some(session_tracer) = &self.session_tracer {
                 session_tracer.record_http_request_started(
                     attempts,
@@ -464,36 +467,54 @@ impl AnthropicClient {
                 );
             }
             match self.send_raw_request(request).await {
-                Ok(response) => match expect_success(response).await {
-                    Ok(response) => {
-                        if let Some(session_tracer) = &self.session_tracer {
-                            session_tracer.record_http_request_succeeded(
-                                attempts,
-                                "POST",
-                                "/v1/messages",
-                                response.status().as_u16(),
-                                request_id_from_headers(response.headers()),
-                                Map::new(),
-                            );
+                Ok(response) => {
+                    if let Some(val) = response.headers().get("retry-after") {
+                        if let Ok(s) = val.to_str() {
+                            if let Ok(secs) = s.parse::<u64>() {
+                                retry_after_duration =
+                                    Some(Duration::from_secs(secs).min(Duration::from_secs(15)));
+                            }
                         }
-                        return Ok(response);
+                    } else if let Some(val) = response.headers().get("x-ratelimit-reset") {
+                        if let Ok(s) = val.to_str() {
+                            if let Ok(secs) = s.parse::<u64>() {
+                                retry_after_duration =
+                                    Some(Duration::from_secs(secs).min(Duration::from_secs(15)));
+                            }
+                        }
                     }
-                    Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => {
-                        tracing::warn!(
-                            attempt = attempts,
-                            max_retries = self.max_retries,
-                            status = ?error,
-                            "Anthropic provider unary failover/retry triggered"
-                        );
-                        self.record_request_failure(attempts, &error);
-                        last_error = Some(error);
+
+                    match expect_success(response).await {
+                        Ok(response) => {
+                            if let Some(session_tracer) = &self.session_tracer {
+                                session_tracer.record_http_request_succeeded(
+                                    attempts,
+                                    "POST",
+                                    "/v1/messages",
+                                    response.status().as_u16(),
+                                    request_id_from_headers(response.headers()),
+                                    Map::new(),
+                                );
+                            }
+                            return Ok(response);
+                        }
+                        Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => {
+                            tracing::warn!(
+                                attempt = attempts,
+                                max_retries = self.max_retries,
+                                status = ?error,
+                                "Anthropic provider unary failover/retry triggered"
+                            );
+                            self.record_request_failure(attempts, &error);
+                            last_error = Some(error);
+                        }
+                        Err(error) => {
+                            let error = enrich_bearer_auth_error(error, &self.auth);
+                            self.record_request_failure(attempts, &error);
+                            return Err(error);
+                        }
                     }
-                    Err(error) => {
-                        let error = enrich_bearer_auth_error(error, &self.auth);
-                        self.record_request_failure(attempts, &error);
-                        return Err(error);
-                    }
-                },
+                }
                 Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => {
                     tracing::warn!(
                         attempt = attempts,
@@ -514,7 +535,12 @@ impl AnthropicClient {
                 break;
             }
 
-            tokio::time::sleep(self.jittered_backoff_for_attempt(attempts)?).await;
+            let sleep_duration = if let Some(duration) = retry_after_duration {
+                duration
+            } else {
+                self.jittered_backoff_for_attempt(attempts)?
+            };
+            tokio::time::sleep(sleep_duration).await;
         }
 
         Err(ApiError::RetriesExhausted {

@@ -62,6 +62,7 @@ jobs:
         run: python .github/scripts/check_doc_source_of_truth.py
 
   fmt:
+    needs: doc-source-of-truth
     name: cargo fmt
     runs-on: ubuntu-latest
     steps:
@@ -78,6 +79,7 @@ jobs:
         run: cargo fmt --all --check
 
   test-workspace:
+    needs: doc-source-of-truth
     name: cargo test --workspace
     runs-on: ubuntu-latest
     steps:
@@ -95,6 +97,7 @@ jobs:
         run: cargo test --workspace
 
   clippy-workspace:
+    needs: doc-source-of-truth
     name: cargo clippy --workspace
     runs-on: ubuntu-latest
     steps:
@@ -113,6 +116,7 @@ jobs:
   test-integration:
     name: cargo test --test '*' --features integration
     runs-on: ubuntu-latest
+    needs: doc-source-of-truth
     steps:
       - uses: actions/checkout@v4
         env:
@@ -121,8 +125,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust -> target
+      - name: Start Mock Anthropic Service
+        run: |
+          cargo run -p mock-anthropic-service -- --bind 127.0.0.1:8082 &
+          timeout 15s bash -c 'until curl -sf http://127.0.0.1:8082/health; do sleep 0.5; done' || true
       - name: Run integration tests
         env:
           CLOUDFLARE_API_TOKEN: "dummy"
           CLOUDFLARE_ACCOUNT_ID: "dummy"
+          ANTHROPIC_BASE_URL: "http://127.0.0.1:8082"
+          ANTHROPIC_API_KEY: "mock-onyx-test-key"
+          DEEPSEEK_API_KEY: "mock-deepseek-fallback-key"
+          MOCK_SERVICE_PORT: "8082"
         run: cargo test --package integration_tests --features integration

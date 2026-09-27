@@ -115,6 +115,54 @@ type RuntimePluginStateBuildOutput = (
 
 #[allow(clippy::too_many_lines)]
 fn main() {
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::terminal::LeaveAlternateScreen,
+            crossterm::cursor::Show
+        );
+        original_hook(panic_info);
+    }));
+
+    std::thread::spawn(move || {
+        if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            rt.block_on(async move {
+                if let Ok(mut sigint) =
+                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+                {
+                    if let Ok(mut sigterm) =
+                        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    {
+                        tokio::select! {
+                            _ = sigint.recv() => {
+                                let _ = crossterm::terminal::disable_raw_mode();
+                                let _ = crossterm::execute!(
+                                    std::io::stdout(),
+                                    crossterm::terminal::LeaveAlternateScreen,
+                                    crossterm::cursor::Show
+                                );
+                                std::process::exit(0);
+                            }
+                            _ = sigterm.recv() => {
+                                let _ = crossterm::terminal::disable_raw_mode();
+                                let _ = crossterm::execute!(
+                                    std::io::stdout(),
+                                    crossterm::terminal::LeaveAlternateScreen,
+                                    crossterm::cursor::Show
+                                );
+                                std::process::exit(0);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
     api::spawn_provider_health_heartbeat();
     let mut wants_json_logs = false;
     for arg in std::env::args() {

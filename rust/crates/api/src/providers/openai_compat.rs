@@ -219,20 +219,41 @@ impl OpenAiCompatClient {
 
         let last_error = loop {
             attempts += 1;
+
+            let mut retry_after_duration = None;
+
             let retryable_error = match self.send_raw_request(request).await {
-                Ok(response) => match expect_success(response).await {
-                    Ok(response) => return Ok(response),
-                    Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => {
-                        tracing::warn!(
-                            attempt = attempts,
-                            max_retries = self.max_retries,
-                            status = ?error,
-                            "OpenAI compat provider failover/retry triggered"
-                        );
-                        error
+                Ok(response) => {
+                    if let Some(val) = response.headers().get("retry-after") {
+                        if let Ok(s) = val.to_str() {
+                            if let Ok(secs) = s.parse::<u64>() {
+                                retry_after_duration =
+                                    Some(Duration::from_secs(secs).min(Duration::from_secs(15)));
+                            }
+                        }
+                    } else if let Some(val) = response.headers().get("x-ratelimit-reset") {
+                        if let Ok(s) = val.to_str() {
+                            if let Ok(secs) = s.parse::<u64>() {
+                                retry_after_duration =
+                                    Some(Duration::from_secs(secs).min(Duration::from_secs(15)));
+                            }
+                        }
                     }
-                    Err(error) => return Err(error),
-                },
+
+                    match expect_success(response).await {
+                        Ok(response) => return Ok(response),
+                        Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => {
+                            tracing::warn!(
+                                attempt = attempts,
+                                max_retries = self.max_retries,
+                                status = ?error,
+                                "OpenAI compat provider failover/retry triggered"
+                            );
+                            error
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
                 Err(error) if error.is_retryable() && attempts <= self.max_retries + 1 => {
                     tracing::warn!(
                         attempt = attempts,
@@ -249,7 +270,12 @@ impl OpenAiCompatClient {
                 break retryable_error;
             }
 
-            tokio::time::sleep(self.jittered_backoff_for_attempt(attempts)?).await;
+            let sleep_duration = if let Some(duration) = retry_after_duration {
+                duration
+            } else {
+                self.jittered_backoff_for_attempt(attempts)?
+            };
+            tokio::time::sleep(sleep_duration).await;
         };
 
         Err(ApiError::RetriesExhausted {
@@ -815,8 +841,16 @@ fn build_chat_completion_request(request: &MessageRequest, config: OpenAiCompatC
     }
 
     if let Some(tools) = &request.tools {
-        payload["tools"] =
-            Value::Array(tools.iter().map(openai_tool_definition).collect::<Vec<_>>());
+        let mut arr = tools.iter().map(openai_tool_definition).collect::<Vec<_>>();
+        if let Some(last) = arr.last_mut() {
+            if let Some(obj) = last.as_object_mut() {
+                obj.insert(
+                    "cache_control".to_string(),
+                    serde_json::json!({"type": "ephemeral"}),
+                );
+            }
+        }
+        payload["tools"] = Value::Array(arr);
     }
     if let Some(tool_choice) = &request.tool_choice {
         payload["tool_choice"] = openai_tool_choice(tool_choice);
