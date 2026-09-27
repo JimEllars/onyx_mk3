@@ -785,12 +785,22 @@ pub async fn handle_onyx_summon(
 
     if let Err(ref e) = stream_result {
         let e_str = e.to_string();
-        if e_str.contains("429")
+        if e_str.contains("400") || e_str.contains("401") || e_str.contains("403") {
+            tracing::error!("Terminal provider error: {}", e_str);
+            return Err((
+                StatusCode::BAD_REQUEST,
+                axum::Json(
+                    serde_json::json!({"error": format!("Terminal provider error: {}", e_str)}),
+                ),
+            ));
+        } else if e_str.contains("429")
             || e_str.contains("500")
             || e_str.contains("502")
             || e_str.contains("503")
             || e_str.contains("504")
         {
+            // Transient errors triggers backoff & failover. Note in real world use backoff logic here.
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             do_failover = true;
             tracing::warn!(
                 "Provider failure detected, initiating seamless failover: {}",
@@ -899,7 +909,20 @@ pub async fn handle_onyx_summon(
                     }
                     _ => {}
                 },
-                Ok(Ok(None) | Err(_)) => break,
+                Ok(Ok(None) | Err(_)) => {
+                    let heartbeat_payload = serde_json::json!({
+                        "type": "reconnecting",
+                        "state": "RECONNECTING",
+                        "message": "Stream dropped, attempting reconnect"
+                    });
+                    let _ = tx
+                        .send(Ok::<_, std::convert::Infallible>(
+                            axum::response::sse::Event::default()
+                                .data(heartbeat_payload.to_string()),
+                        ))
+                        .await;
+                    break;
+                }
                 Err(_) => {
                     tracing::warn!("Chunk read timeout detected, initiating seamless failover");
                     let heartbeat_payload = serde_json::json!({

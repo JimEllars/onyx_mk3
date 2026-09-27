@@ -213,7 +213,7 @@ pub(crate) fn run_repl(
         std::sync::Arc::new(std::sync::Mutex::new(String::from("AXiM Shell Active...")));
     let system_logs =
         std::sync::Arc::new(std::sync::Mutex::new(String::from("Telemetry Connected")));
-    let (redraw_tx, mut redraw_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+    let (redraw_tx, mut redraw_rx) = tokio::sync::mpsc::channel::<()>(1024);
     if let Ok(mut guard) = crate::REDRAW_TX.lock() {
         *guard = Some(redraw_tx.clone());
     }
@@ -232,7 +232,15 @@ pub(crate) fn run_repl(
     let web3_wallet_address_clone = cli.runtime.session().web3_wallet_address.clone();
 
     std::thread::spawn(move || {
+        let mut last_draw = Instant::now();
         while redraw_rx.blocking_recv().is_some() {
+            let now = Instant::now();
+            if now.duration_since(last_draw).as_millis() < 33 {
+                // Throttle redraw rate during high-frequency SSE streaming (~30 fps)
+                continue;
+            }
+            last_draw = now;
+
             let dummy_usage = runtime::TokenUsage {
                 input_tokens: 0,
                 output_tokens: 0,
@@ -279,7 +287,7 @@ pub(crate) fn run_repl(
                         if let Some(msg) = payload.get("message").and_then(|m| m.as_str()) {
                             *logs_guard = format!("{}\n> [SUCCESS] {}", *logs_guard, msg);
                         }
-                        let _ = redraw_tx_telemetry.send(());
+                        let _ = redraw_tx_telemetry.try_send(());
                     }
                 }
             }
@@ -389,7 +397,7 @@ pub(crate) fn run_repl(
                     let mut content_guard = active_content.lock().unwrap();
                     *content_guard = format!("> {trimmed}\n\n[Thinking...]");
                 }
-                let _ = redraw_tx.send(());
+                let _ = redraw_tx.try_send(());
 
                 match cli.run_turn_tui(&trimmed) {
                     Ok(()) => {
@@ -425,7 +433,7 @@ pub(crate) fn run_repl(
                         *content_guard = format!("> {trimmed}\n\nError: {e}");
                     }
                 }
-                let _ = redraw_tx.send(());
+                let _ = redraw_tx.try_send(());
             }
             input::ReadOutcome::Cancel => {}
             input::ReadOutcome::Exit => {
