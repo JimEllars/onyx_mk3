@@ -2297,6 +2297,86 @@ const onyx_handler: any = {
 
       } else if (
         request.method === "POST" &&
+        url.pathname === "/api/v1/mcp/execute"
+      ) {
+        // Authenticate
+        const authHeader = request.headers.get("Authorization");
+        const sessionCookie = request.headers.get("Cookie");
+        const token = authHeader?.split(" ")[1];
+        const isAuthorized = (token === env.AXIM_ONYX_SECRET) || (sessionCookie?.includes("axim_session="));
+        if (!isAuthorized) {
+          return new Response("Unauthorized", { status: 401, headers: getCorsHeaders(request, env) });
+        }
+
+        try {
+          const body: any = await request.json();
+          const { action_id, decision, operator_notes } = body;
+
+          if (!action_id || !decision) {
+            return new Response("Missing action_id or decision", { status: 400, headers: getCorsHeaders(request, env) });
+          }
+
+          if (env.HITL_APPROVAL_KV) {
+             const key = `action_decision:${action_id}`;
+             const record = { action_id, decision, operator_notes, timestamp: new Date().toISOString() };
+             await env.HITL_APPROVAL_KV.put(key, JSON.stringify(record), { expirationTtl: 86400 }); // 24 hours
+          }
+
+          if (env.EDGE_DLQ_KV) {
+             const dlqKey = `mcp_resolution:${action_id}:${Date.now()}`;
+             await env.EDGE_DLQ_KV.put(dlqKey, JSON.stringify({ action_id, decision, operator_notes, resolved_at: new Date().toISOString() }), { expirationTtl: 86400 * 7 });
+          }
+
+          return new Response(JSON.stringify({
+             success: true,
+             action_id,
+             decision,
+             resolved_at: new Date().toISOString()
+          }), {
+            status: 200,
+            headers: addOnyxHeaders(
+              {
+                ...getCorsHeaders(request, env),
+                "Content-Type": "application/json",
+              },
+              edgeStatus,
+              cacheStatus,
+              traceId,
+            ),
+          });
+        } catch(e) {
+          return new Response("Error processing request", { status: 500, headers: getCorsHeaders(request, env) });
+        }
+      } else if (
+        request.method === "GET" &&
+        url.pathname === "/api/v1/onyx/swarm-state"
+      ) {
+        let locks = [];
+        if (env.ONYX_DISPATCH_LOCKS) {
+           const list = await env.ONYX_DISPATCH_LOCKS.list();
+           for (const key of list.keys) {
+               const val = await env.ONYX_DISPATCH_LOCKS.get(key.name);
+               if (val) locks.push(JSON.parse(val));
+           }
+        }
+        return new Response(JSON.stringify({
+            locks,
+            timestamp: new Date().toISOString(),
+            status: locks.length > 0 ? "LOCKED" : "READY"
+        }), {
+            status: 200,
+            headers: addOnyxHeaders(
+              {
+                ...getCorsHeaders(request, env),
+                "Content-Type": "application/json",
+              },
+              edgeStatus,
+              cacheStatus,
+              traceId,
+            ),
+        });
+      } else if (
+        request.method === "POST" &&
         url.pathname === "/api/v1/ecosystem/event"
       ) {
         // Step 1: Ecosystem Event Ingress
