@@ -7,6 +7,8 @@ export default function SystemSidebar() {
     const [telemetry, setTelemetry] = useState({ latency: null, gatewayStatus: 'DEGRADED', cacheHitRate: 0, target: 'DeepSeek (Anthropic Failover Active)' });
     const activeVoiceTrunk = useDesktopAgentStore((state) => state.activeVoiceTrunk || 'DISCONNECTED');
     const agentMode = useDesktopAgentStore((state) => state.agentMode || 'STANDBY');
+    const isSuperUser = useDesktopAgentStore((state) => state.isSuperUser || false);
+    const swarmLock = useDesktopAgentStore((state) => state.swarmLock || 'unlocked');
 
     useEffect(() => {
         const checkHealth = async () => {
@@ -25,7 +27,7 @@ export default function SystemSidebar() {
         const checkTelemetry = async () => {
             try {
                 const start = performance.now();
-                const res = await fetch('/api/v1/telemetry/health');
+                const res = await fetch(import.meta.env.VITE_ONYX_WORKER_URL ? `${import.meta.env.VITE_ONYX_WORKER_URL}/health` : '/health');
                 const end = performance.now();
                 const latency = Math.round(end - start);
 
@@ -130,6 +132,14 @@ export default function SystemSidebar() {
             </div>
 
             <div className="mt-auto flex flex-col gap-2 pt-4 border-t border-slate-700/50">
+                <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] text-slate-500 uppercase tracking-widest flex items-center gap-1">Swarm Lock <span className={`w-1.5 h-1.5 rounded-full ${swarmLock === 'unlocked' ? 'bg-emerald-500' : 'bg-amber-500 animate-ping'} shadow-sm`}></span></span>
+                    <span className={`text-[10px] font-bold tracking-wider ${swarmLock === 'unlocked' ? 'text-emerald-500' : 'text-amber-500'}`}>{swarmLock}</span>
+                </div>
+                <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] text-slate-500 uppercase tracking-widest">Auth Level</span>
+                    <span className={`text-[10px] font-bold tracking-wider ${isSuperUser ? 'text-emerald-400' : 'text-slate-400'}`}>{isSuperUser ? 'Super User · Unrestricted' : 'Standard'}</span>
+                </div>
                 <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-slate-500 uppercase tracking-widest">Voice Trunk</span>
                     <span className={`text-[10px] font-bold tracking-wider ${activeVoiceTrunk === 'ACTIVE' ? 'text-emerald-500' : activeVoiceTrunk === 'RECONNECTING' ? 'text-yellow-500' : 'text-slate-500'}`}>{activeVoiceTrunk}</span>

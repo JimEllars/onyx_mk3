@@ -80,13 +80,14 @@ export function useAximAuth() {
           setIsAuthenticated(true);
           localStorage.setItem('axim_passport_token', activeToken);
           setAuthError('');
-          useDesktopAgentStore.setState({ role: "super_user", is_super_user: true });
+          useDesktopAgentStore.setState({ role: "super_admin", is_super_user: true, isSuperUser: true });
         } else {
           localStorage.removeItem('axim_passport_token');
           setToken(null);
           setIsAuthenticated(false);
           setAuthError('User not in authorized whitelist or invalid token format.');
-          useDesktopAgentStore.setState({ role: "user", is_super_user: false });
+          useDesktopAgentStore.setState({ role: "user", is_super_user: false, isSuperUser: false });
+          window.location.href = 'https://passport.axim.us.com';
         }
         if (urlToken) {
             const newUrl = new URL(window.location.href);
@@ -96,7 +97,8 @@ export function useAximAuth() {
       } else {
         setToken(null);
         setIsAuthenticated(false);
-        useDesktopAgentStore.setState({ role: "user", is_super_user: false });
+        useDesktopAgentStore.setState({ role: "user", is_super_user: false, isSuperUser: false });
+          window.location.href = 'https://passport.axim.us.com';
       }
     };
     initializeAuth();
@@ -131,7 +133,8 @@ export function useAximAuth() {
              setToken(null);
              setIsAuthenticated(false);
              localStorage.removeItem('axim_passport_token');
-             useDesktopAgentStore.setState({ role: "user", is_super_user: false });
+             useDesktopAgentStore.setState({ role: "user", is_super_user: false, isSuperUser: false });
+          window.location.href = 'https://passport.axim.us.com';
           }
         }
       }
@@ -148,7 +151,8 @@ export function useAximAuth() {
     setToken(null);
     setIsAuthenticated(false);
     localStorage.removeItem('axim_passport_token');
-    useDesktopAgentStore.setState({ role: "user", is_super_user: false });
+    useDesktopAgentStore.setState({ role: "user", is_super_user: false, isSuperUser: false });
+          window.location.href = 'https://passport.axim.us.com';
     // also clear cookie if possible, though it's cross-domain maybe
     document.cookie = 'axim_session=; Max-Age=0; path=/; domain=.axim.us.com';
   }, []);

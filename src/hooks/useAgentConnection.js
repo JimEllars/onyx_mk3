@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+import useDesktopAgentStore from '../store/useDesktopAgentStore';
 
 export default function useAgentConnection(peerConnection) {
+    const addHitlAction = useDesktopAgentStore((state) => state.addHitlAction);
     const [status, setStatus] = useState('DISCONNECTED');
     const retryCountRef = useRef(0);
     const maxRetries = 10;
@@ -58,6 +60,36 @@ export default function useAgentConnection(peerConnection) {
             }
         };
     }, [peerConnection]);
+
+
+    useEffect(() => {
+        const token = localStorage.getItem('axim_passport_token');
+        const EDGE_BRIDGE_URL = import.meta.env.VITE_ONYX_WORKER_URL || '';
+
+        if (!EDGE_BRIDGE_URL || !token) return;
+
+        const eventSource = new EventSource(`${EDGE_BRIDGE_URL}/events?token=${token}`);
+
+        eventSource.addEventListener('action_pending', (event) => {
+            try {
+                const payload = JSON.parse(event.data);
+                addHitlAction({
+                    id: payload.action_id,
+                    tool_name: payload.tool_name,
+                    risk_level: payload.risk_level,
+                    description: payload.description,
+                    params: payload.parameters,
+                    timestamp: payload.timestamp || Date.now()
+                });
+            } catch (e) {
+                console.error("Failed to parse action_pending event", e);
+            }
+        });
+
+        return () => {
+            eventSource.close();
+        };
+    }, [addHitlAction]);
 
     return { status, retryCount: retryCountRef.current };
 }

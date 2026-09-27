@@ -59,13 +59,13 @@ export default function ActionConsole({ peerConnection }) {
             updateHitlActionStatus(actionId, 'APPROVING...');
             const token = localStorage.getItem('axim_passport_token');
             const apiUrl = import.meta.env.VITE_ONYX_WORKER_URL || '';
-            const response = await fetch(`${apiUrl}/api/approve`, {
+            const response = await fetch(`${apiUrl}/api/v1/mcp/execute`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ task_id: actionId, signed_payload: 'mock_payload' })
+                body: JSON.stringify({ action_id: actionId, decision: 'approved' })
             });
             if (response.ok) {
                 updateHitlActionStatus(actionId, 'APPROVED');
@@ -82,13 +82,13 @@ export default function ActionConsole({ peerConnection }) {
             updateHitlActionStatus(actionId, 'REJECTING...');
             const token = localStorage.getItem('axim_passport_token');
             const apiUrl = import.meta.env.VITE_ONYX_WORKER_URL || '';
-            const response = await fetch(`${apiUrl}/api/approve`, {
+            const response = await fetch(`${apiUrl}/api/v1/mcp/execute`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ task_id: actionId, action: 'reject' })
+                body: JSON.stringify({ action_id: actionId, decision: 'rejected' })
             });
             if (response.ok) {
                 updateHitlActionStatus(actionId, 'REJECTED');
