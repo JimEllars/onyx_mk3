@@ -128,7 +128,7 @@ jobs:
       - name: Start Mock Anthropic Service
         run: |
           cargo run -p mock-anthropic-service -- --bind 127.0.0.1:8082 &
-          timeout 15s bash -c 'until curl -sf http://127.0.0.1:8082/health; do sleep 0.5; done'
+          timeout 15s bash -c 'while ! nc -z 127.0.0.1 8082; do sleep 0.5; done'
       - name: Run integration tests
         env:
           CLOUDFLARE_API_TOKEN: "dummy"
