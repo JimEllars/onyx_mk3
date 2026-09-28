@@ -89,6 +89,89 @@ impl McpToolRegistry {
         self.manager.set(manager)
     }
 
+
+    pub fn summon_server(
+        &self,
+        server_name: &str,
+        config: &crate::config::McpServerConfig,
+    ) -> Result<McpServerState, String> {
+        let manager_lock = self
+            .manager
+            .get()
+            .ok_or("Manager not set")?
+            .clone();
+
+        let scoped_config = crate::config::ScopedMcpServerConfig {
+            scope: crate::config::ConfigSource::Local,
+            config: config.clone(),
+        };
+
+        // 1. Add server to manager
+        {
+            let mut manager = manager_lock.lock().map_err(|_| "Poisoned lock".to_string())?;
+            manager.add_server(server_name, &scoped_config);
+        }
+
+        // 2. Discover tools
+        let tools = {
+            let join_handle = std::thread::Builder::new()
+                .name(format!("mcp-summon-{server_name}"))
+                .spawn(move || {
+                    let runtime = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .map_err(|e| format!("tokio runtime error: {e}"))?;
+
+                    runtime.block_on(async move {
+                        let mut manager = manager_lock.lock().map_err(|_| "Poisoned lock".to_string())?;
+                        manager.discover_tools().await.map_err(|e| e.to_string())
+                    })
+                })
+                .map_err(|e| format!("Failed to spawn summon thread: {e}"))?;
+
+            join_handle.join().map_err(|_| "Thread panicked".to_string())??
+        };
+
+        // 3. Register tools in registry
+        let mut mcp_tools = Vec::new();
+        for managed_tool in tools.into_iter().filter(|t| t.server_name == server_name) {
+            mcp_tools.push(McpToolInfo {
+                name: managed_tool.tool.name,
+                description: managed_tool.tool.description,
+                input_schema: managed_tool.tool.input_schema,
+            });
+        }
+
+        self.register_server(
+            server_name,
+            McpConnectionStatus::Connected,
+            mcp_tools,
+            vec![],
+            None,
+        );
+
+        self.get_server(server_name).ok_or("Server state not found after summoning".to_string())
+    }
+
+    pub fn get_active_mcp_tools(&self) -> Vec<McpToolInfo> {
+        let mut defs = Vec::new();
+        let servers = self.list_servers();
+        for server in servers {
+            if server.status == McpConnectionStatus::Connected {
+                let prefix = crate::mcp::mcp_tool_prefix(&server.server_name);
+                for tool in server.tools {
+                    defs.push(McpToolInfo {
+                        name: format!("{}{}", prefix, crate::mcp::normalize_name_for_mcp(&tool.name)),
+                        description: tool.description,
+                        input_schema: tool.input_schema,
+                    });
+                }
+            }
+        }
+        defs
+    }
+
+
     pub fn dynamically_load_tools(&self, server_name: &str) -> Result<(), String> {
         let manager_lock = self.manager.get().ok_or("Manager not set")?.clone();
         let _manager = manager_lock.lock().map_err(|_| "Poisoned")?;

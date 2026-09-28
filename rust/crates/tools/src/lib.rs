@@ -58,7 +58,7 @@ fn global_lsp_registry() -> &'static LspRegistry {
     REGISTRY.get_or_init(LspRegistry::new)
 }
 
-fn global_mcp_registry() -> &'static McpToolRegistry {
+pub fn global_mcp_registry() -> &'static McpToolRegistry {
     use std::sync::OnceLock;
     static REGISTRY: OnceLock<McpToolRegistry> = OnceLock::new();
     REGISTRY.get_or_init(|| {

@@ -173,7 +173,7 @@ const SLASH_COMMAND_SPECS: &[SlashCommandSpec] = &[
         name: "mcp",
         aliases: &[],
         summary: "Inspect configured MCP servers",
-        argument_hint: Some("[list|show <server>|help]"),
+        argument_hint: Some("[list|show <server>|connect|disconnect|help]"),
         resume_supported: true,
     },
     SlashCommandSpec {
@@ -1678,14 +1678,44 @@ fn parse_mcp_command(args: &[&str]) -> Result<SlashCommand, SlashCommandParseErr
             "mcp",
             "/mcp show <server>",
         )),
+        ["disconnect"] => Err(usage_error("mcp disconnect", "<name>")),
+        ["disconnect", target] => Ok(SlashCommand::Mcp {
+            action: Some("disconnect".to_string()),
+            target: Some((*target).to_string()),
+        }),
+        ["disconnect", ..] => Err(command_error(
+            "Unexpected arguments for /mcp disconnect.",
+            "mcp",
+            "/mcp disconnect <name>",
+        )),
+        ["connect"] | ["connect", _] => Err(command_error(
+            "Usage: /mcp connect <name> <stdio <command> [args...]|sse <url> [auth_token]>",
+            "mcp connect",
+            "/mcp connect <name> <stdio <command> [args...]|sse <url> [auth_token]>",
+        )),
+        ["connect", name, transport, rest @ ..] => {
+            let t_str = *transport;
+            if t_str != "stdio" && t_str != "sse" && t_str != "http" {
+                return Err(command_error(
+                    &format!("Unsupported MCP transport '{}'. Supported transports: 'stdio', 'sse'.", t_str),
+                    "mcp connect",
+                    "/mcp connect <name> <stdio <command> [args...]|sse <url> [auth_token]>"
+                ));
+            }
+            let target_str = format!("{} {} {}", name, transport, rest.join(" "));
+            Ok(SlashCommand::Mcp {
+                action: Some("connect".to_string()),
+                target: Some(target_str),
+            })
+        },
         ["help" | "-h" | "--help"] => Ok(SlashCommand::Mcp {
             action: Some("help".to_string()),
             target: None,
         }),
         [action, ..] => Err(command_error(
-            &format!("Unknown /mcp action '{action}'. Use list, show <server>, or help."),
+            &format!("Unknown /mcp action '{action}'. Use list, show <server>, connect, disconnect, or help."),
             "mcp",
-            "/mcp [list|show <server>|help]",
+            "/mcp [list|show <server>|connect|disconnect|help]",
         )),
     }
 }
@@ -2311,17 +2341,19 @@ pub fn handle_agents_slash_command_json(args: Option<&str>, cwd: &Path) -> std::
 pub fn handle_mcp_slash_command(
     args: Option<&str>,
     cwd: &Path,
+    mcp_registry: Option<&runtime::mcp_tool_bridge::McpToolRegistry>,
 ) -> Result<String, runtime::ConfigError> {
     let loader = ConfigLoader::default_for(cwd);
-    render_mcp_report_for(&loader, cwd, args)
+    render_mcp_report_for(&loader, cwd, args, mcp_registry)
 }
 
 pub fn handle_mcp_slash_command_json(
     args: Option<&str>,
     cwd: &Path,
+    mcp_registry: Option<&runtime::mcp_tool_bridge::McpToolRegistry>,
 ) -> Result<Value, runtime::ConfigError> {
     let loader = ConfigLoader::default_for(cwd);
-    render_mcp_report_json_for(&loader, cwd, args)
+    render_mcp_report_json_for(&loader, cwd, args, mcp_registry)
 }
 
 pub fn handle_skills_slash_command(args: Option<&str>, cwd: &Path) -> std::io::Result<String> {
@@ -2511,6 +2543,7 @@ fn render_mcp_report_for(
     loader: &ConfigLoader,
     cwd: &Path,
     args: Option<&str>,
+    mcp_registry: Option<&runtime::mcp_tool_bridge::McpToolRegistry>,
 ) -> Result<String, runtime::ConfigError> {
     if let Some(args) = normalize_optional_args(args) {
         if let Some(help_path) = help_path_from_args(args) {
@@ -2548,6 +2581,29 @@ fn render_mcp_report_for(
                 runtime_config.mcp().get(server_name),
             ))
         }
+        Some(args) if args.split_whitespace().next() == Some("disconnect") => {
+            let mut parts = args.split_whitespace();
+            let _ = parts.next();
+            let Some(server_name) = parts.next() else {
+                return Ok(render_mcp_usage(Some("disconnect")));
+            };
+            if parts.next().is_some() {
+                return Ok(render_mcp_usage(Some(args)));
+            }
+            render_mcp_disconnect(server_name, mcp_registry)
+        }
+        Some(args) if args.split_whitespace().next() == Some("connect") => {
+            let mut parts = args.split_whitespace();
+            let _ = parts.next();
+            let Some(server_name) = parts.next() else {
+                return Ok(render_mcp_usage(Some("connect")));
+            };
+            let Some(transport) = parts.next() else {
+                return Ok(render_mcp_usage(Some("connect")));
+            };
+            let rest: Vec<&str> = parts.collect();
+            render_mcp_connect(server_name, transport, &rest, mcp_registry)
+        }
         Some(args) => Ok(render_mcp_usage(Some(args))),
     }
 }
@@ -2556,6 +2612,7 @@ fn render_mcp_report_json_for(
     loader: &ConfigLoader,
     cwd: &Path,
     args: Option<&str>,
+    mcp_registry: Option<&runtime::mcp_tool_bridge::McpToolRegistry>,
 ) -> Result<Value, runtime::ConfigError> {
     if let Some(args) = normalize_optional_args(args) {
         if let Some(help_path) = help_path_from_args(args) {
@@ -2592,6 +2649,29 @@ fn render_mcp_report_json_for(
                 server_name,
                 runtime_config.mcp().get(server_name),
             ))
+        }
+        Some(args) if args.split_whitespace().next() == Some("disconnect") => {
+            let mut parts = args.split_whitespace();
+            let _ = parts.next();
+            let Some(server_name) = parts.next() else {
+                return Ok(render_mcp_usage_json(Some("disconnect")));
+            };
+            if parts.next().is_some() {
+                return Ok(render_mcp_usage_json(Some(args)));
+            }
+            render_mcp_disconnect_json(server_name, mcp_registry)
+        }
+        Some(args) if args.split_whitespace().next() == Some("connect") => {
+            let mut parts = args.split_whitespace();
+            let _ = parts.next();
+            let Some(server_name) = parts.next() else {
+                return Ok(render_mcp_usage_json(Some("connect")));
+            };
+            let Some(transport) = parts.next() else {
+                return Ok(render_mcp_usage_json(Some("connect")));
+            };
+            let rest: Vec<&str> = parts.collect();
+            render_mcp_connect_json(server_name, transport, &rest, mcp_registry)
         }
         Some(args) => Ok(render_mcp_usage_json(Some(args))),
     }
@@ -3704,7 +3784,7 @@ fn render_skills_usage_json(unexpected: Option<&str>) -> Value {
 fn render_mcp_usage(unexpected: Option<&str>) -> String {
     let mut lines = vec![
         "MCP".to_string(),
-        "  Usage            /mcp [list|show <server>|help]".to_string(),
+        "  Usage            /mcp [list|show <server>|connect|disconnect|help]".to_string(),
         "  Direct CLI       onyx mcp [list|show <server>|help]".to_string(),
         "  Sources          .onyx/settings.json, .onyx/settings.local.json".to_string(),
     ];
@@ -3719,7 +3799,7 @@ fn render_mcp_usage_json(unexpected: Option<&str>) -> Value {
         "kind": "mcp",
         "action": "help",
         "usage": {
-            "slash_command": "/mcp [list|show <server>|help]",
+            "slash_command": "/mcp [list|show <server>|connect|disconnect|help]",
             "direct_cli": "onyx mcp [list|show <server>|help]",
             "sources": [".onyx/settings.json", ".onyx/settings.local.json"],
         },
@@ -4718,8 +4798,8 @@ mod tests {
 
         let action_error = parse_error_message("/mcp inspect alpha");
         assert!(action_error
-            .contains("Unknown /mcp action 'inspect'. Use list, show <server>, or help."));
-        assert!(action_error.contains("  Usage            /mcp [list|show <server>|help]"));
+            .contains("Unknown /mcp action 'inspect'. Use list, show <server>, connect, disconnect, or help."));
+        assert!(action_error.contains("  Usage            /mcp [list|show <server>|connect|disconnect|help]"));
     }
 
     #[test]
@@ -4748,7 +4828,7 @@ mod tests {
         assert!(help.contains("/cost"));
         assert!(help.contains("/resume <session-path>"));
         assert!(help.contains("/config [env|hooks|model|plugins]"));
-        assert!(help.contains("/mcp [list|show <server>|help]"));
+        assert!(help.contains("/mcp [list|show <server>|connect|disconnect|help]"));
         assert!(help.contains("/memory"));
         assert!(help.contains("/init"));
         assert!(help.contains("/diff"));
@@ -5384,22 +5464,22 @@ mod tests {
     fn mcp_usage_supports_help_and_unexpected_args() {
         let cwd = temp_dir("mcp-usage");
 
-        let help = super::handle_mcp_slash_command(Some("help"), &cwd).expect("mcp help");
-        assert!(help.contains("Usage            /mcp [list|show <server>|help]"));
+        let help = super::handle_mcp_slash_command(Some("help"), &cwd, None).expect("mcp help");
+        assert!(help.contains("Usage            /mcp [list|show <server>|connect|disconnect|help]"));
         assert!(help.contains("Direct CLI       onyx mcp [list|show <server>|help]"));
 
         let unexpected =
-            super::handle_mcp_slash_command(Some("show alpha beta"), &cwd).expect("mcp usage");
+            super::handle_mcp_slash_command(Some("show alpha beta"), &cwd, None).expect("mcp usage");
         assert!(unexpected.contains("Unexpected       show alpha beta"));
 
         let nested_help =
-            super::handle_mcp_slash_command(Some("show --help"), &cwd).expect("mcp help");
-        assert!(nested_help.contains("Usage            /mcp [list|show <server>|help]"));
+            super::handle_mcp_slash_command(Some("show --help"), &cwd, None).expect("mcp help");
+        assert!(nested_help.contains("Usage            /mcp [list|show <server>|connect|disconnect|help]"));
         assert!(nested_help.contains("Unexpected       show"));
 
         let unknown_help =
-            super::handle_mcp_slash_command(Some("inspect --help"), &cwd).expect("mcp usage");
-        assert!(unknown_help.contains("Usage            /mcp [list|show <server>|help]"));
+            super::handle_mcp_slash_command(Some("inspect --help"), &cwd, None).expect("mcp usage");
+        assert!(unknown_help.contains("Usage            /mcp [list|show <server>|connect|disconnect|help]"));
         assert!(unknown_help.contains("Unexpected       inspect"));
 
         let _ = fs::remove_dir_all(cwd);
@@ -5449,7 +5529,7 @@ mod tests {
         .expect("write local settings");
 
         let loader = ConfigLoader::new(&workspace, &config_home);
-        let list = super::render_mcp_report_for(&loader, &workspace, None)
+        let list = super::render_mcp_report_for(&loader, &workspace, None, None)
             .expect("mcp list report should render");
         assert!(list.contains("Configured servers 2"));
         assert!(list.contains("alpha"));
@@ -5461,7 +5541,7 @@ mod tests {
         assert!(list.contains("local"));
         assert!(list.contains("wss://remote.example/mcp"));
 
-        let show = super::render_mcp_report_for(&loader, &workspace, Some("show alpha"))
+        let show = super::render_mcp_report_for(&loader, &workspace, Some("show alpha"), None)
             .expect("mcp show report should render");
         assert!(show.contains("Name              alpha"));
         assert!(show.contains("Command           uvx"));
@@ -5469,12 +5549,12 @@ mod tests {
         assert!(show.contains("Env keys          ALPHA_TOKEN"));
         assert!(show.contains("Tool timeout      1200 ms"));
 
-        let remote = super::render_mcp_report_for(&loader, &workspace, Some("show remote"))
+        let remote = super::render_mcp_report_for(&loader, &workspace, Some("show remote"), None)
             .expect("mcp show remote report should render");
         assert!(remote.contains("Transport         ws"));
         assert!(remote.contains("URL               wss://remote.example/mcp"));
 
-        let missing = super::render_mcp_report_for(&loader, &workspace, Some("show missing"))
+        let missing = super::render_mcp_report_for(&loader, &workspace, Some("show missing"), None)
             .expect("missing report should render");
         assert!(missing.contains("server `missing` is not configured"));
 
@@ -5527,7 +5607,7 @@ mod tests {
 
         let loader = ConfigLoader::new(&workspace, &config_home);
         let list =
-            render_mcp_report_json_for(&loader, &workspace, None).expect("mcp list json render");
+            render_mcp_report_json_for(&loader, &workspace, None, None).expect("mcp list json render");
         assert_eq!(list["kind"], "mcp");
         assert_eq!(list["action"], "list");
         assert_eq!(list["configured_servers"], 2);
@@ -5542,7 +5622,7 @@ mod tests {
             "wss://remote.example/mcp"
         );
 
-        let show = render_mcp_report_json_for(&loader, &workspace, Some("show alpha"))
+        let show = render_mcp_report_json_for(&loader, &workspace, Some("show alpha"), None)
             .expect("mcp show json render");
         assert_eq!(show["action"], "show");
         assert_eq!(show["found"], true);
@@ -5550,13 +5630,13 @@ mod tests {
         assert_eq!(show["server"]["details"]["env_keys"][0], "ALPHA_TOKEN");
         assert_eq!(show["server"]["details"]["tool_call_timeout_ms"], 1200);
 
-        let missing = render_mcp_report_json_for(&loader, &workspace, Some("show missing"))
+        let missing = render_mcp_report_json_for(&loader, &workspace, Some("show missing"), None)
             .expect("mcp missing json render");
         assert_eq!(missing["found"], false);
         assert_eq!(missing["server_name"], "missing");
 
         let help =
-            render_mcp_report_json_for(&loader, &workspace, Some("help")).expect("mcp help json");
+            render_mcp_report_json_for(&loader, &workspace, Some("help"), None).expect("mcp help json");
         assert_eq!(help["action"], "help");
         assert_eq!(help["usage"]["sources"][0], ".onyx/settings.json");
 
@@ -5869,5 +5949,195 @@ pub async fn log_command_execution(
                 )],
             });
         }
+    }
+}
+
+
+#[allow(clippy::all)]
+fn render_mcp_connect(name: &str, transport: &str, rest: &[&str], mcp_registry: Option<&runtime::mcp_tool_bridge::McpToolRegistry>) -> Result<String, runtime::ConfigError> {
+    let registry = match mcp_registry {
+        Some(r) => r,
+        None => return Ok("MCP Tool Registry is not available.".to_string()),
+    };
+    if registry.get_server(name).is_some() {
+        return Ok(format!("MCP server '{}' is already connected. Disconnect first using '/mcp disconnect {}' or choose a different name.", name, name));
+    }
+
+    let config = if transport == "stdio" {
+        if rest.is_empty() {
+            return Ok(format!("Usage: /mcp connect {} stdio <command> [args...]", name));
+        }
+        let command = rest[0].to_string();
+        let args = rest[1..].iter().map(std::string::ToString::to_string).collect();
+        McpServerConfig::Stdio(runtime::McpStdioServerConfig {
+            command,
+            args,
+            env: BTreeMap::new(),
+            tool_call_timeout_ms: None,
+        })
+    } else if transport == "sse" || transport == "http" {
+        if rest.is_empty() {
+            return Ok(format!("Usage: /mcp connect {} {} <url> [auth_token]", name, transport));
+        }
+        let url = rest[0].to_string();
+        let mut headers = BTreeMap::new();
+        if rest.len() > 1 {
+            headers.insert("Authorization".to_string(), format!("Bearer {}", rest[1]));
+        }
+        if transport == "sse" {
+            McpServerConfig::Sse(runtime::McpRemoteServerConfig {
+                url,
+                headers,
+                headers_helper: None,
+                oauth: None,
+            })
+        } else {
+            McpServerConfig::Http(runtime::McpRemoteServerConfig {
+                url,
+                headers,
+                headers_helper: None,
+                oauth: None,
+            })
+        }
+    } else {
+        return Ok(format!("Unsupported MCP transport '{}'. Supported transports: 'stdio', 'sse'.
+  Usage: /mcp connect <name> <stdio <command> [args...]|sse <url> [auth_token]>", transport));
+    };
+
+    match registry.summon_server(name, &config) {
+        Ok(state) => {
+            let tools_discovered = state.tools.len();
+            let mut report = format!("MCP
+  Result           connected {}
+  Transport        {} ({})
+  Status           connected
+  Tools discovered {}
+", name, transport, rest[0], tools_discovered);
+            let prefix = runtime::mcp_tool_prefix(name);
+            for tool in state.tools {
+                let norm_name = runtime::normalize_name_for_mcp(&tool.name);
+                report.push_str(&format!("    - {}{}
+", prefix, norm_name));
+            }
+            Ok(report)
+        }
+        Err(e) => {
+            Ok(format!("Failed to connect to MCP server '{}': {}", name, e))
+        }
+    }
+}
+
+#[allow(clippy::all)]
+fn render_mcp_disconnect(name: &str, mcp_registry: Option<&runtime::mcp_tool_bridge::McpToolRegistry>) -> Result<String, runtime::ConfigError> {
+    let registry = match mcp_registry {
+        Some(r) => r,
+        None => return Ok("MCP Tool Registry is not available.".to_string()),
+    };
+    if registry.get_server(name).is_none() {
+        return Ok(format!("MCP server '{}' is not currently connected. Run '/mcp list' to view active servers.", name));
+    }
+
+    if let Some(state) = registry.disconnect(name) {
+        Ok(format!("MCP
+  Result           disconnected {}
+  Status           unregistered
+  Tools removed    {}
+", name, state.tools.len()))
+    } else {
+        Ok(format!("MCP server '{}' is not currently connected. Run '/mcp list' to view active servers.", name))
+    }
+}
+
+#[allow(clippy::all)]
+fn render_mcp_connect_json(name: &str, transport: &str, rest: &[&str], mcp_registry: Option<&runtime::mcp_tool_bridge::McpToolRegistry>) -> Result<Value, runtime::ConfigError> {
+    let registry = match mcp_registry {
+        Some(r) => r,
+        None => return Ok(json!({ "error": "MCP Tool Registry is not available." })),
+    };
+    if registry.get_server(name).is_some() {
+        return Ok(json!({ "error": format!("MCP server '{}' is already connected.", name) }));
+    }
+
+    let config = if transport == "stdio" {
+        if rest.is_empty() {
+            return Ok(json!({ "error": "Missing stdio command" }));
+        }
+        let command = rest[0].to_string();
+        let args = rest[1..].iter().map(std::string::ToString::to_string).collect();
+        McpServerConfig::Stdio(runtime::McpStdioServerConfig {
+            command,
+            args,
+            env: BTreeMap::new(),
+            tool_call_timeout_ms: None,
+        })
+    } else if transport == "sse" || transport == "http" {
+        if rest.is_empty() {
+            return Ok(json!({ "error": "Missing URL" }));
+        }
+        let url = rest[0].to_string();
+        let mut headers = BTreeMap::new();
+        if rest.len() > 1 {
+            headers.insert("Authorization".to_string(), format!("Bearer {}", rest[1]));
+        }
+        if transport == "sse" {
+            McpServerConfig::Sse(runtime::McpRemoteServerConfig {
+                url,
+                headers,
+                headers_helper: None,
+                oauth: None,
+            })
+        } else {
+            McpServerConfig::Http(runtime::McpRemoteServerConfig {
+                url,
+                headers,
+                headers_helper: None,
+                oauth: None,
+            })
+        }
+    } else {
+        return Ok(json!({ "error": format!("Unsupported transport: {}", transport) }));
+    };
+
+    match registry.summon_server(name, &config) {
+        Ok(state) => {
+            let prefix = runtime::mcp_tool_prefix(name);
+            let tools: Vec<Value> = state.tools.into_iter().map(|t| {
+                json!({
+                    "name": format!("{}{}", prefix, runtime::normalize_name_for_mcp(&t.name)),
+                    "description": t.description
+                })
+            }).collect();
+
+            Ok(json!({
+                "kind": "mcp",
+                "action": "connect",
+                "server_name": name,
+                "status": "connected",
+                "transport": transport,
+                "tools": tools
+            }))
+        }
+        Err(e) => {
+            Ok(json!({ "error": e }))
+        }
+    }
+}
+
+#[allow(clippy::all)]
+fn render_mcp_disconnect_json(name: &str, mcp_registry: Option<&runtime::mcp_tool_bridge::McpToolRegistry>) -> Result<Value, runtime::ConfigError> {
+    let registry = match mcp_registry {
+        Some(r) => r,
+        None => return Ok(json!({ "error": "MCP Tool Registry is not available." })),
+    };
+    if let Some(state) = registry.disconnect(name) {
+        Ok(json!({
+            "kind": "mcp",
+            "action": "disconnect",
+            "server_name": name,
+            "status": "unregistered",
+            "tools_removed": state.tools.len()
+        }))
+    } else {
+        Ok(json!({ "error": format!("MCP server '{}' is not currently connected.", name) }))
     }
 }

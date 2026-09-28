@@ -1294,10 +1294,32 @@ impl LiveCli {
         }
         let cwd = env::current_dir()?;
         match output_format {
-            CliOutputFormat::Text => println!("{}", handle_mcp_slash_command(args, &cwd)?),
+            CliOutputFormat::Text => {
+                let output = handle_mcp_slash_command(args, &cwd, Some(tools::global_mcp_registry()))?;
+                if output.contains("Result           connected") {
+                    // Extract tools discovered
+                    let parts: Vec<&str> = output.split("Tools discovered ").collect();
+                    if parts.len() > 1 {
+                        let lines: Vec<&str> = parts[1].split('\n').collect();
+                        if !lines.is_empty() {
+                            let count = lines[0].trim();
+                            // In a real TUI we would log this to a status pane, but here we just println
+                            println!("{}", output);
+                        } else {
+                            println!("{}", output);
+                        }
+                    } else {
+                        println!("{}", output);
+                    }
+                } else if output.contains("Result           disconnected") {
+                    println!("{}", output);
+                } else {
+                    println!("{}", output);
+                }
+            },
             CliOutputFormat::Json => println!(
                 "{}",
-                serde_json::to_string_pretty(&handle_mcp_slash_command_json(args, &cwd)?)?
+                serde_json::to_string_pretty(&handle_mcp_slash_command_json(args, &cwd, Some(tools::global_mcp_registry()))?)?
             ),
         }
         Ok(())
