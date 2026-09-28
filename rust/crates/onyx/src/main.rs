@@ -3838,8 +3838,8 @@ pub(crate) fn run_resume_command(
             };
             Ok(ResumeCommandOutcome {
                 session: session.clone(),
-                message: Some(handle_mcp_slash_command(args.as_deref(), &cwd)?),
-                json: Some(handle_mcp_slash_command_json(args.as_deref(), &cwd)?),
+                message: Some(handle_mcp_slash_command(args.as_deref(), &cwd, Some(tools::global_mcp_registry()))?),
+                json: Some(handle_mcp_slash_command_json(args.as_deref(), &cwd, Some(tools::global_mcp_registry()))?),
             })
         }
         SlashCommand::Memory => Ok(ResumeCommandOutcome {
@@ -9711,7 +9711,7 @@ fn main() {
         assert!(help.contains("/cost"));
         assert!(help.contains("/resume <session-path>"));
         assert!(help.contains("/config [env|hooks|model|plugins]"));
-        assert!(help.contains("/mcp [list|show <server>|help]"));
+        assert!(help.contains("/mcp [list|show <server>|connect|disconnect|help]"));
         assert!(help.contains("/memory"));
         assert!(help.contains("/init"));
         assert!(help.contains("/diff"));
