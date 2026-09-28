@@ -6,30 +6,18 @@
 
 import { z } from "zod";
 
-export interface Env {
+export interface Env extends __BaseEnv_Env {
   ECOSYSTEM_METRICS_KV?: KVNamespace;
   EDGE_DLQ_KV?: KVNamespace;
   HITL_APPROVAL_KV?: KVNamespace;
-  ONYX_EDGE_METRICS?: AnalyticsEngineDataset;
-  AI?: any;
-  ASSETS?: Fetcher;
-  AXIM_SERVICE_KEY: string;
-  ONYX_DB?: D1Database;
-  ONYX_STATE: KVNamespace;
-  ONYX_SESSION_STATE: KVNamespace;
-  ONYX_DISPATCH_LOCKS: KVNamespace;
-  ONYX_PROMPT_CACHE: KVNamespace;
-  ONYX_KV?: KVNamespace;
-  AXIM_ONYX_SECRET: string;
+  AXIM_SERVICE_KEY?: string;
+  AXIM_ONYX_SECRET?: string;
   DEEPSEEK_API_KEY?: string;
-  DEEPSEEK_MODEL?: string;
   ANTHROPIC_API_KEY?: string;
-  CORE_INGEST_URL: string;
-  GITHUB_WEBHOOK_SECRET: string;
-  WP_WEBHOOK_SECRET: string;
-  AXIM_INTERNAL_KEY: string;
+  GITHUB_WEBHOOK_SECRET?: string;
+  WP_WEBHOOK_SECRET?: string;
+  AXIM_INTERNAL_KEY?: string;
   EMAILIT_API_KEY?: string;
-  ALLOWED_ORIGIN?: string;
   ONYX_CLIENT_SECRET?: string;
   ONYX_EMERGENCY_SECRET?: string;
   CHAT_MODEL?: string;
@@ -138,7 +126,7 @@ async function invokeDeepSeek(
     const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
+        Authorization: `Bearer ${env.DEEPSEEK_API_KEY || ""}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -181,7 +169,7 @@ async function invokeAnthropic(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": env.ANTHROPIC_API_KEY,
+        "x-api-key": env.ANTHROPIC_API_KEY || "",
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
@@ -605,7 +593,7 @@ async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-onyx-edge-auth": env.AXIM_ONYX_SECRET,
+          "x-onyx-edge-auth": env.AXIM_ONYX_SECRET || "",
         },
         body: payload,
       });
