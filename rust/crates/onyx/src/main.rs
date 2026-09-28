@@ -3838,8 +3838,16 @@ pub(crate) fn run_resume_command(
             };
             Ok(ResumeCommandOutcome {
                 session: session.clone(),
-                message: Some(handle_mcp_slash_command(args.as_deref(), &cwd, Some(tools::global_mcp_registry()))?),
-                json: Some(handle_mcp_slash_command_json(args.as_deref(), &cwd, Some(tools::global_mcp_registry()))?),
+                message: Some(handle_mcp_slash_command(
+                    args.as_deref(),
+                    &cwd,
+                    Some(tools::global_mcp_registry()),
+                )?),
+                json: Some(handle_mcp_slash_command_json(
+                    args.as_deref(),
+                    &cwd,
+                    Some(tools::global_mcp_registry()),
+                )?),
             })
         }
         SlashCommand::Memory => Ok(ResumeCommandOutcome {
