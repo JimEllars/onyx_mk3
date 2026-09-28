@@ -1295,7 +1295,8 @@ impl LiveCli {
         let cwd = env::current_dir()?;
         match output_format {
             CliOutputFormat::Text => {
-                let output = handle_mcp_slash_command(args, &cwd, Some(tools::global_mcp_registry()))?;
+                let output =
+                    handle_mcp_slash_command(args, &cwd, Some(tools::global_mcp_registry()))?;
                 if output.contains("Result           connected") {
                     // Extract tools discovered
                     let parts: Vec<&str> = output.split("Tools discovered ").collect();
@@ -1316,10 +1317,14 @@ impl LiveCli {
                 } else {
                     println!("{}", output);
                 }
-            },
+            }
             CliOutputFormat::Json => println!(
                 "{}",
-                serde_json::to_string_pretty(&handle_mcp_slash_command_json(args, &cwd, Some(tools::global_mcp_registry()))?)?
+                serde_json::to_string_pretty(&handle_mcp_slash_command_json(
+                    args,
+                    &cwd,
+                    Some(tools::global_mcp_registry())
+                )?)?
             ),
         }
         Ok(())

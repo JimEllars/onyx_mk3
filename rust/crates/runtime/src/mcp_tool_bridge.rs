@@ -89,17 +89,12 @@ impl McpToolRegistry {
         self.manager.set(manager)
     }
 
-
     pub fn summon_server(
         &self,
         server_name: &str,
         config: &crate::config::McpServerConfig,
     ) -> Result<McpServerState, String> {
-        let manager_lock = self
-            .manager
-            .get()
-            .ok_or("Manager not set")?
-            .clone();
+        let manager_lock = self.manager.get().ok_or("Manager not set")?.clone();
 
         let scoped_config = crate::config::ScopedMcpServerConfig {
             scope: crate::config::ConfigSource::Local,
@@ -108,7 +103,9 @@ impl McpToolRegistry {
 
         // 1. Add server to manager
         {
-            let mut manager = manager_lock.lock().map_err(|_| "Poisoned lock".to_string())?;
+            let mut manager = manager_lock
+                .lock()
+                .map_err(|_| "Poisoned lock".to_string())?;
             manager.add_server(server_name, &scoped_config);
         }
 
@@ -123,13 +120,17 @@ impl McpToolRegistry {
                         .map_err(|e| format!("tokio runtime error: {e}"))?;
 
                     runtime.block_on(async move {
-                        let mut manager = manager_lock.lock().map_err(|_| "Poisoned lock".to_string())?;
+                        let mut manager = manager_lock
+                            .lock()
+                            .map_err(|_| "Poisoned lock".to_string())?;
                         manager.discover_tools().await.map_err(|e| e.to_string())
                     })
                 })
                 .map_err(|e| format!("Failed to spawn summon thread: {e}"))?;
 
-            join_handle.join().map_err(|_| "Thread panicked".to_string())??
+            join_handle
+                .join()
+                .map_err(|_| "Thread panicked".to_string())??
         };
 
         // 3. Register tools in registry
@@ -150,7 +151,8 @@ impl McpToolRegistry {
             None,
         );
 
-        self.get_server(server_name).ok_or("Server state not found after summoning".to_string())
+        self.get_server(server_name)
+            .ok_or("Server state not found after summoning".to_string())
     }
 
     pub fn get_active_mcp_tools(&self) -> Vec<McpToolInfo> {
@@ -161,7 +163,11 @@ impl McpToolRegistry {
                 let prefix = crate::mcp::mcp_tool_prefix(&server.server_name);
                 for tool in server.tools {
                     defs.push(McpToolInfo {
-                        name: format!("{}{}", prefix, crate::mcp::normalize_name_for_mcp(&tool.name)),
+                        name: format!(
+                            "{}{}",
+                            prefix,
+                            crate::mcp::normalize_name_for_mcp(&tool.name)
+                        ),
                         description: tool.description,
                         input_schema: tool.input_schema,
                     });
@@ -170,7 +176,6 @@ impl McpToolRegistry {
         }
         defs
     }
-
 
     pub fn dynamically_load_tools(&self, server_name: &str) -> Result<(), String> {
         let manager_lock = self.manager.get().ok_or("Manager not set")?.clone();
