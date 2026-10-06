@@ -1697,7 +1697,7 @@ fn parse_mcp_command(args: &[&str]) -> Result<SlashCommand, SlashCommandParseErr
             let t_str = *transport;
             if t_str != "stdio" && t_str != "sse" && t_str != "http" {
                 return Err(command_error(
-                    &format!("Unsupported MCP transport '{}'. Supported transports: 'stdio', 'sse'.", t_str),
+                    &format!("Unsupported MCP transport '{t_str}'. Supported transports: 'stdio', 'sse'."),
                     "mcp connect",
                     "/mcp connect <name> <stdio <command> [args...]|sse <url> [auth_token]>"
                 ));
@@ -5957,6 +5957,11 @@ pub async fn log_command_execution(
 }
 
 #[allow(clippy::all)]
+#[allow(
+    clippy::unnecessary_wraps,
+    clippy::manual_let_else,
+    clippy::format_push_string
+)]
 fn render_mcp_connect(
     name: &str,
     transport: &str,
@@ -5968,14 +5973,13 @@ fn render_mcp_connect(
         None => return Ok("MCP Tool Registry is not available.".to_string()),
     };
     if registry.get_server(name).is_some() {
-        return Ok(format!("MCP server '{}' is already connected. Disconnect first using '/mcp disconnect {}' or choose a different name.", name, name));
+        return Ok(format!("MCP server '{name}' is already connected. Disconnect first using '/mcp disconnect {name}' or choose a different name."));
     }
 
     let config = if transport == "stdio" {
         if rest.is_empty() {
             return Ok(format!(
-                "Usage: /mcp connect {} stdio <command> [args...]",
-                name
+                "Usage: /mcp connect {name} stdio <command> [args...]"
             ));
         }
         let command = rest[0].to_string();
@@ -5992,8 +5996,7 @@ fn render_mcp_connect(
     } else if transport == "sse" || transport == "http" {
         if rest.is_empty() {
             return Ok(format!(
-                "Usage: /mcp connect {} {} <url> [auth_token]",
-                name, transport
+                "Usage: /mcp connect {name} {transport} <url> [auth_token]"
             ));
         }
         let url = rest[0].to_string();
@@ -6018,9 +6021,8 @@ fn render_mcp_connect(
         }
     } else {
         return Ok(format!(
-            "Unsupported MCP transport '{}'. Supported transports: 'stdio', 'sse'.
-  Usage: /mcp connect <name> <stdio <command> [args...]|sse <url> [auth_token]>",
-            transport
+            "Unsupported MCP transport '{transport}'. Supported transports: 'stdio', 'sse'.
+  Usage: /mcp connect <name> <stdio <command> [args...]|sse <url> [auth_token]>"
         ));
     };
 
@@ -6040,18 +6042,22 @@ fn render_mcp_connect(
             for tool in state.tools {
                 let norm_name = runtime::normalize_name_for_mcp(&tool.name);
                 report.push_str(&format!(
-                    "    - {}{}
-",
-                    prefix, norm_name
+                    "    - {prefix}{norm_name}
+"
                 ));
             }
             Ok(report)
         }
-        Err(e) => Ok(format!("Failed to connect to MCP server '{}': {}", name, e)),
+        Err(e) => Ok(format!("Failed to connect to MCP server '{name}': {e}")),
     }
 }
 
 #[allow(clippy::all)]
+#[allow(
+    clippy::unnecessary_wraps,
+    clippy::manual_let_else,
+    clippy::format_push_string
+)]
 fn render_mcp_disconnect(
     name: &str,
     mcp_registry: Option<&runtime::mcp_tool_bridge::McpToolRegistry>,
@@ -6062,8 +6068,7 @@ fn render_mcp_disconnect(
     };
     if registry.get_server(name).is_none() {
         return Ok(format!(
-            "MCP server '{}' is not currently connected. Run '/mcp list' to view active servers.",
-            name
+            "MCP server '{name}' is not currently connected. Run '/mcp list' to view active servers."
         ));
     }
 
@@ -6079,13 +6084,17 @@ fn render_mcp_disconnect(
         ))
     } else {
         Ok(format!(
-            "MCP server '{}' is not currently connected. Run '/mcp list' to view active servers.",
-            name
+            "MCP server '{name}' is not currently connected. Run '/mcp list' to view active servers."
         ))
     }
 }
 
 #[allow(clippy::all)]
+#[allow(
+    clippy::unnecessary_wraps,
+    clippy::manual_let_else,
+    clippy::format_push_string
+)]
 fn render_mcp_connect_json(
     name: &str,
     transport: &str,
@@ -6171,6 +6180,11 @@ fn render_mcp_connect_json(
 }
 
 #[allow(clippy::all)]
+#[allow(
+    clippy::unnecessary_wraps,
+    clippy::manual_let_else,
+    clippy::format_push_string
+)]
 fn render_mcp_disconnect_json(
     name: &str,
     mcp_registry: Option<&runtime::mcp_tool_bridge::McpToolRegistry>,
