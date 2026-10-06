@@ -1,4 +1,5 @@
 #![allow(
+    clippy::let_underscore_future,
     dead_code,
     unused_imports,
     unused_variables,

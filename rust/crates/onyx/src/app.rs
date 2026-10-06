@@ -1,4 +1,9 @@
 #![allow(
+    clippy::if_same_then_else,
+    clippy::if_not_else,
+    clippy::uninlined_format_args,
+    clippy::needless_borrow,
+    clippy::format_push_string,
     dead_code,
     unused_imports,
     unused_variables,

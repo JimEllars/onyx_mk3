@@ -23,6 +23,60 @@ export interface Env extends __BaseEnv_Env {
   CHAT_MODEL?: string;
   CRON_SECRET_KEY?: string;
 }
+function parsePassportSession(request: Request): { role: string; [key: string]: any } {
+  try {
+    const cookieHeader = request.headers.get("Cookie") || "";
+    const match = cookieHeader.match(/(?:^|;\s*)axim_passport_session=([^;]*)/);
+    if (match && match[1]) {
+      const decoded = decodeURIComponent(match[1]);
+      return JSON.parse(decoded);
+    }
+  } catch (e) {
+    console.warn("Failed to parse axim_passport_session", e);
+  }
+  return { role: "guest" };
+}
+
+
+export async function verifyHmacSignature(
+  request: Request,
+  rawBody: string,
+  secret: string | undefined
+): Promise<boolean> {
+  try {
+    if (!secret) return false;
+    const signatureHeader = request.headers.get("X-Axim-Signature");
+    if (!signatureHeader) return false;
+
+    const cleanSig = signatureHeader.replace(/^sha256=/, "").trim();
+    if (cleanSig.length !== 64 || !/^[0-9a-fA-F]{64}$/.test(cleanSig)) {
+      return false;
+    }
+
+    const sigBytes = new Uint8Array(
+      cleanSig.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+    );
+
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"]
+    );
+
+    return await crypto.subtle.verify(
+      "HMAC",
+      key,
+      sigBytes,
+      encoder.encode(rawBody)
+    );
+  } catch (err) {
+    return false;
+  }
+}
+
 
 const ALLOWED_ORIGINS = [
   "https://axim.us.com",
@@ -1096,7 +1150,7 @@ const onyx_handler: any = {
           try {
             const res = await fetch(env.CORE_INGEST_URL, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", "X-Onyx-Trace-Id": typeof traceId !== 'undefined' ? traceId : "unknown" },
               body: payload,
             });
             if (res.ok) {
@@ -1221,6 +1275,12 @@ const onyx_handler: any = {
       request.method === "POST" &&
       url.pathname === "/api/v1/onyx/emergency-direct"
     ) {
+      const rawBody = await request.clone().text();
+      const isValidHmac = await verifyHmacSignature(request, rawBody, env.ONYX_EMERGENCY_SECRET);
+      if (!isValidHmac) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+      }
+
       // Out-of-band Emergency Direct Line
       const authHeader = request.headers.get("Authorization");
 
@@ -1278,6 +1338,12 @@ const onyx_handler: any = {
       request.method === "POST" &&
       url.pathname === "/api/v1/onyx/summon"
     ) {
+      const rawBody = await request.clone().text();
+      const isValidHmac = await verifyHmacSignature(request, rawBody, env.ONYX_CLIENT_SECRET);
+      if (!isValidHmac) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+      }
+
       const authHeader = request.headers.get("Authorization");
       const cookieHeader = request.headers.get("Cookie");
       let hasValidCookie = false;
@@ -1459,7 +1525,7 @@ const onyx_handler: any = {
         ? new URL(env.CORE_INGEST_URL).origin
         : "https://api.axim.us.com";
       try {
-        const res = await fetch(`${coreUrl}${url.pathname}`);
+        const res = await fetch(`${coreUrl}${url.pathname}`, { headers: { "X-Onyx-Trace-Id": traceId || "unknown" } });
         if (res.ok) {
           const maxAge =
             url.pathname === "/api/v1/telemetry/health" ||
@@ -2046,7 +2112,8 @@ const onyx_handler: any = {
         try {
           const res = await fetch(backendUrl, {
             headers: {
-              "Authorization": request.headers.get("Authorization") || ""
+              "Authorization": request.headers.get("Authorization") || "",
+              "X-Onyx-Trace-Id": traceId || "unknown"
             }
           });
 
@@ -2075,6 +2142,12 @@ const onyx_handler: any = {
         request.method === "POST" &&
         url.pathname === "/api/v1/commands/dispatch"
       ) {
+      const rawBody = await request.clone().text();
+      const isValidHmac = await verifyHmacSignature(request, rawBody, env.AXIM_ONYX_SECRET);
+      if (!isValidHmac) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+      }
+
         const authError = await checkAuth(request, env, true);
         if (authError) return authError;
 
@@ -2171,7 +2244,7 @@ const onyx_handler: any = {
               ctx?.waitUntil?.(
                 fetch(telemetryUrl, {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: { "Content-Type": "application/json", "X-Onyx-Trace-Id": traceId || "unknown" },
                   body: JSON.stringify({ warning: "INTERCEPTED_HEARTBEAT" }),
                 }).catch(() => {}), // Fire and forget
               );
@@ -2366,32 +2439,9 @@ const onyx_handler: any = {
         url.pathname === "/api/v1/ecosystem/event"
       ) {
         // Step 1: Ecosystem Event Ingress
-        const signature = request.headers.get("X-Axim-Signature");
-        if (!signature || !env.AXIM_ONYX_SECRET) {
-          return new Response("Unauthorized", { status: 401 });
-        }
-
         const rawBody = await request.clone().text();
-        const encoder = new TextEncoder();
-        const key = await crypto.subtle.importKey(
-          "raw",
-          encoder.encode(env.AXIM_ONYX_SECRET),
-          { name: "HMAC", hash: "SHA-256" },
-          false,
-          ["sign", "verify"]
-        );
-        const signatureBuffer = await crypto.subtle.sign(
-          "HMAC",
-          key,
-          encoder.encode(rawBody)
-        );
-        const signatureArray = Array.from(new Uint8Array(signatureBuffer));
-        const signatureHex = signatureArray
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
-        const expectedSignature = `sha256=${signatureHex}`;
-
-        if (signature !== signatureHex && signature !== expectedSignature) {
+        const isValid = await verifyHmacSignature(request, rawBody, env.AXIM_ONYX_SECRET);
+        if (!isValid) {
           return new Response("Unauthorized", { status: 401 });
         }
 
