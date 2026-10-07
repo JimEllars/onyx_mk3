@@ -19,4 +19,14 @@ describe('Security Edge Bridge Tests', () => {
     const res = await worker.fetch(req, { AXIM_INTERNAL_KEY: "test1", AXIM_ONYX_SECRET: "test2", ONYX_EMERGENCY_SECRET: "test3" } as any, {} as any);
     expect(res.status).toBe(401);
   });
+
+  it('rejects a JWT-shaped bearer token without Passport verification', async () => {
+    const req = new Request('http://localhost/api/v1/commands/dispatch', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer eyJhbGciOiJub25lIn0.eyJyb2xlIjoiYWRtaW4ifQ.signature' },
+      body: JSON.stringify({ task: "test" }),
+    });
+    const res = await worker.fetch(req, { AXIM_INTERNAL_KEY: "test1", AXIM_ONYX_SECRET: "test2", ONYX_EMERGENCY_SECRET: "test3" } as any, {} as any);
+    expect(res.status).toBe(401);
+  });
 });

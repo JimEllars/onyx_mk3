@@ -1,4 +1,5 @@
 AXIM_ONYX_SECRET=your_secure_secret_here
+AXIM_SERVICE_KEY=your_axim_service_key_here
 ANTHROPIC_API_KEY=your_anthropic_key_here
 GITHUB_WEBHOOK_SECRET=your_github_webhook_secret_here
 WP_WEBHOOK_SECRET=your_wp_webhook_secret_here

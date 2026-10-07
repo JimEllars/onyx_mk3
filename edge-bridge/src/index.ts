@@ -268,7 +268,6 @@ function equalSecrets(left: string, right: string): boolean {
 function getCorsHeaders(request: Request, env?: Env) {
   const origin = request.headers.get("Origin") || "";
   const isAllowed =
-    origin.startsWith("http://localhost") ||
     ALLOWED_ORIGINS.includes(origin) ||
     origin === env?.ALLOWED_ORIGIN;
 
@@ -480,9 +479,14 @@ async function checkAuth(req: Request, env: Env, requireSuperUser: boolean = fal
   const onyxToken = `Bearer ${env.AXIM_ONYX_SECRET}`;
   const serviceKey = `Bearer ${env.AXIM_SERVICE_KEY}`;
 
-  const isJwt = authHeader.startsWith('Bearer ey') && authHeader.split('.').length === 3;
+  // Passport JWT validation remains disabled until JWKS validation is configured.
+  const isJwt = false;
+  const isInternalService = Boolean(env.AXIM_ONYX_SECRET) &&
+    (equalSecrets(authHeader, onyxToken) || (
+      Boolean(env.AXIM_SERVICE_KEY) && equalSecrets(authHeader, serviceKey)
+    ));
 
-  if (authHeader !== onyxToken && authHeader !== serviceKey && !isJwt) {
+  if (!isInternalService) {
     return new Response("Unauthorized", {
       status: 401,
       headers: getCorsHeaders(req),
@@ -570,57 +574,8 @@ async function verifyAximSignature(
   return null;
 }
 
-async function bootstrapDatabase(env: Env) {
-  if (env.ONYX_DB) {
-    await env.ONYX_DB.prepare(
-      `
-      CREATE TABLE IF NOT EXISTS EmailLogs (
-        id TEXT PRIMARY KEY,
-        to_email TEXT,
-        subject TEXT,
-        status TEXT, -- 'sent', 'delivered', 'bounced', 'failed'
-        updated_at INTEGER
-      );
-      CREATE TABLE IF NOT EXISTS TelemetryLogs (
-        id TEXT PRIMARY KEY,
-        session_id TEXT,
-        status TEXT, -- 'healthy', 'degraded', 'critical'
-        payload TEXT,
-        synced INTEGER DEFAULT 0,
-        created_at INTEGER
-      );
-      CREATE TABLE IF NOT EXISTS RateLimitLogs (
-        id TEXT PRIMARY KEY,
-        ip_address TEXT,
-        endpoint TEXT,
-        user_id TEXT,
-        blocked_at INTEGER
-      );
-      CREATE TABLE IF NOT EXISTS CommandAuditLogs (
-        id TEXT PRIMARY KEY,
-        user_id TEXT,
-        command_type TEXT,
-        status TEXT,
-        execution_time_ms INTEGER,
-        details TEXT,
-        created_at INTEGER
-      );
-      CREATE TABLE IF NOT EXISTS RateLimitLogs (
-        id TEXT PRIMARY KEY,
-        ip_address TEXT,
-        endpoint TEXT,
-        user_id TEXT,
-        blocked_at INTEGER
-      );
-      CREATE TABLE IF NOT EXISTS UserSessions (
-        session_id TEXT PRIMARY KEY,
-        user_id TEXT,
-        client_version TEXT,
-        last_seen INTEGER
-      );
-    `,
-    ).run();
-  }
+async function bootstrapDatabase(env: Env): Promise<void> {
+  void env;
 }
 
 async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
@@ -734,13 +689,13 @@ const onyx_handler: any = {
         ctx?.waitUntil?.(
           env.ONYX_DB.batch([
             env.ONYX_DB.prepare(
-              "DELETE FROM TelemetryLogs WHERE created_at < ?",
+              "DELETE FROM onyx_telemetry_logs WHERE created_at < ?",
             ).bind(thirtyDaysAgo),
             env.ONYX_DB.prepare(
-              "DELETE FROM CommandAuditLogs WHERE created_at < ?",
+              "DELETE FROM onyx_command_audit_logs WHERE created_at < ?",
             ).bind(thirtyDaysAgo),
             env.ONYX_DB.prepare(
-              "DELETE FROM RateLimitLogs WHERE blocked_at < ?",
+              "DELETE FROM onyx_rate_limit_logs WHERE blocked_at < ?",
             ).bind(thirtyDaysAgo),
           ]),
         );
@@ -1039,7 +994,7 @@ const onyx_handler: any = {
         if (env.ONYX_DB) {
           ctx?.waitUntil?.(
             env.ONYX_DB.prepare(
-              "INSERT INTO TelemetryLogs (id, session_id, status, payload, synced, created_at) VALUES (?, ?, ?, ?, 0, ?)",
+              "INSERT INTO onyx_telemetry_logs (id, session_id, status, payload, synced, created_at) VALUES (?, ?, ?, ?, 0, ?)",
             )
               .bind(
                 id,
@@ -1201,7 +1156,7 @@ const onyx_handler: any = {
       try {
         if (env.ONYX_DB) {
           const result = await env.ONYX_DB.prepare(
-            "SELECT * FROM TelemetryLogs WHERE synced = 0 LIMIT 100",
+            "SELECT * FROM onyx_telemetry_logs WHERE synced = 0 LIMIT 100",
           ).all();
           const rows = result.results;
           if (rows && rows.length > 0) {
@@ -1221,7 +1176,7 @@ const onyx_handler: any = {
                 body: String(row.payload),
               });
               await env.ONYX_DB.prepare(
-                "UPDATE TelemetryLogs SET synced = 1 WHERE id = ?",
+                "UPDATE onyx_telemetry_logs SET synced = 1 WHERE id = ?",
               )
                 .bind(row.id)
                 .run();
@@ -1576,7 +1531,7 @@ const onyx_handler: any = {
           if (env.ONYX_DB) {
             ctx?.waitUntil?.(
               env.ONYX_DB.prepare(
-                "INSERT INTO RateLimitLogs (id, ip_address, endpoint, user_id, blocked_at) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO onyx_rate_limit_logs (id, ip_address, endpoint, user_id, blocked_at) VALUES (?, ?, ?, ?, ?)",
               )
                 .bind(
                   crypto.randomUUID(),
@@ -1931,7 +1886,7 @@ const onyx_handler: any = {
 
         try {
           const { results } = await env.ONYX_DB.prepare(
-            "SELECT endpoint, COUNT(*) as breach_count FROM RateLimitLogs GROUP BY endpoint",
+            "SELECT endpoint, COUNT(*) as breach_count FROM onyx_rate_limit_logs GROUP BY endpoint",
           ).all();
 
           return new Response(
@@ -2254,7 +2209,7 @@ const onyx_handler: any = {
             if (env.ONYX_DB) {
               const now = Math.floor(Date.now() / 1000);
               await env.ONYX_DB.prepare(
-                `INSERT INTO UserSessions (session_id, user_id, client_version, last_seen)
+                `INSERT INTO onyx_user_sessions (session_id, user_id, client_version, last_seen)
                  VALUES (?, ?, ?, ?)
                  ON CONFLICT(session_id) DO UPDATE SET
                    user_id=excluded.user_id,
@@ -2358,15 +2313,8 @@ const onyx_handler: any = {
         request.method === "POST" &&
         url.pathname === "/api/v1/mcp/execute"
       ) {
-        // Authenticate
-        const authHeader = request.headers.get("Authorization");
-        const sessionCookie = request.headers.get("Cookie");
-        const token = authHeader?.split(" ")[1];
-        const isAuthorized = (token === env.AXIM_ONYX_SECRET) || (sessionCookie?.includes("axim_session="));
-        if (!isAuthorized) {
-          return new Response("Unauthorized", { status: 401, headers: getCorsHeaders(request, env) });
-        }
-
+        const authError = await checkAuth(request, env, true);
+        if (authError) return authError;
         try {
           const body: any = await request.json();
           const { action_id, decision, operator_notes } = body;
@@ -3018,7 +2966,7 @@ export default {
         const url = new URL(request.url);
         ctx?.waitUntil?.(
           env.ONYX_DB.prepare(
-            "INSERT INTO RateLimitLogs (id, ip_address, endpoint, user_id, blocked_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO onyx_rate_limit_logs (id, ip_address, endpoint, user_id, blocked_at) VALUES (?, ?, ?, ?, ?)",
           )
             .bind(
               crypto.randomUUID(),
