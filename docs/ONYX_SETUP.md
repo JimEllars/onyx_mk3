@@ -30,7 +30,14 @@ npm run build
 npm run deploy:dry-run
 ```
 
-Before the first production deployment, authenticate Wrangler and ensure the resources referenced by `edge-bridge/wrangler.jsonc` exist in the target Cloudflare account: four KV namespaces, the `onyx-db` D1 database, the Hyperdrive configuration, Workers AI, Analytics Engine dataset, static assets, cron triggers, and the `onyx-edge.axim.us.com` custom domain.
+Before the first production deployment, authenticate Wrangler and apply the checked-in D1 migrations. `edge-bridge/wrangler.jsonc` is the authoritative Worker manifest for the `onyx-edge.axim.us.com` custom domain and its KV, D1, Workers AI, Analytics Engine, static-asset, and cron bindings.
+
+```bash
+cd edge-bridge
+npm run build
+npx wrangler d1 migrations apply onyx-edge-bridge-db --remote
+npx wrangler deploy --dry-run
+```
 
 Set the following Worker runtime secrets in the `edge-bridge` directory. Secrets are not read from `.env` by a deployed Worker:
 
@@ -53,4 +60,12 @@ For CI deployment, configure repository secrets `CLOUDFLARE_API_TOKEN` and `CLOU
 npm run deploy
 ```
 
-After deployment, invoke the CLI `doctor` command and the Worker health endpoint used by your environment to confirm credentials, Core connectivity, and bindings are available.
+After deployment, invoke the CLI `doctor` command and the Worker health endpoint to confirm credentials, Core connectivity, and bindings are available:
+
+```bash
+curl https://onyx-edge.axim.us.com/health
+```
+
+Protected Worker routes accept only `Bearer` values matching `AXIM_ONYX_SECRET` or
+`AXIM_SERVICE_KEY`, plus route-specific verified HMAC signatures. Passport JWT
+support remains disabled until issuer, audience, and JWKS validation are configured.
