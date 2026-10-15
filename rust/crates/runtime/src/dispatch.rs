@@ -118,3 +118,37 @@ impl Default for TaskDispatcher {
         Self::new()
     }
 }
+
+pub async fn run_swarm_worker<F, Fut>(
+    mut queues: SwarmQueues,
+    dispatcher: std::sync::Arc<TaskDispatcher>,
+    on_success: F,
+) where
+    F: Fn(Value) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    loop {
+        let packet_opt = if let Ok(packet) = queues.critical_rx.try_recv() {
+            Some(packet)
+        } else if let Ok(packet) = queues.high_rx.try_recv() {
+            Some(packet)
+        } else if let Ok(packet) = queues.standard_rx.try_recv() {
+            Some(packet)
+        } else if let Ok(packet) = queues.low_rx.try_recv() {
+            Some(packet)
+        } else {
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            continue;
+        };
+
+        if let Some(packet) = packet_opt {
+            let payload: Result<AximWebhookPayload, _> = serde_json::from_str(&packet.context);
+            if let Ok(payload) = payload {
+                let result = dispatcher.dispatch_webhook(&payload).await;
+                if let Ok(value) = result {
+                    on_success(value).await;
+                }
+            }
+        }
+    }
+}

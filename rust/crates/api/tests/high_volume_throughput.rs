@@ -14,7 +14,8 @@ async fn high_volume_throughput_and_priority() {
         auth_token: "test_token".to_string(),
     };
 
-    let app = create_router(app_state);
+    let (_dispatcher, queues_dummy) = runtime::dispatch::Dispatcher::new(100);
+    let app = create_router(app_state, queues_dummy);
 
     let mut requests = Vec::new();
     for i in 0..50 {
@@ -78,7 +79,8 @@ async fn webhook_payload_bad_request() {
         auth_token: "test_token".to_string(),
     };
 
-    let app = create_router(app_state);
+    let (_dispatcher, queues_dummy) = runtime::dispatch::Dispatcher::new(100);
+    let app = create_router(app_state, queues_dummy);
 
     let payload = json!({
         "intent": "missing_fields"

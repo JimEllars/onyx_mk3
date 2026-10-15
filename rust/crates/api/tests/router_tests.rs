@@ -14,7 +14,8 @@ async fn test_generate_nda_malformed_payload() {
         dispatcher,
         auth_token: "test_token".to_string(),
     };
-    let app = create_router(state);
+    let (_dispatcher, queues) = runtime::dispatch::Dispatcher::new(100);
+    let app = create_router(state, queues);
 
     let req = Request::builder()
         .method("POST")
@@ -35,7 +36,8 @@ async fn test_generate_demand_letter_malformed_payload() {
         dispatcher,
         auth_token: "test_token".to_string(),
     };
-    let app = create_router(state);
+    let (_dispatcher, queues) = runtime::dispatch::Dispatcher::new(100);
+    let app = create_router(state, queues);
 
     let req = Request::builder()
         .method("POST")
@@ -56,7 +58,8 @@ async fn test_dispatch_malformed_payload() {
         dispatcher,
         auth_token: "test_token".to_string(),
     };
-    let app = create_router(state);
+    let (_dispatcher, queues) = runtime::dispatch::Dispatcher::new(100);
+    let app = create_router(state, queues);
 
     let req = Request::builder()
         .method("POST")
