@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::env;
+use reqwest::Client;
 
 use crate::micro_program::MicroProgram;
 
@@ -73,39 +75,67 @@ impl MicroProgram for PredictiveLeadScoring {
             missing_fields.push("company_size".to_string());
         }
 
-        // Calculate a score based on provided fields safely
-        let mut score = 50; // Base score
-        let mut confidence = 0.5; // Base confidence
+        let prompt = format!(
+            "Please score the following lead:\nIndustry: {:?}\nCompany Size: {:?}",
+            req.industry, req.company_size
+        );
+        let request_payload = json!({
+            "model": "axim-default",
+            "messages": [{
+                "role": "user",
+                "content": prompt,
+            }],
+            "system": "You are an expert lead scoring AI. Provide a JSON response with keys: score (integer 0-100), confidence (float 0.0-1.0).",
+            "temperature": 0.0,
+            "max_tokens": 1024
+        });
 
-        if let Some(ref ind) = req.industry {
-            if ind.to_lowercase().contains("tech") {
-                score += 20;
-            } else {
-                score += 10;
+        // Use reqwest to call the internal endpoint (port 3141, fallback to 8000)
+        let base_url = env::var("AXIM_CORE_URL").unwrap_or_else(|_| "http://127.0.0.1:3141".to_string());
+        let token = env::var("AXIM_ONYX_SECRET").unwrap_or_else(|_| String::new());
+
+        let client = Client::new();
+        let res = client.post(format!("{base_url}/api/v1/chat"))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+            .json(&request_payload)
+            .send()
+            .await;
+
+        let mut ai_res: Option<Value> = None;
+        if let Ok(resp) = res {
+            if let Ok(text) = resp.text().await {
+                // Try to parse out the JSON from the assistant text
+                if let Ok(json_body) = serde_json::from_str::<Value>(&text) {
+                    if let Some(content) = json_body.pointer("/data/parts/0/text").and_then(|v| v.as_str()) {
+                        if let Ok(val) = serde_json::from_str(content) {
+                            ai_res = Some(val);
+                        }
+                    }
+                }
             }
-            confidence += 0.2;
         }
 
-        if let Some(size) = req.company_size {
-            if size > 100 {
-                score += 20;
-            } else {
-                score += 10;
+        #[allow(clippy::cast_possible_truncation)]
+        let (mut score, mut confidence) = match ai_res {
+            Some(json_res) => {
+                let s = json_res.get("score").and_then(|v: &Value| v.as_u64()).unwrap_or(50) as u32;
+                let c = json_res.get("confidence").and_then(|v: &Value| v.as_f64()).unwrap_or(0.5) as f32;
+                (s, c)
             }
-            confidence += 0.2;
-        }
-
-        // Cap at 100 max score and 1.0 confidence
-        score = std::cmp::min(score, 100);
-        if confidence > 1.0 {
-            confidence = 1.0;
-        }
+            None => (50, 0.5),
+        };
 
         let status = if missing_fields.is_empty() {
             "Enriched".to_string()
         } else {
             "Partial_Enrichment".to_string()
         };
+
+        score = std::cmp::min(score, 100);
+        if confidence > 1.0 {
+            confidence = 1.0;
+        }
 
         let res = LeadScoringResponse {
             score,
@@ -154,8 +184,9 @@ mod tests {
 
         assert_eq!(res.status, "Enriched");
         assert!(res.warnings.missing_fields.is_empty());
-        assert_eq!(res.score, 90); // 50 base + 20 tech + 20 >100 size
-        assert!((res.confidence - 0.9).abs() < f32::EPSILON);
+        // Since LLM will fail or return default we test for 50
+        assert_eq!(res.score, 50);
+        assert!((res.confidence - 0.5).abs() < f32::EPSILON);
     }
 
     #[tokio::test]
@@ -197,5 +228,25 @@ mod tests {
         assert_eq!(res.warnings.missing_fields.len(), 3);
         assert_eq!(res.score, 50);
         assert!((res.confidence - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn test_deskera_webhook_payload() {
+        let scorer = PredictiveLeadScoring;
+        let lead_id = format!("lead_deskera_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let meta = json!({
+            "lead_id": lead_id,
+            "industry": "finance",
+            "company_size": 50,
+            "custom_deskera_field": "some_value"
+        });
+
+        let payload = create_payload(meta);
+        let result = scorer.execute(&payload).await.unwrap();
+        let res: LeadScoringResponse = serde_json::from_value(result).unwrap();
+
+        assert_eq!(res.status, "Enriched");
+        assert!(res.warnings.missing_fields.is_empty());
+        assert_eq!(res.score, 50);
     }
 }

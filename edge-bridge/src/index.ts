@@ -1164,10 +1164,29 @@ const onyx_handler: any = {
               env.CORE_INGEST_URL.replace(/\/$/, "") +
               "/functions/v1/telemetry-ingress";
             for (const row of rows) {
-              await fetchWithRetry(ingestUrl, {
+
+              // Generate HMAC signature for telemetry
+              const textEncoder = new TextEncoder();
+              const keyData = textEncoder.encode(env.AXIM_INTERNAL_KEY || "default_internal_key_fallback");
+              const messageData = textEncoder.encode(String(row.payload));
+              const cryptoKey = await crypto.subtle.importKey(
+                "raw",
+                keyData,
+                { name: "HMAC", hash: "SHA-256" },
+                false,
+                ["sign"]
+              );
+              const signatureBuffer = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
+              const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+              const signatureHex = signatureArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+              const res = await fetchWithRetry(ingestUrl, {
                 method: "POST",
                 headers: addOnyxHeaders(
-                  { "Content-Type": "application/json" },
+                  {
+                    "Content-Type": "application/json",
+                    "X-Axim-Signature": signatureHex
+                  },
                   edgeStatus,
                   cacheStatus,
                   traceId,
@@ -1175,11 +1194,14 @@ const onyx_handler: any = {
                 ),
                 body: String(row.payload),
               });
-              await env.ONYX_DB.prepare(
-                "UPDATE onyx_telemetry_logs SET synced = 1 WHERE id = ?",
-              )
-                .bind(row.id)
-                .run();
+
+              if (res.status === 200) {
+                await env.ONYX_DB.prepare(
+                  "UPDATE onyx_telemetry_logs SET synced = 1 WHERE id = ?",
+                )
+                  .bind(row.id)
+                  .run();
+              }
             }
           }
           return new Response(
