@@ -243,8 +243,19 @@ pub fn create_router(state: AppState, queues: runtime::dispatch::SwarmQueues) ->
             queues,
             std::sync::Arc::new(task_dispatcher),
             |val| async move {
-                let _ =
-                    commands::actions::outbound_webhook::OutboundWebhookAction::execute(&val).await;
+                // Send standard relay packet
+                let _ = commands::actions::axim_core_relay::AximCoreRelayAction::execute(&val).await;
+
+                // Determine routing logic based on objective/intent from payload if needed.
+                // As a placeholder routing logic: If intent is "generate_nda" or "generate_demand_letter"
+                if let Some(intent) = val.get("intent").and_then(|i| i.as_str()) {
+                    if intent == "generate_nda" || intent == "generate_demand_letter" {
+                        let _ = commands::actions::google_workspace::GoogleWorkspaceAction::save_to_drive(&val).await;
+                        let _ = commands::actions::google_workspace::GoogleWorkspaceAction::send_via_gmail(&val).await;
+                        let _ = commands::actions::retable::RetableAction::log_record(&val).await;
+                        let _ = commands::actions::internxt::InternxtAction::secure_backup(&val).await;
+                    }
+                }
             },
         )
         .await;

@@ -1,10 +1,10 @@
 use serde_json::Value;
 
-pub struct OutboundWebhookAction;
+pub struct AximCoreRelayAction;
 
-impl OutboundWebhookAction {
+impl AximCoreRelayAction {
     pub async fn execute(payload: &Value) -> Result<(), String> {
-        if let Ok(webhook_url) = std::env::var("ALBATO_OUTBOUND_WEBHOOK_URL") {
+        if let Ok(webhook_url) = std::env::var("AXIM_CORE_API_URL") {
             let client = reqwest::Client::new();
             client
                 .post(&webhook_url)
