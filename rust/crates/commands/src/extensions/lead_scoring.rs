@@ -1,9 +1,9 @@
 use async_trait::async_trait;
+use reqwest::Client;
 use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::env;
-use reqwest::Client;
 
 use crate::micro_program::MicroProgram;
 
@@ -91,11 +91,13 @@ impl MicroProgram for PredictiveLeadScoring {
         });
 
         // Use reqwest to call the internal endpoint (port 3141, fallback to 8000)
-        let base_url = env::var("AXIM_CORE_URL").unwrap_or_else(|_| "http://127.0.0.1:3141".to_string());
+        let base_url =
+            env::var("AXIM_CORE_URL").unwrap_or_else(|_| "http://127.0.0.1:3141".to_string());
         let token = env::var("AXIM_ONYX_SECRET").unwrap_or_else(|_| String::new());
 
         let client = Client::new();
-        let res = client.post(format!("{base_url}/api/v1/chat"))
+        let res = client
+            .post(format!("{base_url}/api/v1/chat"))
             .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/json")
             .json(&request_payload)
@@ -107,7 +109,10 @@ impl MicroProgram for PredictiveLeadScoring {
             if let Ok(text) = resp.text().await {
                 // Try to parse out the JSON from the assistant text
                 if let Ok(json_body) = serde_json::from_str::<Value>(&text) {
-                    if let Some(content) = json_body.pointer("/data/parts/0/text").and_then(|v| v.as_str()) {
+                    if let Some(content) = json_body
+                        .pointer("/data/parts/0/text")
+                        .and_then(|v| v.as_str())
+                    {
                         if let Ok(val) = serde_json::from_str(content) {
                             ai_res = Some(val);
                         }
@@ -119,8 +124,14 @@ impl MicroProgram for PredictiveLeadScoring {
         #[allow(clippy::cast_possible_truncation)]
         let (mut score, mut confidence) = match ai_res {
             Some(json_res) => {
-                let s = json_res.get("score").and_then(|v: &Value| v.as_u64()).unwrap_or(50) as u32;
-                let c = json_res.get("confidence").and_then(|v: &Value| v.as_f64()).unwrap_or(0.5) as f32;
+                let s = json_res
+                    .get("score")
+                    .and_then(|v: &Value| v.as_u64())
+                    .unwrap_or(50) as u32;
+                let c = json_res
+                    .get("confidence")
+                    .and_then(|v: &Value| v.as_f64())
+                    .unwrap_or(0.5) as f32;
                 (s, c)
             }
             None => (50, 0.5),
@@ -233,7 +244,10 @@ mod tests {
     #[tokio::test]
     async fn test_deskera_webhook_payload() {
         let scorer = PredictiveLeadScoring;
-        let lead_id = format!("lead_deskera_{}", Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let lead_id = format!(
+            "lead_deskera_{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        );
         let meta = json!({
             "lead_id": lead_id,
             "industry": "finance",
