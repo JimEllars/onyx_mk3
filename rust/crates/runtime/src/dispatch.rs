@@ -1,5 +1,10 @@
+use crate::api_specs::webhook_payload::AximWebhookPayload;
 use crate::task_packet::TaskPacket;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,5 +67,54 @@ impl Dispatcher {
         tx.send(packet)
             .await
             .map_err(|e| format!("Failed to dispatch task: {e}"))
+    }
+}
+
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+pub trait TaskHandler: Send + Sync {
+    fn check_idempotency<'a>(
+        &'a self,
+        payload: &'a AximWebhookPayload,
+    ) -> BoxFuture<'a, Result<Option<Value>, String>>;
+    fn execute<'a>(
+        &'a self,
+        payload: &'a AximWebhookPayload,
+    ) -> BoxFuture<'a, Result<Value, String>>;
+}
+
+pub struct TaskDispatcher {
+    handlers: HashMap<String, Box<dyn TaskHandler>>,
+}
+
+impl TaskDispatcher {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            handlers: HashMap::new(),
+        }
+    }
+
+    pub fn register(&mut self, intent: String, handler: Box<dyn TaskHandler>) {
+        self.handlers.insert(intent, handler);
+    }
+
+    pub async fn dispatch_webhook(&self, payload: &AximWebhookPayload) -> Result<Value, String> {
+        if let Some(handler) = self.handlers.get(&payload.intent) {
+            if let Ok(Some(cached)) = handler.check_idempotency(payload).await {
+                return Ok(cached);
+            }
+            return handler.execute(payload).await;
+        }
+        Err(format!(
+            "No handler registered for intent: {}",
+            payload.intent
+        ))
+    }
+}
+
+impl Default for TaskDispatcher {
+    fn default() -> Self {
+        Self::new()
     }
 }
