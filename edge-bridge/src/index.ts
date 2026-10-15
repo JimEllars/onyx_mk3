@@ -2115,6 +2115,52 @@ const onyx_handler: any = {
              headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
            });
         }
+
+      } else if (
+        request.method === "POST" &&
+        url.pathname === "/api/v1/tasks/dispatch"
+      ) {
+        const rawBody = await request.clone().text();
+        const isValidHmac = await verifyHmacSignature(request, rawBody, env.AXIM_ONYX_SECRET);
+        if (!isValidHmac) {
+          return new Response(JSON.stringify({ error: "Unauthorized Signature" }), { status: 401, headers: { "Content-Type": "application/json" } });
+        }
+
+        let payload = parsedBody || {};
+
+        // Transform webhook to AximWebhookPayload schema if necessary
+        const corePayload = {
+          source_channel: payload.source_channel || "albato_webhook",
+          intent: payload.intent || "sync_lead_enrich",
+          meta_data: payload.meta_data || payload.meta || payload,
+          timestamp: payload.timestamp || new Date().toISOString()
+        };
+
+        const coreUrl = env.CORE_INGEST_URL ? env.CORE_INGEST_URL.replace(/\/v1\/commands\/dispatch$/, "") : "http://127.0.0.1:3141";
+        const rustCoreEndpoint = `${coreUrl}/api/v1/tasks/execute`;
+
+        try {
+          const coreRes = await fetch(rustCoreEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${env.AXIM_ONYX_SECRET || ""}`,
+              "X-Onyx-Trace-Id": traceId || "unknown"
+            },
+            body: JSON.stringify(corePayload),
+          });
+
+          const coreText = await coreRes.text();
+          return new Response(coreText, {
+            status: coreRes.status,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        } catch (err: any) {
+          return new Response(JSON.stringify({ error: "Core failure", details: err.message }), {
+            status: 500,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        }
       } else if (
         request.method === "POST" &&
         url.pathname === "/api/v1/commands/dispatch"

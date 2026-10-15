@@ -79,6 +79,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/telemetry/health", get(handle_telemetry_health))
         .route("/api/v1/llm/health", get(handle_llm_health))
         .route("/v1/commands/dispatch", post(handle_dispatch))
+        .route("/api/v1/tasks/execute", post(handle_execute))
         .route("/api/v1/onyx/summon", post(handle_onyx_summon))
         .route("/v1/generate/nda", post(handle_generate_nda))
         .route(
@@ -1072,4 +1073,227 @@ pub async fn handle_daily_cron(headers: axum::http::HeaderMap) -> impl IntoRespo
         axum::Json(json!({"status": "accepted"})),
     )
         .into_response()
+}
+
+#[allow(clippy::too_many_lines, clippy::items_after_statements)]
+#[axum::debug_handler]
+pub async fn handle_execute(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    payload_result: Result<Json<AximWebhookPayload>, JsonRejection>,
+) -> impl IntoResponse {
+    let response = async {
+        let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+        let expected_token = format!("Bearer {}", state.auth_token);
+
+        if auth_header != Some(&expected_token) {
+            return (
+                StatusCode::UNAUTHORIZED,
+                axum::Json(json!({"error": "Unauthorized"})),
+            )
+                .into_response();
+        }
+
+        let payload = match payload_result {
+            Ok(Json(v)) => v,
+            Err(e) => {
+                let error_msg = format!("Malformed JSON payload: {}", e.body_text());
+                route_to_dlq(&e.body_text(), "/api/v1/tasks/execute", &error_msg);
+                return (
+                    StatusCode::BAD_REQUEST,
+                    axum::Json(json!({
+                        "error": "Malformed payload structure",
+                        "details": e.body_text()
+                    })),
+                )
+                    .into_response();
+            }
+        };
+
+        // Initialize our task dispatcher and map intents to handlers
+        let mut task_dispatcher = runtime::dispatch::TaskDispatcher::new();
+
+        // We wrap our existing MicroProgram structs into handlers
+        // Since we didn't implement TaskHandler for MicroProgram globally due to trait object constraints,
+        // we can create simple wrapper structs here that implement TaskHandler and delegate to the static methods.
+
+        struct LeadScoringHandler;
+        impl runtime::dispatch::TaskHandler for LeadScoringHandler {
+            fn check_idempotency<'a>(
+                &'a self,
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<Option<serde_json::Value>, String>>
+            {
+                Box::pin(async move {
+                    let p = PredictiveLeadScoring;
+                    p.check_idempotency(payload).await
+                })
+            }
+            fn execute<'a>(
+                &'a self,
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<serde_json::Value, String>> {
+                Box::pin(async move {
+                    let p = PredictiveLeadScoring;
+                    p.execute(payload).await
+                })
+            }
+        }
+
+        struct DemandLetterHandler;
+        impl runtime::dispatch::TaskHandler for DemandLetterHandler {
+            fn check_idempotency<'a>(
+                &'a self,
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<Option<serde_json::Value>, String>>
+            {
+                Box::pin(async move {
+                    let p = DemandLetterGenerator;
+                    p.check_idempotency(payload).await
+                })
+            }
+            fn execute<'a>(
+                &'a self,
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<serde_json::Value, String>> {
+                Box::pin(async move {
+                    let p = DemandLetterGenerator;
+                    p.execute(payload).await
+                })
+            }
+        }
+
+        struct NdaHandler;
+        impl runtime::dispatch::TaskHandler for NdaHandler {
+            fn check_idempotency<'a>(
+                &'a self,
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<Option<serde_json::Value>, String>>
+            {
+                Box::pin(async move {
+                    let p = NDAGenerator;
+                    p.check_idempotency(payload).await
+                })
+            }
+            fn execute<'a>(
+                &'a self,
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<serde_json::Value, String>> {
+                Box::pin(async move {
+                    let p = NDAGenerator;
+                    p.execute(payload).await
+                })
+            }
+        }
+
+        struct PayStubHandler;
+        impl runtime::dispatch::TaskHandler for PayStubHandler {
+            fn check_idempotency<'a>(
+                &'a self,
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<Option<serde_json::Value>, String>>
+            {
+                Box::pin(async move {
+                    let p = PayStubGenerator;
+                    p.check_idempotency(payload).await
+                })
+            }
+            fn execute<'a>(
+                &'a self,
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<serde_json::Value, String>> {
+                Box::pin(async move {
+                    let p = PayStubGenerator;
+                    p.execute(payload).await
+                })
+            }
+        }
+
+        struct SupportTriageHandler;
+        impl runtime::dispatch::TaskHandler for SupportTriageHandler {
+            fn check_idempotency<'a>(
+                &'a self,
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<Option<serde_json::Value>, String>>
+            {
+                Box::pin(async move {
+                    let p = SupportTriage;
+                    p.check_idempotency(payload).await
+                })
+            }
+            fn execute<'a>(
+                &'a self,
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<serde_json::Value, String>> {
+                Box::pin(async move {
+                    let p = SupportTriage;
+                    p.execute(payload).await
+                })
+            }
+        }
+
+        struct BillingFallbackHandler;
+        impl runtime::dispatch::TaskHandler for BillingFallbackHandler {
+            fn check_idempotency<'a>(
+                &'a self,
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<Option<serde_json::Value>, String>>
+            {
+                Box::pin(async move {
+                    let p = commands::extensions::billing_fallback::BillingFallback;
+                    p.check_idempotency(payload).await
+                })
+            }
+            fn execute<'a>(
+                &'a self,
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<serde_json::Value, String>> {
+                Box::pin(async move {
+                    let p = commands::extensions::billing_fallback::BillingFallback;
+                    p.execute(payload).await
+                })
+            }
+        }
+
+        task_dispatcher.register(
+            PredictiveLeadScoring.signature().to_string(),
+            Box::new(LeadScoringHandler),
+        );
+        task_dispatcher.register(
+            DemandLetterGenerator.signature().to_string(),
+            Box::new(DemandLetterHandler),
+        );
+        task_dispatcher.register(NDAGenerator.signature().to_string(), Box::new(NdaHandler));
+        task_dispatcher.register(
+            PayStubGenerator.signature().to_string(),
+            Box::new(PayStubHandler),
+        );
+        task_dispatcher.register(
+            SupportTriage.signature().to_string(),
+            Box::new(SupportTriageHandler),
+        );
+        task_dispatcher.register(
+            commands::extensions::billing_fallback::BillingFallback
+                .signature()
+                .to_string(),
+            Box::new(BillingFallbackHandler),
+        );
+
+        let result = task_dispatcher.dispatch_webhook(&payload).await;
+        match result {
+            Ok(data) => (
+                StatusCode::OK,
+                axum::Json(json!({"status": "Success", "data": data})),
+            )
+                .into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                axum::Json(json!({"error": e})),
+            )
+                .into_response(),
+        }
+    }
+    .await;
+
+    response
 }
