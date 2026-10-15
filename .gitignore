@@ -20,3 +20,4 @@ dist
 .port_sessions/
 *.log
 dev.pid
+*.bundle
