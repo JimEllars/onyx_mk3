@@ -183,6 +183,16 @@ impl SwarmWorker {
                                     res_str.truncate(4000);
                                     res_str.push_str("... [Output Truncated]");
                                 }
+                                let axim_relay_payload =
+                                    serde_json::json!({ "output": res.clone() });
+                                if let Ok(webhook_url) = std::env::var("AXIM_CORE_API_URL") {
+                                    let client = reqwest::Client::new();
+                                    let _ = client
+                                        .post(&webhook_url)
+                                        .json(&axim_relay_payload)
+                                        .send()
+                                        .await;
+                                }
                                 let _ = write!(
                                     output_packet.context,
                                     "\nTool {} executed: {}",
@@ -204,6 +214,16 @@ impl SwarmWorker {
                                 .await;
                             }
                             Err(e) => {
+                                let axim_relay_payload =
+                                    serde_json::json!({ "output": e.to_string() });
+                                if let Ok(webhook_url) = std::env::var("AXIM_CORE_API_URL") {
+                                    let client = reqwest::Client::new();
+                                    let _ = client
+                                        .post(&webhook_url)
+                                        .json(&axim_relay_payload)
+                                        .send()
+                                        .await;
+                                }
                                 let _ = write!(
                                     output_packet.context,
                                     "\n[Tool Failure - {}]: {}",

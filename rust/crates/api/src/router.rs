@@ -244,7 +244,6 @@ pub fn create_router(state: AppState, queues: runtime::dispatch::SwarmQueues) ->
             std::sync::Arc::new(task_dispatcher),
             |val| async move {
                 // Send standard relay packet
-                let _ = commands::actions::axim_core_relay::AximCoreRelayAction::execute(&val).await;
 
                 // Determine routing logic based on objective/intent from payload if needed.
                 // As a placeholder routing logic: If intent is "generate_nda" or "generate_demand_letter"

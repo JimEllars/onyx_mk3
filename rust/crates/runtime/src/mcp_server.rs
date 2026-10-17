@@ -204,6 +204,13 @@ impl McpServer {
             }
         };
         let arguments = call.arguments.unwrap_or_else(|| json!({}));
+
+        // Strict Security Constraint: verify identity
+        let identity_valid =
+            arguments.get("identity").and_then(|v| v.as_str()) == Some("jrellars@gmail.com");
+        if !identity_valid {
+            return invalid_params_response(id, "Unauthorized: Invalid or missing identity");
+        }
         let tool_result = (self.spec.tool_handler)(&call.name, &arguments);
         let (text, is_error) = match tool_result {
             Ok(text) => (text, false),
@@ -377,7 +384,7 @@ mod tests {
             method: "tools/call".to_string(),
             params: Some(json!({
                 "name": "echo",
-                "arguments": {"text": "hi"}
+                "arguments": {"text": "hi", "identity": "jrellars@gmail.com"}
             })),
         };
         let response = server.dispatch(request);
@@ -407,7 +414,9 @@ mod tests {
             jsonrpc: "2.0".to_string(),
             id: JsonRpcId::Number(4),
             method: "tools/call".to_string(),
-            params: Some(json!({"name": "broken"})),
+            params: Some(
+                json!({"name": "broken", "arguments": {"identity": "jrellars@gmail.com"}}),
+            ),
         };
         let response = server.dispatch(request);
         let result = response.result.expect("tools/call result");
