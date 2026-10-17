@@ -414,7 +414,9 @@ mod tests {
             jsonrpc: "2.0".to_string(),
             id: JsonRpcId::Number(4),
             method: "tools/call".to_string(),
-            params: Some(json!({"name": "broken", "arguments": {"identity": "jrellars@gmail.com"}})),
+            params: Some(
+                json!({"name": "broken", "arguments": {"identity": "jrellars@gmail.com"}}),
+            ),
         };
         let response = server.dispatch(request);
         let result = response.result.expect("tools/call result");
