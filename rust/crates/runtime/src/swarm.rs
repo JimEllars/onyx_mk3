@@ -165,16 +165,32 @@ impl SwarmWorker {
 
         let mut output_packet = packet.clone();
 
-        if !available_tools.is_empty() {
-            if let Some(registry) = &self.registry {
+        if let Some(registry) = &self.registry {
+            let mut requested_tool = None;
+            let mut tool_args = serde_json::json!({});
+
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&packet.context) {
+                if let Some(tool) = parsed.get("tool").and_then(|t| t.as_str()) {
+                    requested_tool = Some(tool.to_string());
+                }
+                if let Some(args) = parsed.get("arguments") {
+                    tool_args = args.clone();
+                }
+            } else {
                 for tool in &available_tools {
+                    if packet.objective.contains(&tool.name) || packet.context.contains(&tool.name)
+                    {
+                        requested_tool = Some(tool.name.clone());
+                        break;
+                    }
+                }
+            }
+
+            if let Some(target_tool_name) = requested_tool {
+                if let Some(tool) = available_tools.iter().find(|t| t.name == target_tool_name) {
                     if let Some((server_name, tool_name)) = tool.name.split_once("__") {
-                        let result = execute_mcp_tool(
-                            registry,
-                            server_name,
-                            tool_name,
-                            &serde_json::json!({}),
-                        );
+                        println!("[Swarm Worker] Routing task to tool: {}", tool.name);
+                        let result = execute_mcp_tool(registry, server_name, tool_name, &tool_args);
 
                         match result {
                             Ok(res) => {
@@ -187,11 +203,20 @@ impl SwarmWorker {
                                     serde_json::json!({ "output": res.clone() });
                                 if let Ok(webhook_url) = std::env::var("AXIM_CORE_API_URL") {
                                     let client = reqwest::Client::new();
-                                    let _ = client
+                                    match client
                                         .post(&webhook_url)
                                         .json(&axim_relay_payload)
                                         .send()
-                                        .await;
+                                        .await
+                                    {
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            tracing::error!(
+                                                "Failed to relay to AXiM Core API: {}",
+                                                e
+                                            );
+                                        }
+                                    }
                                 }
                                 let _ = write!(
                                     output_packet.context,
@@ -218,11 +243,20 @@ impl SwarmWorker {
                                     serde_json::json!({ "output": e.to_string() });
                                 if let Ok(webhook_url) = std::env::var("AXIM_CORE_API_URL") {
                                     let client = reqwest::Client::new();
-                                    let _ = client
+                                    match client
                                         .post(&webhook_url)
                                         .json(&axim_relay_payload)
                                         .send()
-                                        .await;
+                                        .await
+                                    {
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            tracing::error!(
+                                                "Failed to relay to AXiM Core API: {}",
+                                                e
+                                            );
+                                        }
+                                    }
                                 }
                                 let _ = write!(
                                     output_packet.context,
@@ -246,7 +280,14 @@ impl SwarmWorker {
                             }
                         }
                     }
+                } else {
+                    println!(
+                        "[Swarm Worker] Target tool {} not found in available tools",
+                        target_tool_name
+                    );
                 }
+            } else {
+                println!("[Swarm Worker] No specific tool requested. Bypassing tool execution.");
             }
         }
 
@@ -268,12 +309,18 @@ impl SwarmWorker {
             // Fallback for tests
             sleep(Duration::from_millis(10)).await;
         } else {
-            let _ = client
+            match client
                 .post(&url)
                 .header("Authorization", format!("Bearer {axim_secret}"))
                 .json(&payload)
                 .send()
-                .await;
+                .await
+            {
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!("Failed to execute task via AXiM Core: {}", e);
+                }
+            }
         }
 
         // Emit finish event
