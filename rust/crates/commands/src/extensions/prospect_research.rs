@@ -55,11 +55,10 @@ impl MicroProgram for ProspectResearch {
         let company_name = req
             .company_name
             .unwrap_or_else(|| "Unknown Company".to_string());
-        let context = req.context.unwrap_or_else(|| "".to_string());
+        let context = req.context.unwrap_or_default();
 
         let prompt = format!(
-            "Generate a comprehensive Prospect Research Report for the company: {}\n\nContext provided: {}\n\nThe output must include:\n1. Company founding and history.\n2. Key decision-makers and contact information.\n3. Local locations, cross-referencing the Longview, TX territory zip codes (75654, 75667, 75633, 75643, 75681, 75639, 75669, 75652, 75631, 75691, 75684, 75662, 75603, 75672, 75602, 75692, 75661, 75657, 75630, 75683, 75640, 75651, 75670, 75672, 75604, 75691, 75692, 75695) while allowing for minor zip code errors.\n4. Analysis of uniform and facility services opportunities, heavily prioritizing rental programs or standard lease options over direct purchase due to recurring revenue benefits.\n5. Recent news, key initiatives, brand logos, colors, competitors, and industry market conditions.\n\nFormat the final output string exactly starting with the header: \"UniFirst Prospect Research Template\"",
-            company_name, context
+            "Generate a comprehensive Prospect Research Report for the company: {company_name}\n\nContext provided: {context}\n\nThe output must include:\n1. Company founding and history.\n2. Key decision-makers and contact information.\n3. Local locations, cross-referencing the Longview, TX territory zip codes (75654, 75667, 75633, 75643, 75681, 75639, 75669, 75652, 75631, 75691, 75684, 75662, 75603, 75672, 75602, 75692, 75661, 75657, 75630, 75683, 75640, 75651, 75670, 75672, 75604, 75691, 75692, 75695) while allowing for minor zip code errors.\n4. Analysis of uniform and facility services opportunities, heavily prioritizing rental programs or standard lease options over direct purchase due to recurring revenue benefits.\n5. Recent news, key initiatives, brand logos, colors, competitors, and industry market conditions.\n\nFormat the final output string exactly starting with the header: \"UniFirst Prospect Research Template\""
         );
         let request_payload = json!({
             "model": "axim-default",
@@ -78,8 +77,8 @@ impl MicroProgram for ProspectResearch {
 
         let client = Client::new();
         let res = client
-            .post(format!("{}/api/v1/chat", base_url))
-            .header("Authorization", format!("Bearer {}", token))
+            .post(format!("{base_url}/api/v1/chat"))
+            .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/json")
             .json(&request_payload)
             .send()
@@ -101,8 +100,7 @@ impl MicroProgram for ProspectResearch {
 
         if report_text.is_empty() {
             report_text = format!(
-                "UniFirst Prospect Research Template\n\nFailed to generate report for {}.",
-                company_name
+                "UniFirst Prospect Research Template\n\nFailed to generate report for {company_name}."
             );
         }
 

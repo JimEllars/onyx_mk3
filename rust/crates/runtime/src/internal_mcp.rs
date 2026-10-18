@@ -172,6 +172,31 @@ pub fn register_internal_mcp_server(registry: &McpToolRegistry) {
             })),
         },
         McpToolInfo {
+            name: "run_contact_scraper".to_string(),
+            description: Some("Scrape and compile data to gather new individual and business contacts.".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "target_domain": {"type": "string"},
+                    "search_query": {"type": "string"}
+                },
+                "required": ["target_domain"]
+            })),
+        },
+        McpToolInfo {
+            name: "execute_partnership_contract".to_string(),
+            description: Some("Execute a partnership payment smart contract transaction.".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "lead_id": {"type": "string"},
+                    "partnership_tier": {"type": "string"},
+                    "payout_amount": {"type": "number"}
+                },
+                "required": ["lead_id", "partnership_tier", "payout_amount"]
+            })),
+        },
+        McpToolInfo {
             name: "execute_read_recent_emails".to_string(),
             description: Some("Read recent emails from AXiM Core inbox".to_string()),
             input_schema: Some(serde_json::json!({
