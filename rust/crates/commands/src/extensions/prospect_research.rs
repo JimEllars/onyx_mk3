@@ -52,7 +52,9 @@ impl MicroProgram for ProspectResearch {
             missing_fields.push("company_name".to_string());
         }
 
-        let company_name = req.company_name.unwrap_or_else(|| "Unknown Company".to_string());
+        let company_name = req
+            .company_name
+            .unwrap_or_else(|| "Unknown Company".to_string());
         let context = req.context.unwrap_or_else(|| "".to_string());
 
         let prompt = format!(
@@ -98,7 +100,10 @@ impl MicroProgram for ProspectResearch {
         }
 
         if report_text.is_empty() {
-             report_text = format!("UniFirst Prospect Research Template\n\nFailed to generate report for {}.", company_name);
+            report_text = format!(
+                "UniFirst Prospect Research Template\n\nFailed to generate report for {}.",
+                company_name
+            );
         }
 
         let status = if missing_fields.is_empty() {
