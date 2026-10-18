@@ -1033,7 +1033,7 @@ const onyx_handler: any = {
           fetchWithRetry(ingestUrl, {
             method: "POST",
             headers: addOnyxHeaders(
-              { "Content-Type": "application/json" },
+              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
               edgeStatus,
               cacheStatus,
               traceId,
@@ -1267,7 +1267,7 @@ const onyx_handler: any = {
         return new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401,
           headers: addOnyxHeaders(
-            { "Content-Type": "application/json" },
+              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
             edgeStatus, cacheStatus, traceId
           )
         });
@@ -1285,7 +1285,7 @@ const onyx_handler: any = {
         return new Response(JSON.stringify({ error: "Forbidden: Unrecognized executive identity." }), {
           status: 403,
           headers: addOnyxHeaders(
-            { "Content-Type": "application/json" },
+              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
             edgeStatus, cacheStatus, traceId
           )
         });
@@ -1307,7 +1307,7 @@ const onyx_handler: any = {
       return new Response(JSON.stringify({ status: "success", reply, timestamp: new Date().toISOString() }), {
         status: 200,
         headers: addOnyxHeaders(
-          { "Content-Type": "application/json" },
+              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
           edgeStatus, cacheStatus, traceId
         )
       });
@@ -1386,7 +1386,7 @@ const onyx_handler: any = {
           {
             method: "POST",
             headers: addOnyxHeaders(
-              { "Content-Type": "application/json" },
+              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
               edgeStatus,
               cacheStatus,
               traceId,
@@ -2012,7 +2012,7 @@ const onyx_handler: any = {
           fetchWithRetry(ingestUrl, {
             method: "POST",
             headers: addOnyxHeaders(
-              { "Content-Type": "application/json" },
+              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
               edgeStatus,
               cacheStatus,
               traceId,
@@ -2182,7 +2182,8 @@ const onyx_handler: any = {
           });
         }
 
-        const bodyStr = JSON.stringify(payload);
+        const taskPacket = { source_channel: "webhook_ingress", intent: "webhook_trigger", priority: "Standard", meta_data: payload, timestamp: new Date().toISOString() };
+        const bodyStr = JSON.stringify(taskPacket);
         return new Response(JSON.stringify({ status: "dispatched", task: payload.task, args: payload.args }), {
           status: 200,
           headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
@@ -2760,13 +2761,14 @@ const onyx_handler: any = {
         }
         const ingestUrl = env.CORE_INGEST_URL;
 
-        const bodyStr = JSON.stringify(payload);
+        const taskPacket = { source_channel: "webhook_ingress", intent: "webhook_trigger", priority: "Standard", meta_data: payload, timestamp: new Date().toISOString() };
+        const bodyStr = JSON.stringify(taskPacket);
         return await dispatchToCore(
           ingestUrl,
           {
             method: "POST",
             headers: addOnyxHeaders(
-              { "Content-Type": "application/json" },
+              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
               edgeStatus,
               cacheStatus,
               traceId,
