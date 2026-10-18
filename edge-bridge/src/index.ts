@@ -2602,6 +2602,62 @@ const onyx_handler: any = {
         }
       } else if (
         request.method === "POST" &&
+        url.pathname === "/api/v1/email-webhook"
+      ) {
+        // Extract the email body and subject, identify prospect research requests,
+        // and wrap the payload into a TaskPacket with intent: "generate_prospect_report"
+        const rawBody = await request.clone().text();
+        const payload = parsedBody || {};
+
+        let company_name = "Unknown";
+        if (payload.subject) {
+            const match = payload.subject.match(/Prospect Research:?\s*(.*)/i);
+            if (match && match[1]) {
+                company_name = match[1].trim();
+            }
+        }
+
+        let taskPacket = {
+           source_channel: "email_ingress",
+           intent: "generate_prospect_report",
+           priority: "Standard",
+           meta_data: {
+               company_name: company_name,
+               context: payload.body || payload.text || ""
+           },
+           timestamp: new Date().toISOString()
+        };
+
+        const bodyStr = JSON.stringify(taskPacket);
+
+        if (!env.CORE_INGEST_URL) {
+          return new Response(
+            JSON.stringify({ error: "Configuration error: CORE_INGEST_URL is missing" }),
+            { status: 500, headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId) }
+          );
+        }
+
+        return await dispatchToCore(
+          env.CORE_INGEST_URL,
+          {
+            method: "POST",
+            headers: addOnyxHeaders(
+              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
+              edgeStatus, cacheStatus, traceId
+            ),
+            body: bodyStr,
+          },
+          env,
+          ctx,
+          bodyStr,
+          "Email Webhook passed to Rust core.",
+          request,
+          edgeStatus,
+          cacheStatus,
+          traceId,
+        );
+      } else if (
+        request.method === "POST" &&
         url.pathname === "/api/v1/webhooks"
       ) {
         // Handle GitHub/WordPress webhooks

@@ -160,6 +160,18 @@ pub fn register_internal_mcp_server(registry: &McpToolRegistry) {
             })),
         },
         McpToolInfo {
+            name: "generate_prospect_report".to_string(),
+            description: Some("Generate a Prospect Research Report for a given company".to_string()),
+            input_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "company_name": {"type": "string"},
+                    "context": {"type": "string"}
+                },
+                "required": ["company_name"]
+            })),
+        },
+        McpToolInfo {
             name: "execute_read_recent_emails".to_string(),
             description: Some("Read recent emails from AXiM Core inbox".to_string()),
             input_schema: Some(serde_json::json!({

@@ -4,6 +4,7 @@ pub mod lead_scoring;
 pub mod nda;
 pub mod pay_stub;
 pub mod support_triage;
+pub mod prospect_research;
 
 use serde::{Deserialize, Serialize};
 
