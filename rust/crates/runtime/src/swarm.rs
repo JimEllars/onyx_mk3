@@ -239,8 +239,7 @@ impl SwarmWorker {
                                 .await;
                             }
                             Err(e) => {
-                                let axim_relay_payload =
-                                    serde_json::json!({ "output": e.to_string() });
+                                let axim_relay_payload = serde_json::json!({ "output": e.clone() });
                                 if let Ok(webhook_url) = std::env::var("AXIM_CORE_API_URL") {
                                     let client = reqwest::Client::new();
                                     match client
@@ -281,10 +280,7 @@ impl SwarmWorker {
                         }
                     }
                 } else {
-                    println!(
-                        "[Swarm Worker] Target tool {} not found in available tools",
-                        target_tool_name
-                    );
+                    println!("[Swarm Worker] Target tool {target_tool_name} not found in available tools");
                 }
             } else {
                 println!("[Swarm Worker] No specific tool requested. Bypassing tool execution.");
