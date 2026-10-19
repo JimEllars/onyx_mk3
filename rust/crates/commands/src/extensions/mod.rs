@@ -5,6 +5,8 @@ pub mod nda;
 pub mod pay_stub;
 pub mod prospect_research;
 pub mod support_triage;
+pub mod contact_scraper;
+pub mod smart_contract;
 
 use serde::{Deserialize, Serialize};
 
