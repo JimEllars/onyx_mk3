@@ -3,8 +3,8 @@ use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::micro_program::MicroProgram;
 use crate::actions::axim_core_relay::AximCoreRelayAction;
+use crate::micro_program::MicroProgram;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ContactScraperRequest {
@@ -52,23 +52,25 @@ impl MicroProgram for ContactScraper {
             missing_fields.push("target_domain".to_string());
         }
 
-        // Simulate scraping
+        let target = req.target_domain.unwrap_or_else(|| "Unknown".to_string());
         let scraped_data = json!({
-            "first_name": "Mock",
-            "last_name": "Contact",
-            "email": "mock@example.com",
-            "phone": "555-0199",
-            "company": req.target_domain.unwrap_or_else(|| "Unknown".to_string()),
+            "entity_type": "business",
+            "name": target,
+            "contact_info": {
+                "email": "mock@example.com",
+                "phone": "555-0199"
+            },
+            "industry": "Unknown",
             "source": "automated_scraper",
         });
 
-        // Format for sync_lead_enrich intent
+        // Generalized ecosystem broadcast payload
         let enrich_payload = json!({
-            "intent": "sync_lead_enrich",
-            "meta_data": scraped_data,
+            "intent": "ecosystem_entity_discovery",
+            "entity": scraped_data,
         });
 
-        // Pass to AximCoreRelayAction to route to Deskera CRM
+        // Pass to AximCoreRelayAction to route to the ecosystem (Deskera CRM routing removed)
         let forward_res = AximCoreRelayAction::execute(&enrich_payload).await;
 
         let status = if missing_fields.is_empty() {
