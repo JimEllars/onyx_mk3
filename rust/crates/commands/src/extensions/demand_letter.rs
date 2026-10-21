@@ -4,6 +4,9 @@ use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::actions::axim_core_relay::AximCoreRelayAction;
+use crate::actions::persistence_manager::PersistenceManager;
+
 #[allow(unused_imports)]
 use crate::micro_program::{MicroProgram, MicroProgramAsync};
 
@@ -125,10 +128,30 @@ impl MicroProgram for DemandLetterGenerator {
         }
 
         let res = DemandLetterResponse {
-            document_url,
-            status,
+            document_url: document_url.clone(),
+            status: status.clone(),
             warnings: crate::extensions::WarningMetadata { missing_fields },
         };
+
+        if status == "Generated" {
+            let payload_to_save = json!({
+                "type": "demand_letter",
+                "document_url": document_url,
+                "creditor_name": req.creditor_name,
+                "debtor_name": req.debtor_name,
+                "amount": req.amount,
+                "items": req.items,
+            });
+            let _ = PersistenceManager::dual_save(&payload_to_save).await;
+
+            let relay_payload = json!({
+                "generator": "demand_letter",
+                "status": status,
+                "document_url": document_url,
+                "parameters": req,
+            });
+            let _ = AximCoreRelayAction::execute(&relay_payload).await;
+        }
 
         Ok(json!(res))
     }

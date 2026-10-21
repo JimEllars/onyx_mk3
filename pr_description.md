@@ -1,24 +1,24 @@
-## Description
+## Sprint 7.9: Digital Products Persistence & AXiM Core Relay
 
-This PR advances the Action Layer of AXiM Onyx Mk3 by introducing key functionalities that promote operational autonomy, secure decentralized storage, and broader ecosystem integrations.
+### Description
+This PR integrates the `PersistenceManager` and `AximCoreRelayAction` into the digital product generator extensions (`demand_letter`, `nda`, and `transcription`) to ensure that generated assets are reliably persisted and tracked via the centralized AXiM Core API.
 
-### Key Changes
-1. **Google Drive & Internxt Dual-Storage Pipeline**
-   - Refactored `google_workspace.rs` and `internxt.rs` action files to use structured `reqwest::Client` setups for asynchronous HTTP request execution.
-   - Designed the Google Workspace client logic to integrate securely with the `jrellars@gmail.com` ecosystem.
-   - Introduced a new unified `PersistenceManager` (`persistence_manager.rs`) to ensure document saves to Google Drive are automatically and concurrently duplicated to the Internxt storage node, creating a resilient, decentralized backup structure.
+### Changes Made
+- **Demand Letter Generator (`rust/crates/commands/src/extensions/demand_letter.rs`)**:
+  - Imported `PersistenceManager` and `AximCoreRelayAction`.
+  - Added asynchronous call to `PersistenceManager::dual_save()` upon successful document generation.
+  - Added asynchronous call to `AximCoreRelayAction::execute()` to relay the generated status, URL, and input parameters to the AXiM core.
+- **NDA Generator (`rust/crates/commands/src/extensions/nda.rs`)**:
+  - Imported `PersistenceManager` and `AximCoreRelayAction`.
+  - Added asynchronous call to `PersistenceManager::dual_save()` upon successful document generation.
+  - Added asynchronous call to `AximCoreRelayAction::execute()` to relay the generated status, URL, and input parameters to the AXiM core.
+- **Transcription Generator (`rust/crates/commands/src/extensions/transcription.rs`)**:
+  - Imported `PersistenceManager` and `AximCoreRelayAction`.
+  - Added asynchronous call to `PersistenceManager::dual_save()` upon successful transcription.
+  - Added asynchronous call to `AximCoreRelayAction::execute()` to relay the generated status, transcript, and input parameters to the AXiM core.
 
-2. **Google Sheets Autonomous Logging (Deprecating Retable)**
-   - Replaced Retable with a new `GoogleSheetsAction` (`google_sheets.rs`) implementation that uses an asynchronous structured JSON payload push to Google Sheets API endpoints.
-   - Integrated the new Google Sheets logging mechanism into the newly built `AutonomousOrchestrator` (`autonomous_orchestrator.rs`), executing a transparent, real-time logging event (`transaction_id`, `score`, `timestamp`) into a designated sheet whenever an inbound lead's evaluation score exceeds 85.
-
-3. **Noota Audio-to-Text Scaffold**
-   - Added a new `NootaTranscription` micro-program to `transcription.rs` under the extensions module.
-   - Accepts audio payload links alongside language parameters and forwards them to the Noota API (https://noota.io) utilizing `reqwest` clients.
-   - Guarantees outputs adhere strictly to agnostic ecosystem parsing standards and can be seamlessly consumed and relayed back to the AXiM Core environment.
-
-### Verification Steps
-All new features have been fully wired into the AXiM Relay Router (`rust/crates/api/src/router.rs`) and pass strict Rust workspace compilation sequences:
-- `cargo fmt --all` completed with clean formatting.
-- `cargo clippy --workspace --all-targets -- -D warnings` ran cleanly.
-- `cargo test --workspace` validates integration integrity.
+### Future Development Plan (App Review)
+- **Centralized Billing / Stripe Integration**: The edge workers handling Stripe checkouts should be tightly coupled with the `AximCoreRelayAction` to securely emit post-payment artifacts to AXiM Core.
+- **Improved Transcription Mocks/API Integration**: The `transcription.rs` generator currently mocks Noota. This should be swapped to call real APIs once endpoints are fully provisioned, keeping costs managed and monitored.
+- **Idempotency Flow**: Better implement `idempotency_key` caching to instantly return URLs for assets generated previously without reprocessing templates.
+- **Agent Action Subsystem**: Integrate Claude Cowork or Google Spark to manually review formatting if a generated document fails template validations in the future.

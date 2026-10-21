@@ -4,6 +4,9 @@ use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::actions::axim_core_relay::AximCoreRelayAction;
+use crate::actions::persistence_manager::PersistenceManager;
+
 #[allow(unused_imports)]
 use crate::micro_program::{MicroProgram, MicroProgramAsync};
 
@@ -93,10 +96,29 @@ impl MicroProgram for NDAGenerator {
         };
 
         let res = NDAResponse {
-            document_url,
-            status,
+            document_url: document_url.clone(),
+            status: status.clone(),
             warnings: crate::extensions::WarningMetadata { missing_fields },
         };
+
+        if status == "Generated" {
+            let payload_to_save = json!({
+                "type": "nda",
+                "document_url": document_url,
+                "disclosing_party": req.disclosing_party,
+                "receiving_party": req.receiving_party,
+                "purpose": req.purpose,
+            });
+            let _ = PersistenceManager::dual_save(&payload_to_save).await;
+
+            let relay_payload = json!({
+                "generator": "nda",
+                "status": status,
+                "document_url": document_url,
+                "parameters": req,
+            });
+            let _ = AximCoreRelayAction::execute(&relay_payload).await;
+        }
 
         Ok(json!(res))
     }
