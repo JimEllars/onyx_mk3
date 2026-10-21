@@ -192,6 +192,64 @@ pub fn create_router(state: AppState, queues: runtime::dispatch::SwarmQueues) ->
             }
         }
 
+        struct NootaTranscriptionHandler;
+
+        impl runtime::dispatch::TaskHandler for NootaTranscriptionHandler {
+            fn check_idempotency<'a>(
+                &'a self,
+
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<Option<serde_json::Value>, String>>
+            {
+                Box::pin(async move {
+                    let p = commands::extensions::transcription::NootaTranscription;
+
+                    p.check_idempotency(payload).await
+                })
+            }
+
+            fn execute<'a>(
+                &'a self,
+
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<serde_json::Value, String>> {
+                Box::pin(async move {
+                    let p = commands::extensions::transcription::NootaTranscription;
+
+                    p.execute(payload).await
+                })
+            }
+        }
+
+        struct AutonomousOrchestratorHandler;
+
+        impl runtime::dispatch::TaskHandler for AutonomousOrchestratorHandler {
+            fn check_idempotency<'a>(
+                &'a self,
+
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<Option<serde_json::Value>, String>>
+            {
+                Box::pin(async move {
+                    let p = commands::extensions::autonomous_orchestrator::AutonomousOrchestrator;
+
+                    p.check_idempotency(payload).await
+                })
+            }
+
+            fn execute<'a>(
+                &'a self,
+
+                payload: &'a AximWebhookPayload,
+            ) -> runtime::dispatch::BoxFuture<'a, Result<serde_json::Value, String>> {
+                Box::pin(async move {
+                    let p = commands::extensions::autonomous_orchestrator::AutonomousOrchestrator;
+
+                    p.execute(payload).await
+                })
+            }
+        }
+
         struct BillingFallbackHandler;
         impl runtime::dispatch::TaskHandler for BillingFallbackHandler {
             fn check_idempotency<'a>(
@@ -216,22 +274,148 @@ pub fn create_router(state: AppState, queues: runtime::dispatch::SwarmQueues) ->
         }
 
         task_dispatcher.register(
+            commands::extensions::transcription::NootaTranscription
+                .signature()
+                .to_string(),
+            Box::new(NootaTranscriptionHandler),
+        );
+
+        task_dispatcher.register(
+            commands::extensions::autonomous_orchestrator::AutonomousOrchestrator
+                .signature()
+                .to_string(),
+            Box::new(AutonomousOrchestratorHandler),
+        );
+
+        task_dispatcher.register(
+            commands::extensions::transcription::NootaTranscription
+                .signature()
+                .to_string(),
+            Box::new(NootaTranscriptionHandler),
+        );
+
+        task_dispatcher.register(
             PredictiveLeadScoring.signature().to_string(),
             Box::new(LeadScoringHandler),
         );
         task_dispatcher.register(
+            commands::extensions::transcription::NootaTranscription
+                .signature()
+                .to_string(),
+            Box::new(NootaTranscriptionHandler),
+        );
+
+        task_dispatcher.register(
+            commands::extensions::autonomous_orchestrator::AutonomousOrchestrator
+                .signature()
+                .to_string(),
+            Box::new(AutonomousOrchestratorHandler),
+        );
+
+        task_dispatcher.register(
+            commands::extensions::transcription::NootaTranscription
+                .signature()
+                .to_string(),
+            Box::new(NootaTranscriptionHandler),
+        );
+
+        task_dispatcher.register(
             DemandLetterGenerator.signature().to_string(),
             Box::new(DemandLetterHandler),
         );
+        task_dispatcher.register(
+            commands::extensions::transcription::NootaTranscription
+                .signature()
+                .to_string(),
+            Box::new(NootaTranscriptionHandler),
+        );
+
+        task_dispatcher.register(
+            commands::extensions::autonomous_orchestrator::AutonomousOrchestrator
+                .signature()
+                .to_string(),
+            Box::new(AutonomousOrchestratorHandler),
+        );
+
+        task_dispatcher.register(
+            commands::extensions::transcription::NootaTranscription
+                .signature()
+                .to_string(),
+            Box::new(NootaTranscriptionHandler),
+        );
+
         task_dispatcher.register(NDAGenerator.signature().to_string(), Box::new(NdaHandler));
+        task_dispatcher.register(
+            commands::extensions::transcription::NootaTranscription
+                .signature()
+                .to_string(),
+            Box::new(NootaTranscriptionHandler),
+        );
+
+        task_dispatcher.register(
+            commands::extensions::autonomous_orchestrator::AutonomousOrchestrator
+                .signature()
+                .to_string(),
+            Box::new(AutonomousOrchestratorHandler),
+        );
+
+        task_dispatcher.register(
+            commands::extensions::transcription::NootaTranscription
+                .signature()
+                .to_string(),
+            Box::new(NootaTranscriptionHandler),
+        );
+
         task_dispatcher.register(
             PayStubGenerator.signature().to_string(),
             Box::new(PayStubHandler),
         );
         task_dispatcher.register(
+            commands::extensions::transcription::NootaTranscription
+                .signature()
+                .to_string(),
+            Box::new(NootaTranscriptionHandler),
+        );
+
+        task_dispatcher.register(
+            commands::extensions::autonomous_orchestrator::AutonomousOrchestrator
+                .signature()
+                .to_string(),
+            Box::new(AutonomousOrchestratorHandler),
+        );
+
+        task_dispatcher.register(
+            commands::extensions::transcription::NootaTranscription
+                .signature()
+                .to_string(),
+            Box::new(NootaTranscriptionHandler),
+        );
+
+        task_dispatcher.register(
             SupportTriage.signature().to_string(),
             Box::new(SupportTriageHandler),
         );
+        task_dispatcher.register(
+            commands::extensions::transcription::NootaTranscription
+                .signature()
+                .to_string(),
+            Box::new(NootaTranscriptionHandler),
+        );
+
+        task_dispatcher.register(
+            commands::extensions::autonomous_orchestrator::AutonomousOrchestrator
+                .signature()
+                .to_string(),
+            Box::new(AutonomousOrchestratorHandler),
+        );
+
+        task_dispatcher.register(
+            commands::extensions::transcription::NootaTranscription
+                .signature()
+                .to_string(),
+            Box::new(NootaTranscriptionHandler),
+        );
+
         task_dispatcher.register(
             commands::extensions::billing_fallback::BillingFallback
                 .signature()
@@ -249,10 +433,9 @@ pub fn create_router(state: AppState, queues: runtime::dispatch::SwarmQueues) ->
                 // As a placeholder routing logic: If intent is "generate_nda" or "generate_demand_letter"
                 if let Some(intent) = val.get("intent").and_then(|i| i.as_str()) {
                     if intent == "generate_nda" || intent == "generate_demand_letter" {
-                        let _ = commands::actions::google_workspace::GoogleWorkspaceAction::save_to_drive(&val).await;
+                        let _ = commands::actions::persistence_manager::PersistenceManager::dual_save(&val).await;
                         let _ = commands::actions::google_workspace::GoogleWorkspaceAction::send_via_gmail(&val).await;
-                        let _ = commands::actions::retable::RetableAction::log_record(&val).await;
-                        let _ = commands::actions::internxt::InternxtAction::secure_backup(&val).await;
+                        let _ = commands::actions::google_sheets::GoogleSheetsAction::log_record(&val).await;
                     }
                 }
             },
