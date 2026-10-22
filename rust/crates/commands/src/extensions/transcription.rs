@@ -3,6 +3,9 @@ use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::actions::axim_core_relay::AximCoreRelayAction;
+use crate::actions::persistence_manager::PersistenceManager;
+
 use crate::micro_program::MicroProgram;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -89,10 +92,28 @@ impl MicroProgram for NootaTranscription {
         };
 
         let res = TranscriptionResponse {
-            status,
-            transcript,
+            status: status.clone(),
+            transcript: transcript.clone(),
             warnings: crate::extensions::WarningMetadata { missing_fields },
         };
+
+        if status == "Completed" {
+            let payload_to_save = json!({
+                "type": "transcription",
+                "transcript": transcript,
+                "audio_url": req.audio_url,
+                "language": req.language,
+            });
+            let _ = PersistenceManager::dual_save(&payload_to_save).await;
+
+            let relay_payload = json!({
+                "generator": "transcription",
+                "status": status,
+                "transcript": transcript,
+                "parameters": req,
+            });
+            let _ = AximCoreRelayAction::execute(&relay_payload).await;
+        }
 
         Ok(json!(res))
     }
