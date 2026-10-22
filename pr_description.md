@@ -1,24 +1,20 @@
-## Sprint 7.9: Digital Products Persistence & AXiM Core Relay
+## Description
 
-### Description
-This PR integrates the `PersistenceManager` and `AximCoreRelayAction` into the digital product generator extensions (`demand_letter`, `nda`, and `transcription`) to ensure that generated assets are reliably persisted and tracked via the centralized AXiM Core API.
+This Pull Request addresses Sprint 7.9 objectives: Digital Products Persistence & AXiM Core Relay.
+
+It modifies the internal digital product generators (Demand Letter, NDA, and Transcription) to ensure generated assets are durably saved and their completion state is relayed back to the AXiM Core API.
 
 ### Changes Made
-- **Demand Letter Generator (`rust/crates/commands/src/extensions/demand_letter.rs`)**:
-  - Imported `PersistenceManager` and `AximCoreRelayAction`.
-  - Added asynchronous call to `PersistenceManager::dual_save()` upon successful document generation.
-  - Added asynchronous call to `AximCoreRelayAction::execute()` to relay the generated status, URL, and input parameters to the AXiM core.
-- **NDA Generator (`rust/crates/commands/src/extensions/nda.rs`)**:
-  - Imported `PersistenceManager` and `AximCoreRelayAction`.
-  - Added asynchronous call to `PersistenceManager::dual_save()` upon successful document generation.
-  - Added asynchronous call to `AximCoreRelayAction::execute()` to relay the generated status, URL, and input parameters to the AXiM core.
-- **Transcription Generator (`rust/crates/commands/src/extensions/transcription.rs`)**:
-  - Imported `PersistenceManager` and `AximCoreRelayAction`.
-  - Added asynchronous call to `PersistenceManager::dual_save()` upon successful transcription.
-  - Added asynchronous call to `AximCoreRelayAction::execute()` to relay the generated status, transcript, and input parameters to the AXiM core.
 
-### Future Development Plan (App Review)
-- **Centralized Billing / Stripe Integration**: The edge workers handling Stripe checkouts should be tightly coupled with the `AximCoreRelayAction` to securely emit post-payment artifacts to AXiM Core.
-- **Improved Transcription Mocks/API Integration**: The `transcription.rs` generator currently mocks Noota. This should be swapped to call real APIs once endpoints are fully provisioned, keeping costs managed and monitored.
-- **Idempotency Flow**: Better implement `idempotency_key` caching to instantly return URLs for assets generated previously without reprocessing templates.
-- **Agent Action Subsystem**: Integrate Claude Cowork or Google Spark to manually review formatting if a generated document fails template validations in the future.
+- **Persistence Integration**:
+  - Imported `crate::actions::persistence_manager::PersistenceManager` into `demand_letter.rs`, `nda.rs`, and `transcription.rs`.
+  - Added an asynchronous invocation of `PersistenceManager::dual_save(&payload_to_save)` when documents or payloads are successfully generated (`status == "Generated"` or `"Completed"`). This ensures mock documents/JSON are concurrently backed up to Google Drive and Internxt before returning a final URL.
+- **AXiM Core Relay Integration**:
+  - Imported `crate::actions::axim_core_relay::AximCoreRelayAction` into the digital product generators.
+  - Assembled a specialized relay JSON payload post-generation.
+  - Implemented an asynchronous call to `AximCoreRelayAction::execute(&relay_payload)` to stream the successful payload parameters and output URLs back to the `AXIM_CORE_API_URL`.
+- **Testing & Verification**:
+  - Validated that `cargo fmt`, `cargo clippy`, and integration tests continue to pass with the new async pipeline additions.
+
+### Notes for Reviewers
+- The `PersistenceManager::dual_save` and `AximCoreRelayAction::execute` functions are designed to log failures rather than hard-panic the main execution flow, preserving the micro-app's availability to the user even if external relays temporarily degrade.
