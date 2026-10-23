@@ -160,6 +160,7 @@ pub struct ToolSpec {
     pub name: &'static str,
     pub description: &'static str,
     pub input_schema: Value,
+    pub annotations: Option<Value>,
     pub required_permission: PermissionMode,
 }
 
@@ -306,19 +307,35 @@ impl GlobalToolRegistry {
         let builtin = mvp_tool_specs()
             .into_iter()
             .filter(|spec| allowed_tools.is_none_or(|allowed| allowed.contains(spec.name)))
-            .map(|spec| ToolDefinition {
-                name: spec.name.to_string(),
-                description: Some(spec.description.to_string()),
-                input_schema: spec.input_schema,
+            .map(|spec| {
+                let annotations = Some(serde_json::json!({
+                    "readOnlyHint": spec.required_permission == PermissionMode::ReadOnly,
+                    "destructiveHint": spec.required_permission != PermissionMode::ReadOnly,
+                    "openWorldHint": true
+                }));
+                ToolDefinition {
+                    name: spec.name.to_string(),
+                    description: Some(spec.description.to_string()),
+                    input_schema: spec.input_schema.clone(),
+                    annotations,
+                }
             });
         let runtime = self
             .runtime_tools
             .iter()
             .filter(|tool| allowed_tools.is_none_or(|allowed| allowed.contains(tool.name.as_str())))
-            .map(|tool| ToolDefinition {
-                name: tool.name.clone(),
-                description: tool.description.clone(),
-                input_schema: tool.input_schema.clone(),
+            .map(|tool| {
+                let annotations = Some(serde_json::json!({
+                    "readOnlyHint": tool.required_permission == PermissionMode::ReadOnly,
+                    "destructiveHint": tool.required_permission != PermissionMode::ReadOnly,
+                    "openWorldHint": true
+                }));
+                ToolDefinition {
+                    name: tool.name.clone(),
+                    description: tool.description.clone(),
+                    input_schema: tool.input_schema.clone(),
+                    annotations,
+                }
             });
         let plugin = self
             .plugin_tools
@@ -327,10 +344,18 @@ impl GlobalToolRegistry {
                 allowed_tools
                     .is_none_or(|allowed| allowed.contains(tool.definition().name.as_str()))
             })
-            .map(|tool| ToolDefinition {
-                name: tool.definition().name.clone(),
-                description: tool.definition().description.clone(),
-                input_schema: tool.definition().input_schema.clone(),
+            .map(|tool| {
+                let annotations = Some(serde_json::json!({
+                    "readOnlyHint": false,
+                    "destructiveHint": true,
+                    "openWorldHint": true
+                }));
+                ToolDefinition {
+                    name: tool.definition().name.clone(),
+                    description: tool.definition().description.clone(),
+                    input_schema: tool.definition().input_schema.clone(),
+                    annotations,
+                }
             });
         builtin.chain(runtime).chain(plugin).collect()
     }
@@ -456,7 +481,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "required": ["subject", "severity", "message"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "execute_trigger_marketing_loop",
@@ -469,7 +494,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "required": ["topic"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "execute_reconcile_micro_app_revenue",
@@ -481,7 +506,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 },
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "execute_fetch_ecosystem_manifest",
@@ -491,7 +516,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "properties": {},
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "sync_payment_transaction",
@@ -507,7 +532,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "required": ["tx_id", "amount", "currency", "gateway"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "query_treasury_balance",
@@ -517,7 +542,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "properties": {},
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "publish_to_wordpress",
@@ -532,7 +557,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "required": ["title", "content", "status"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::Prompt,
+            annotations: None, required_permission: PermissionMode::Prompt,
         },
         ToolSpec {
             name: "update_wordpress_seo",
@@ -547,7 +572,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "required": ["post_id", "meta_title", "meta_description"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::Prompt,
+            annotations: None, required_permission: PermissionMode::Prompt,
         },
         ToolSpec {
             name: "purge_cloudflare_cache",
@@ -557,7 +582,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "properties": {},
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::Prompt,
+            annotations: None, required_permission: PermissionMode::Prompt,
         },
         ToolSpec {
             name: "get_cloudflare_metrics",
@@ -567,7 +592,7 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
                 "properties": {},
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
 ToolSpec {
             name: "ExecuteRemoteCommand",
@@ -581,7 +606,7 @@ ToolSpec {
                 "required": ["target_server", "command"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "IngestToKnowledgeBase",
@@ -596,7 +621,7 @@ ToolSpec {
                 "required": ["source_type", "uri"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "SpawnSubAgent",
@@ -611,7 +636,7 @@ ToolSpec {
                 "required": ["role", "task", "parent_worker_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "CheckSwarmStatus",
@@ -624,7 +649,7 @@ ToolSpec {
                 "required": ["parent_job_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "AuditFinancialMetrics",
@@ -637,7 +662,7 @@ ToolSpec {
                 "required": ["timeframe"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "invoke_axim_micro_app",
@@ -652,7 +677,7 @@ ToolSpec {
                 "required": ["app_target", "action", "payload"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::Prompt,
+            annotations: None, required_permission: PermissionMode::Prompt,
         },
 
         ToolSpec {
@@ -668,7 +693,7 @@ ToolSpec {
                 "required": ["agent_role", "message"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "bash",
@@ -689,7 +714,7 @@ ToolSpec {
                 "required": ["command"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "read_file",
@@ -704,7 +729,7 @@ ToolSpec {
                 "required": ["path"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "write_file",
@@ -718,7 +743,7 @@ ToolSpec {
                 "required": ["path", "content"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::WorkspaceWrite,
+            annotations: None, required_permission: PermissionMode::WorkspaceWrite,
         },
         ToolSpec {
             name: "edit_file",
@@ -734,7 +759,7 @@ ToolSpec {
                 "required": ["path", "old_string", "new_string"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::WorkspaceWrite,
+            annotations: None, required_permission: PermissionMode::WorkspaceWrite,
         },
         ToolSpec {
             name: "glob_search",
@@ -748,7 +773,7 @@ ToolSpec {
                 "required": ["pattern"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "fetch_post",
@@ -761,7 +786,7 @@ ToolSpec {
                 "required": ["post_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "update_post_content",
@@ -775,7 +800,7 @@ ToolSpec {
                 "required": ["post_id", "content"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::Prompt,
+            annotations: None, required_permission: PermissionMode::Prompt,
         },
         ToolSpec {
             name: "query_telemetry_logs",
@@ -789,7 +814,7 @@ ToolSpec {
                 "required": ["brand_id", "since_minutes"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "check_micro_app_transactions",
@@ -803,7 +828,7 @@ ToolSpec {
                 "required": ["app_name", "since_minutes"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
 
         ToolSpec {
@@ -818,7 +843,7 @@ ToolSpec {
                 "required": ["post_id", "helmet_payload"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::Prompt,
+            annotations: None, required_permission: PermissionMode::Prompt,
         },
         ToolSpec {
             name: "purge_zone_cache",
@@ -831,7 +856,7 @@ ToolSpec {
                 "required": ["zone_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::Prompt,
+            annotations: None, required_permission: PermissionMode::Prompt,
         },
         ToolSpec {
             name: "trigger_pages_deployment",
@@ -844,7 +869,7 @@ ToolSpec {
                 "required": ["project_name"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::Prompt,
+            annotations: None, required_permission: PermissionMode::Prompt,
         },
         ToolSpec {
             name: "create_branch",
@@ -859,7 +884,7 @@ ToolSpec {
                 "required": ["repo", "branch_name", "base_branch"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::WorkspaceWrite,
+            annotations: None, required_permission: PermissionMode::WorkspaceWrite,
         },
         ToolSpec {
             name: "create_pull_request",
@@ -876,7 +901,7 @@ ToolSpec {
                 "required": ["repo", "title", "head_branch", "base_branch", "body"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::Prompt,
+            annotations: None, required_permission: PermissionMode::Prompt,
         },
         ToolSpec {
             name: "grep_search",
@@ -902,7 +927,7 @@ ToolSpec {
                 "required": ["pattern"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "WebFetch",
@@ -917,7 +942,7 @@ ToolSpec {
                 "required": ["url", "prompt"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "WebSearch",
@@ -938,7 +963,7 @@ ToolSpec {
                 "required": ["query"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "TodoWrite",
@@ -966,7 +991,7 @@ ToolSpec {
                 "required": ["todos"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::WorkspaceWrite,
+            annotations: None, required_permission: PermissionMode::WorkspaceWrite,
         },
         ToolSpec {
             name: "Skill",
@@ -980,7 +1005,7 @@ ToolSpec {
                 "required": ["skill"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "Agent",
@@ -997,7 +1022,7 @@ ToolSpec {
                 "required": ["description", "prompt"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "ToolSearch",
@@ -1011,7 +1036,7 @@ ToolSpec {
                 "required": ["query"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "NotebookEdit",
@@ -1028,7 +1053,7 @@ ToolSpec {
                 "required": ["notebook_path"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::WorkspaceWrite,
+            annotations: None, required_permission: PermissionMode::WorkspaceWrite,
         },
         ToolSpec {
             name: "Sleep",
@@ -1041,7 +1066,7 @@ ToolSpec {
                 "required": ["duration_ms"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "SendUserMessage",
@@ -1062,7 +1087,7 @@ ToolSpec {
                 "required": ["message", "status"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "Config",
@@ -1078,7 +1103,7 @@ ToolSpec {
                 "required": ["setting"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::WorkspaceWrite,
+            annotations: None, required_permission: PermissionMode::WorkspaceWrite,
         },
         ToolSpec {
             name: "EnterPlanMode",
@@ -1088,7 +1113,7 @@ ToolSpec {
                 "properties": {},
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::WorkspaceWrite,
+            annotations: None, required_permission: PermissionMode::WorkspaceWrite,
         },
         ToolSpec {
             name: "ExitPlanMode",
@@ -1098,7 +1123,7 @@ ToolSpec {
                 "properties": {},
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::WorkspaceWrite,
+            annotations: None, required_permission: PermissionMode::WorkspaceWrite,
         },
         ToolSpec {
             name: "StructuredOutput",
@@ -1107,7 +1132,7 @@ ToolSpec {
                 "type": "object",
                 "additionalProperties": true
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "REPL",
@@ -1122,7 +1147,7 @@ ToolSpec {
                 "required": ["code", "language"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "PowerShell",
@@ -1138,7 +1163,7 @@ ToolSpec {
                 "required": ["command"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "AskUserQuestion",
@@ -1155,7 +1180,7 @@ ToolSpec {
                 "required": ["question"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "TaskCreate",
@@ -1169,7 +1194,7 @@ ToolSpec {
                 "required": ["prompt"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "RunTaskPacket",
@@ -1201,7 +1226,7 @@ ToolSpec {
                 ],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "TaskGet",
@@ -1214,7 +1239,7 @@ ToolSpec {
                 "required": ["task_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "TaskList",
@@ -1224,7 +1249,7 @@ ToolSpec {
                 "properties": {},
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "TaskStop",
@@ -1237,7 +1262,7 @@ ToolSpec {
                 "required": ["task_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "TaskUpdate",
@@ -1251,7 +1276,7 @@ ToolSpec {
                 "required": ["task_id", "message"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "TaskOutput",
@@ -1264,7 +1289,7 @@ ToolSpec {
                 "required": ["task_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "WorkerCreate",
@@ -1282,7 +1307,7 @@ ToolSpec {
                 "required": ["cwd"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "WorkerGet",
@@ -1295,7 +1320,7 @@ ToolSpec {
                 "required": ["worker_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "WorkerObserve",
@@ -1309,7 +1334,7 @@ ToolSpec {
                 "required": ["worker_id", "screen_text"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "WorkerResolveTrust",
@@ -1322,7 +1347,7 @@ ToolSpec {
                 "required": ["worker_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "WorkerAwaitReady",
@@ -1335,7 +1360,7 @@ ToolSpec {
                 "required": ["worker_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "WorkerSendPrompt",
@@ -1349,7 +1374,7 @@ ToolSpec {
                 "required": ["worker_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "WorkerRestart",
@@ -1362,7 +1387,7 @@ ToolSpec {
                 "required": ["worker_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "WorkerTerminate",
@@ -1375,7 +1400,7 @@ ToolSpec {
                 "required": ["worker_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "WorkerObserveCompletion",
@@ -1390,7 +1415,7 @@ ToolSpec {
                 "required": ["worker_id", "finish_reason", "tokens_output"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "TeamCreate",
@@ -1414,7 +1439,7 @@ ToolSpec {
                 "required": ["name", "tasks"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "TeamDelete",
@@ -1427,7 +1452,7 @@ ToolSpec {
                 "required": ["team_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "CronCreate",
@@ -1442,7 +1467,7 @@ ToolSpec {
                 "required": ["schedule", "prompt"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "CronDelete",
@@ -1455,7 +1480,7 @@ ToolSpec {
                 "required": ["cron_id"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "CronList",
@@ -1465,7 +1490,7 @@ ToolSpec {
                 "properties": {},
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "LSP",
@@ -1482,7 +1507,7 @@ ToolSpec {
                 "required": ["action"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "ListMcpResources",
@@ -1494,7 +1519,7 @@ ToolSpec {
                 },
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "ReadMcpResource",
@@ -1508,7 +1533,7 @@ ToolSpec {
                 "required": ["uri"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::ReadOnly,
+            annotations: None, required_permission: PermissionMode::ReadOnly,
         },
         ToolSpec {
             name: "McpAuth",
@@ -1521,7 +1546,7 @@ ToolSpec {
                 "required": ["server"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "RemoteTrigger",
@@ -1537,7 +1562,7 @@ ToolSpec {
                 "required": ["url"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "MCP",
@@ -1552,7 +1577,7 @@ ToolSpec {
                 "required": ["server", "tool"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
         ToolSpec {
             name: "TestingPermission",
@@ -1565,7 +1590,7 @@ ToolSpec {
                 "required": ["action"],
                 "additionalProperties": false
             }),
-            required_permission: PermissionMode::DangerFullAccess,
+            annotations: None, required_permission: PermissionMode::DangerFullAccess,
         },
     ]
 }
@@ -4599,10 +4624,18 @@ impl ApiClient for ProviderRuntimeClient {
     fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
         let tools = tool_specs_for_allowed_tools(Some(&self.allowed_tools))
             .into_iter()
-            .map(|spec| ToolDefinition {
-                name: spec.name.to_string(),
-                description: Some(spec.description.to_string()),
-                input_schema: spec.input_schema,
+            .map(|spec| {
+                let annotations = Some(serde_json::json!({
+                    "readOnlyHint": spec.required_permission == PermissionMode::ReadOnly,
+                    "destructiveHint": spec.required_permission != PermissionMode::ReadOnly,
+                    "openWorldHint": true
+                }));
+                ToolDefinition {
+                    name: spec.name.to_string(),
+                    description: Some(spec.description.to_string()),
+                    input_schema: spec.input_schema.clone(),
+                    annotations,
+                }
             })
             .collect::<Vec<_>>();
         let messages = convert_messages(&request.messages);

@@ -397,3 +397,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Prefer small, reviewable changes and keep generated bootstrap files aligned with actual repo workflows.
 - Keep shared defaults in `.claude.json`; reserve `.claude/settings.local.json` for machine-local overrides.
 - Do not overwrite existing `CLAUDE.md` content automatically; update it intentionally when repo workflows change.
+
+
+## Supabase Database Connection Pooler
+
+Ensure that all Supabase database connections use the transaction pooler port (`6543`) with `?pgbouncer=true` rather than the direct session port (`5432`). This prevents connection exhaustion under concurrent swarm bursts.

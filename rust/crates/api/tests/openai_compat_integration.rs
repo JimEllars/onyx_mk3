@@ -494,6 +494,7 @@ fn sample_request(stream: bool) -> MessageRequest {
                 "properties": {"city": {"type": "string"}},
                 "required": ["city"]
             }),
+            annotations: None,
         }]),
         tool_choice: Some(ToolChoice::Auto),
         stream,
