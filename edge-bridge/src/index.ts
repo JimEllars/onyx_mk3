@@ -903,6 +903,18 @@ const onyx_handler: any = {
     }
 
     const url = new URL(request.url);
+
+    const searchParams = url.search.toLowerCase();
+    const pathname = url.pathname.toLowerCase();
+
+    if (searchParams.includes("?-d") || searchParams.includes("auto_prepend_file") || searchParams.includes("auto_append_file") || searchParams.includes("allow_url_include") || searchParams.includes("disable_functions") || searchParams.includes("safe_mode")) {
+      return new Response(JSON.stringify({ error: "Forbidden: CGI argument injection detected" }), { status: 403, headers: { "Content-Type": "application/json" } });
+    }
+
+    if (pathname.includes("..") || pathname.includes("%2e%2e") || pathname.endsWith(".php") || pathname.includes("/wp-admin") || pathname.includes("/wp-login.php") || pathname.includes("xmlrpc.php")) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
     if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/v1/health")) {
       return new Response(JSON.stringify({ status: "healthy", upstream: "operational", active_sessions: "unknown", memory_usage: "unknown", service: "onyx-edge-bridge", version: "mk3-2.2", timestamp: new Date().toISOString() }), { status: 200, headers: { "Content-Type": "application/json", ...getCorsHeaders(request, env) } });
     }
@@ -2982,6 +2994,18 @@ export default {
     let response;
     const url = new URL(request.url);
 
+    const searchParams = url.search.toLowerCase();
+    const pathname = url.pathname.toLowerCase();
+
+    if (searchParams.includes("?-d") || searchParams.includes("auto_prepend_file") || searchParams.includes("auto_append_file") || searchParams.includes("allow_url_include") || searchParams.includes("disable_functions") || searchParams.includes("safe_mode")) {
+      return new Response(JSON.stringify({ error: "Forbidden: CGI argument injection detected" }), { status: 403, headers: { "Content-Type": "application/json" } });
+    }
+
+    if (pathname.includes("..") || pathname.includes("%2e%2e") || pathname.endsWith(".php") || pathname.includes("/wp-admin") || pathname.includes("/wp-login.php") || pathname.includes("xmlrpc.php")) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
+
     const isChatEndpoint = url.pathname === "/api/v1/chat" && request.method === "POST";
     let isFallbackToAi = false;
     let originalRequestBody: any;
@@ -3090,6 +3114,18 @@ export default {
       if (env.ONYX_DB) {
         const ip = request.headers.get("cf-connecting-ip") || "unknown";
         const url = new URL(request.url);
+
+    const searchParams = url.search.toLowerCase();
+    const pathname = url.pathname.toLowerCase();
+
+    if (searchParams.includes("?-d") || searchParams.includes("auto_prepend_file") || searchParams.includes("auto_append_file") || searchParams.includes("allow_url_include") || searchParams.includes("disable_functions") || searchParams.includes("safe_mode")) {
+      return new Response(JSON.stringify({ error: "Forbidden: CGI argument injection detected" }), { status: 403, headers: { "Content-Type": "application/json" } });
+    }
+
+    if (pathname.includes("..") || pathname.includes("%2e%2e") || pathname.endsWith(".php") || pathname.includes("/wp-admin") || pathname.includes("/wp-login.php") || pathname.includes("xmlrpc.php")) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
         ctx?.waitUntil?.(
           env.ONYX_DB.prepare(
             "INSERT INTO onyx_rate_limit_logs (id, ip_address, endpoint, user_id, blocked_at) VALUES (?, ?, ?, ?, ?)",

@@ -469,6 +469,80 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
     vec![
 
         ToolSpec {
+            name: "robot_create_project",
+            description: "Create a new AXiM Robotics Lab project.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" },
+                    "robot_class": { "type": "string", "enum": ["hexapod", "quadruped", "rover", "arm"] },
+                    "target_specs": { "type": "object" }
+                },
+                "required": ["name", "robot_class", "target_specs"],
+                "additionalProperties": false
+            }),
+            annotations: None, required_permission: PermissionMode::Prompt,
+        },
+        ToolSpec {
+            name: "robot_spawn_sim",
+            description: "Spawn a robot simulation.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "project_id": { "type": "string" },
+                    "scene_type": { "type": "string" },
+                    "duration_sec": { "type": "number" }
+                },
+                "required": ["project_id", "scene_type", "duration_sec"],
+                "additionalProperties": false
+            }),
+            annotations: None, required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "robot_evaluate_policy",
+            description: "Evaluate a robot policy.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "policy_id": { "type": "string" },
+                    "benchmark_suite": { "type": "string" }
+                },
+                "required": ["policy_id", "benchmark_suite"],
+                "additionalProperties": false
+            }),
+            annotations: None, required_permission: PermissionMode::ReadOnly,
+        },
+        ToolSpec {
+            name: "robot_deploy_ota",
+            description: "Deploy an OTA update to a robot.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "node_id": { "type": "string" },
+                    "policy_id": { "type": "string" }
+                },
+                "required": ["node_id", "policy_id"],
+                "additionalProperties": false
+            }),
+            annotations: None, required_permission: PermissionMode::Prompt,
+        },
+        ToolSpec {
+            name: "robot_emergency_stop",
+            description: "Trigger an emergency stop for a robot or fleet.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "node_id_or_fleet": { "type": "string" },
+                    "reason": { "type": "string" }
+                },
+                "required": ["node_id_or_fleet", "reason"],
+                "additionalProperties": false
+            }),
+            annotations: None, required_permission: PermissionMode::Prompt,
+        },
+
+
+        ToolSpec {
             name: "execute_escalate_to_admin",
             description: "Escalate an issue to the administrator via AXiM Core.",
             input_schema: json!({
