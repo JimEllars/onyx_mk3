@@ -884,6 +884,7 @@ mod tests {
                     "type": "object",
                     "properties": { "city": { "type": "string" } },
                 }),
+                annotations: None,
             }]),
             tool_choice: Some(ToolChoice::Auto),
             stream: true,
