@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use runtime::api_specs::webhook_payload::AximWebhookPayload;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::net::{IpAddr, ToSocketAddrs};
+use url::Url;
 
 use crate::actions::axim_core_relay::AximCoreRelayAction;
 use crate::micro_program::MicroProgram;
@@ -24,6 +26,15 @@ pub struct ContactScraperResponse {
 
 #[derive(Debug)]
 pub struct ContactScraper;
+
+impl ContactScraper {
+    fn is_protected_ip(ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(ipv4) => ipv4.is_loopback() || ipv4.is_private() || ipv4.is_link_local(),
+            IpAddr::V6(ipv6) => ipv6.is_loopback(),
+        }
+    }
+}
 
 #[async_trait]
 impl MicroProgram for ContactScraper {
@@ -53,6 +64,39 @@ impl MicroProgram for ContactScraper {
         }
 
         let target = req.target_domain.unwrap_or_else(|| "Unknown".to_string());
+
+        if target != "Unknown" {
+            let parsed_url = if target.starts_with("http") {
+                Url::parse(&target).map_err(|e| format!("Invalid URL: {e}"))?
+            } else {
+                Url::parse(&format!("https://{target}"))
+                    .map_err(|e| format!("Invalid URL: {e}"))?
+            };
+
+            if let Some(port) = parsed_url.port() {
+                if matches!(port, 6543 | 5432 | 8080 | 9000) {
+                    return Err(
+                        "SSRF_VIOLATION: Target resolves to protected internal network".to_string(),
+                    );
+                }
+            }
+
+            if let Some(host) = parsed_url.host_str() {
+                let addrs = format!("{}:{}", host, parsed_url.port().unwrap_or(443))
+                    .to_socket_addrs()
+                    .map_err(|e| format!("Failed to resolve host: {e}"))?;
+
+                for addr in addrs {
+                    if Self::is_protected_ip(addr.ip()) {
+                        return Err(
+                            "SSRF_VIOLATION: Target resolves to protected internal network"
+                                .to_string(),
+                        );
+                    }
+                }
+            }
+        }
+
         let scraped_data = json!({
             "entity_type": "business",
             "name": target,
