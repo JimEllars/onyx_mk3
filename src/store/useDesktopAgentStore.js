@@ -6,6 +6,7 @@ const useDesktopAgentStore = create(
     (set, get) => ({
       telemetryEvents: [],
       pendingHitlActions: [],
+      streamStatus: 'OFFLINE',
 
       // Throttle incoming agent_telemetry_stream events
       agent_telemetry_stream: (event) => {

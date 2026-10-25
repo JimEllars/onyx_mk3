@@ -68,26 +68,59 @@ export default function useAgentConnection(peerConnection) {
 
         if (!EDGE_BRIDGE_URL || !token) return;
 
-        const eventSource = new EventSource(`${EDGE_BRIDGE_URL}/events?token=${token}`);
+        const setStreamStatus = (streamStatus) => useDesktopAgentStore.setState({ streamStatus });
+        let eventSource = null;
+        let attempts = 0;
+        let timer = null;
+        let disposed = false;
 
-        eventSource.addEventListener('action_pending', (event) => {
-            try {
-                const payload = JSON.parse(event.data);
-                addHitlAction({
-                    id: payload.action_id,
-                    tool_name: payload.tool_name,
-                    risk_level: payload.risk_level,
-                    description: payload.description,
-                    params: payload.parameters,
-                    timestamp: payload.timestamp || Date.now()
-                });
-            } catch (e) {
-                console.error("Failed to parse action_pending event", e);
-            }
-        });
+        const connect = () => {
+            if (disposed) return;
+            setStreamStatus(attempts === 0 ? 'CONNECTING' : 'RECONNECTING');
+            eventSource = new EventSource(`${EDGE_BRIDGE_URL}/events?token=${token}`);
+
+            eventSource.onopen = () => {
+                attempts = 0;
+                setStreamStatus('ONLINE');
+            };
+
+            eventSource.onerror = () => {
+                // Close and reconnect manually so backoff applies to every failure.
+                eventSource.close();
+                if (disposed) return;
+                if (attempts >= maxRetries) {
+                    setStreamStatus('OFFLINE');
+                    return;
+                }
+                setStreamStatus('RECONNECTING');
+                const delay = Math.min(30000, 1000 * Math.pow(2, attempts)) + Math.random() * 500;
+                attempts += 1;
+                timer = setTimeout(connect, delay);
+            };
+
+            eventSource.addEventListener('action_pending', (event) => {
+                try {
+                    const payload = JSON.parse(event.data);
+                    addHitlAction({
+                        id: payload.action_id,
+                        tool_name: payload.tool_name,
+                        risk_level: payload.risk_level,
+                        description: payload.description,
+                        params: payload.parameters,
+                        timestamp: payload.timestamp || Date.now()
+                    });
+                } catch (e) {
+                    console.error("Failed to parse action_pending event", e);
+                }
+            });
+        };
+
+        connect();
 
         return () => {
-            eventSource.close();
+            disposed = true;
+            if (timer) clearTimeout(timer);
+            if (eventSource) eventSource.close();
         };
     }, [addHitlAction]);
 
