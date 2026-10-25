@@ -2181,6 +2181,44 @@ const onyx_handler: any = {
         }
       } else if (
         request.method === "POST" &&
+        url.pathname === "/api/v1/playbook/trigger"
+      ) {
+        const authError = await checkAuth(request, env, true);
+        if (authError) return authError;
+
+        const ALLOWED_PLAYBOOKS = ["support_triage", "sync_lead_enrich"];
+        const playbookBody: any = parsedBody || {};
+        const playbook = playbookBody.playbook;
+        const jsonHeaders = addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId);
+        if (typeof playbook !== "string" || !ALLOWED_PLAYBOOKS.includes(playbook)) {
+          return new Response(JSON.stringify({ error: "Unknown playbook", allowed: ALLOWED_PLAYBOOKS }), { status: 400, headers: jsonHeaders });
+        }
+        if (!env.CORE_INGEST_URL) {
+          return new Response(JSON.stringify({ error: "CORE_INGEST_URL is not configured" }), { status: 503, headers: jsonHeaders });
+        }
+
+        const triggerEndpoint = `${new URL(env.CORE_INGEST_URL).origin}/api/v1/tasks/execute`;
+        try {
+          const coreRes = await fetch(triggerEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${env.AXIM_ONYX_SECRET || ""}`,
+              "X-Onyx-Trace-Id": traceId || "unknown"
+            },
+            body: JSON.stringify({
+              source_channel: "action_console",
+              intent: playbook,
+              meta_data: playbookBody.params && typeof playbookBody.params === "object" ? playbookBody.params : {},
+              timestamp: new Date().toISOString()
+            }),
+          });
+          return new Response(await coreRes.text(), { status: coreRes.status, headers: jsonHeaders });
+        } catch (err: any) {
+          return new Response(JSON.stringify({ error: "Core failure", details: err.message }), { status: 502, headers: jsonHeaders });
+        }
+      } else if (
+        request.method === "POST" &&
         url.pathname === "/api/v1/commands/dispatch"
       ) {
       const rawBody = await request.clone().text();
@@ -2201,7 +2239,34 @@ const onyx_handler: any = {
         }
 
         const taskPacket = { source_channel: "webhook_ingress", intent: "webhook_trigger", priority: "Standard", meta_data: payload, timestamp: new Date().toISOString() };
-        const bodyStr = JSON.stringify(taskPacket);
+        if (!env.CORE_INGEST_URL) {
+          return new Response(JSON.stringify({ error: "CORE_INGEST_URL is not configured" }), {
+            status: 503,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        }
+        try {
+          const dispatchRes = await fetch(`${new URL(env.CORE_INGEST_URL).origin}/api/v1/tasks/execute`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${env.AXIM_ONYX_SECRET || ""}`,
+              "X-Onyx-Trace-Id": traceId || "unknown"
+            },
+            body: JSON.stringify(taskPacket),
+          });
+          if (!dispatchRes.ok) {
+            return new Response(JSON.stringify({ error: "Core rejected dispatch", status: dispatchRes.status }), {
+              status: 502,
+              headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+            });
+          }
+        } catch (err: any) {
+          return new Response(JSON.stringify({ error: "Core failure", details: err.message }), {
+            status: 502,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        }
         return new Response(JSON.stringify({ status: "dispatched", task: payload.task, args: payload.args }), {
           status: 200,
           headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)

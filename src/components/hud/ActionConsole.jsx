@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import useAgentConnection from '../../hooks/useAgentConnection';
 import useDesktopAgentStore from '../../store/useDesktopAgentStore';
+import PlaybookTrigger from './PlaybookTrigger';
 
 export default function ActionConsole({ peerConnection }) {
     const { status } = useAgentConnection(peerConnection);
@@ -36,13 +37,19 @@ export default function ActionConsole({ peerConnection }) {
             const recentEvents = telemetryEvents ? telemetryEvents.slice(-20) : [];
             const errorCount = recentEvents.filter(e => e.status === 'error' || e.level === 'error').length;
             const errorRateCalc = recentEvents.length > 0 ? Math.round((errorCount / recentEvents.length) * 100) : 0;
-            const loadTime = Math.floor(Math.random() * 40) + 15; // Simulated edge latency
 
-            setQueueTelemetry({
-                loadTimeMs: loadTime,
-                errorRate: errorRateCalc,
-                routingEfficiency: Math.max(90, 100 - errorRateCalc - Math.floor(loadTime / 10))
-            });
+            const apiUrl = import.meta.env.VITE_ONYX_WORKER_URL || '';
+            const started = performance.now();
+            fetch(`${apiUrl}/api/v1/telemetry/health`)
+                .then((res) => {
+                    const loadTime = Math.round(performance.now() - started);
+                    setQueueTelemetry({
+                        loadTimeMs: loadTime,
+                        errorRate: errorRateCalc,
+                        routingEfficiency: res.ok ? Math.max(0, 100 - errorRateCalc) : 0
+                    });
+                })
+                .catch(() => setQueueTelemetry((prev) => ({ ...prev, errorRate: errorRateCalc, routingEfficiency: 0 })));
 
         }, 5000); // check every 5 seconds
 
@@ -221,6 +228,8 @@ export default function ActionConsole({ peerConnection }) {
                     </ul>
                 )}
             </div>
+
+            <PlaybookTrigger />
 
             <style jsx="true">{`
                 .custom-scrollbar::-webkit-scrollbar {

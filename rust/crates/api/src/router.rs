@@ -1404,7 +1404,7 @@ pub async fn handle_telemetry_health() -> impl IntoResponse {
         axum::Json(serde_json::json!({
             "edge_heartbeat_intercepts": edge_heartbeat,
             "daily_cron_runs": daily_cron,
-            "cache_hit_rate": 98.5,
+            "cache_hit_rate": null,
             "status": "healthy"
         })),
     )
@@ -1413,8 +1413,16 @@ pub async fn handle_telemetry_health() -> impl IntoResponse {
 
 #[axum::debug_handler]
 pub async fn handle_daily_cron(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    let cron_secret =
-        std::env::var("CRON_SECRET_KEY").unwrap_or_else(|_| "default_cron_secret".to_string());
+    let cron_secret = match std::env::var("CRON_SECRET_KEY") {
+        Ok(s) if !s.trim().is_empty() => s,
+        _ => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                axum::Json(json!({"error": "CRON_SECRET_KEY is not configured"})),
+            )
+                .into_response();
+        }
+    };
 
     let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
     let expected_token = format!("Bearer {cron_secret}");
