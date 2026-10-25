@@ -187,8 +187,10 @@ use sha2::Sha256;
 type HmacSha256 = Hmac<Sha256>;
 
 fn sign_payload(payload: &serde_json::Value, secret: &str) -> Result<String, String> {
-    let payload_str = serde_json::to_string(payload).map_err(|e| format!("Failed to serialize payload: {e}"))?;
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).map_err(|e| format!("Invalid key length: {e}"))?;
+    let payload_str =
+        serde_json::to_string(payload).map_err(|e| format!("Failed to serialize payload: {e}"))?;
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|e| format!("Invalid key length: {e}"))?;
     mac.update(payload_str.as_bytes());
     let result = mac.finalize().into_bytes();
     Ok(hex::encode(result))
@@ -211,7 +213,8 @@ pub struct RobotCreateProjectOutput {
 pub async fn execute_robot_create_project(
     input: RobotCreateProjectInput,
 ) -> Result<RobotCreateProjectOutput, String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
@@ -242,7 +245,9 @@ pub async fn execute_robot_create_project(
         let json: serde_json::Value = res.json().await.unwrap_or_default();
         Ok(RobotCreateProjectOutput {
             success: true,
-            project_id: json["project_id"].as_str().map(std::string::ToString::to_string),
+            project_id: json["project_id"]
+                .as_str()
+                .map(std::string::ToString::to_string),
             error: None,
         })
     } else {
@@ -267,7 +272,8 @@ pub struct RobotSpawnSimOutput {
 pub async fn execute_robot_spawn_sim(
     input: RobotSpawnSimInput,
 ) -> Result<RobotSpawnSimOutput, String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
@@ -295,7 +301,9 @@ pub async fn execute_robot_spawn_sim(
         let json: serde_json::Value = res.json().await.unwrap_or_default();
         Ok(RobotSpawnSimOutput {
             success: true,
-            sim_id: json["sim_id"].as_str().map(std::string::ToString::to_string),
+            sim_id: json["sim_id"]
+                .as_str()
+                .map(std::string::ToString::to_string),
             error: None,
         })
     } else {
@@ -319,7 +327,8 @@ pub struct RobotEvaluatePolicyOutput {
 pub async fn execute_robot_evaluate_policy(
     input: RobotEvaluatePolicyInput,
 ) -> Result<RobotEvaluatePolicyOutput, String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
@@ -329,7 +338,10 @@ pub async fn execute_robot_evaluate_policy(
         .build()
         .map_err(|e| format!("Failed to build reqwest client: {e}"))?;
 
-    let url = format!("{}/api/v1/robotics/policies/{}/evaluate", axim_core_url, input.policy_id);
+    let url = format!(
+        "{}/api/v1/robotics/policies/{}/evaluate",
+        axim_core_url, input.policy_id
+    );
     let request = client
         .get(&url)
         .query(&[("benchmark_suite", &input.benchmark_suite)])
@@ -341,7 +353,9 @@ pub async fn execute_robot_evaluate_policy(
         let json: serde_json::Value = res.json().await.unwrap_or_default();
         Ok(RobotEvaluatePolicyOutput {
             success: true,
-            evaluation_id: json["evaluation_id"].as_str().map(std::string::ToString::to_string),
+            evaluation_id: json["evaluation_id"]
+                .as_str()
+                .map(std::string::ToString::to_string),
             error: None,
         })
     } else {
@@ -365,7 +379,8 @@ pub struct RobotDeployOtaOutput {
 pub async fn execute_robot_deploy_ota(
     input: RobotDeployOtaInput,
 ) -> Result<RobotDeployOtaOutput, String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
@@ -400,7 +415,9 @@ pub async fn execute_robot_deploy_ota(
         let json: serde_json::Value = res.json().await.unwrap_or_default();
         Ok(RobotDeployOtaOutput {
             success: true,
-            deployment_id: json["deployment_id"].as_str().map(std::string::ToString::to_string),
+            deployment_id: json["deployment_id"]
+                .as_str()
+                .map(std::string::ToString::to_string),
             error: None,
         })
     } else {
@@ -423,7 +440,8 @@ pub struct RobotEmergencyStopOutput {
 pub async fn execute_robot_emergency_stop(
     input: RobotEmergencyStopInput,
 ) -> Result<RobotEmergencyStopOutput, String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url =
+        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
