@@ -427,15 +427,12 @@ pub fn create_router(state: AppState, queues: runtime::dispatch::SwarmQueues) ->
             queues,
             std::sync::Arc::new(task_dispatcher),
             |val| async move {
-                // Send standard relay packet
-
-                // Determine routing logic based on objective/intent from payload if needed.
-                // As a placeholder routing logic: If intent is "generate_nda" or "generate_demand_letter"
+                // Document intents fan out to persistence, Gmail and Sheets.
                 if let Some(intent) = val.get("intent").and_then(|i| i.as_str()) {
                     if intent == "generate_nda" || intent == "generate_demand_letter" {
-                        let _ = commands::actions::persistence_manager::PersistenceManager::dual_save(&val).await;
-                        let _ = commands::actions::google_workspace::GoogleWorkspaceAction::send_via_gmail(&val).await;
-                        let _ = commands::actions::google_sheets::GoogleSheetsAction::log_record(&val).await;
+                        if let Err(e) = commands::actions::persistence_manager::PersistenceManager::dual_save(&val).await { eprintln!("swarm dual_save failed: {e}"); }
+                        if let Err(e) = commands::actions::google_workspace::GoogleWorkspaceAction::send_via_gmail(&val).await { eprintln!("swarm gmail send failed: {e}"); }
+                        if let Err(e) = commands::actions::google_sheets::GoogleSheetsAction::log_record(&val).await { eprintln!("swarm sheets log failed: {e}"); }
                     }
                 }
             },

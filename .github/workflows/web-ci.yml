@@ -1,0 +1,46 @@
+name: Web CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - src/**
+      - index.html
+      - package.json
+      - package-lock.json
+      - vite.config.js
+      - tailwind.config.js
+      - postcss.config.js
+      - edge-bridge/**
+      - .github/workflows/web-ci.yml
+  push:
+    branches:
+      - main
+    paths:
+      - src/**
+      - package.json
+      - edge-bridge/**
+
+concurrency:
+  group: web-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Build frontend
+        run: |
+          npm ci
+          npx vite build
+      - name: Typecheck and build edge-bridge
+        working-directory: edge-bridge
+        run: |
+          npm ci --legacy-peer-deps
+          npm run typecheck
+          npm run build

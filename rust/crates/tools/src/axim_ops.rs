@@ -1,6 +1,13 @@
 use crate::http_client::send_with_circuit_breaker;
 use serde::{Deserialize, Serialize};
 
+fn axim_core_url() -> Result<String, String> {
+    match std::env::var("AXIM_CORE_URL") {
+        Ok(url) if !url.trim().is_empty() => Ok(url.trim_end_matches('/').to_string()),
+        _ => Err("AXIM_CORE_URL is not configured".to_string()),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EscalateToAdminInput {
     pub subject: String,
@@ -16,8 +23,7 @@ pub struct EscalateToAdminOutput {
 pub async fn execute_escalate_to_admin(
     input: EscalateToAdminInput,
 ) -> Result<EscalateToAdminOutput, String> {
-    let axim_core_url =
-        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url = axim_core_url()?;
 
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
@@ -66,8 +72,7 @@ pub struct TriggerMarketingLoopOutput {
 pub async fn execute_trigger_marketing_loop(
     input: TriggerMarketingLoopInput,
 ) -> Result<TriggerMarketingLoopOutput, String> {
-    let axim_core_url =
-        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url = axim_core_url()?;
 
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
@@ -115,8 +120,7 @@ pub struct ReconcileMicroAppRevenueOutput {
 pub async fn execute_reconcile_micro_app_revenue(
     input: ReconcileMicroAppRevenueInput,
 ) -> Result<ReconcileMicroAppRevenueOutput, String> {
-    let axim_core_url =
-        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url = axim_core_url()?;
 
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
@@ -153,8 +157,7 @@ pub async fn execute_reconcile_micro_app_revenue(
 }
 
 pub async fn execute_fetch_ecosystem_manifest() -> Result<serde_json::Value, String> {
-    let axim_core_url =
-        std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url = axim_core_url()?;
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
@@ -211,7 +214,7 @@ pub struct RobotCreateProjectOutput {
 pub async fn execute_robot_create_project(
     input: RobotCreateProjectInput,
 ) -> Result<RobotCreateProjectOutput, String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url = axim_core_url()?;
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
@@ -267,7 +270,7 @@ pub struct RobotSpawnSimOutput {
 pub async fn execute_robot_spawn_sim(
     input: RobotSpawnSimInput,
 ) -> Result<RobotSpawnSimOutput, String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url = axim_core_url()?;
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
@@ -319,7 +322,7 @@ pub struct RobotEvaluatePolicyOutput {
 pub async fn execute_robot_evaluate_policy(
     input: RobotEvaluatePolicyInput,
 ) -> Result<RobotEvaluatePolicyOutput, String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url = axim_core_url()?;
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
@@ -365,7 +368,7 @@ pub struct RobotDeployOtaOutput {
 pub async fn execute_robot_deploy_ota(
     input: RobotDeployOtaInput,
 ) -> Result<RobotDeployOtaOutput, String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url = axim_core_url()?;
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;
@@ -423,7 +426,7 @@ pub struct RobotEmergencyStopOutput {
 pub async fn execute_robot_emergency_stop(
     input: RobotEmergencyStopInput,
 ) -> Result<RobotEmergencyStopOutput, String> {
-    let axim_core_url = std::env::var("AXIM_CORE_URL").unwrap_or_else(|_| "https://api.axim.us.com".to_string());
+    let axim_core_url = axim_core_url()?;
     let service_key = crate::axim_vault::fetch_vault_secret("AXIM_SERVICE_KEY")
         .await
         .map_err(|e| format!("Failed to fetch AXIM_SERVICE_KEY from Vault: {e}"))?;

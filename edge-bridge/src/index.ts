@@ -22,6 +22,9 @@ export interface Env extends __BaseEnv_Env {
   ONYX_EMERGENCY_SECRET?: string;
   CHAT_MODEL?: string;
   CRON_SECRET_KEY?: string;
+  PUBLIC_BASE_URL?: string;
+  THREADS_FEED_URL?: string;
+  THREADS_FEED_TOKEN?: string;
 }
 function parsePassportSession(request: Request): { role: string; [key: string]: any } {
   try {
@@ -635,6 +638,11 @@ const onyx_handler: any = {
       if (controller.cron === "0 12 * * *") {
         ctx?.waitUntil?.((async () => {
           if (!env.EMAILIT_API_KEY || !env.HITL_APPROVAL_KV) return;
+          if (!env.PUBLIC_BASE_URL) {
+            console.error("PUBLIC_BASE_URL is not set; skipping HITL digest email");
+            return;
+          }
+          const baseUrl = env.PUBLIC_BASE_URL.replace(/\/+$/, "");
 
           const pendingList = await env.HITL_APPROVAL_KV.list();
           let hitlHtml = "";
@@ -644,12 +652,11 @@ const onyx_handler: any = {
               try {
                 const parsed = JSON.parse(val);
                 if (parsed.status === 'pending') {
-                  const worker_domain = "api.axim.us.com"; // placeholder or use env var
                   hitlHtml += `
                   <div style="border: 1px solid #334155; padding: 15px; margin-bottom: 10px; border-radius: 8px;">
                     <p style="margin: 0 0 10px 0; font-size: 16px;"><strong>Action Required:</strong> ${parsed.description || 'System Proposal'}</p>
-                    <a href="https://${worker_domain}/api/v1/hitl/action?token=${key.name}&decision=approve" style="background: #10b981; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; margin-right: 10px;">Approve Action</a>
-                    <a href="https://${worker_domain}/api/v1/hitl/action?token=${key.name}&decision=reject" style="background: #ef4444; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; margin-right: 10px;">Reject Action</a>
+                    <a href="${baseUrl}/api/v1/hitl/action?token=${key.name}&decision=approve" style="background: #10b981; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; margin-right: 10px;">Approve Action</a>
+                    <a href="${baseUrl}/api/v1/hitl/action?token=${key.name}&decision=reject" style="background: #ef4444; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; margin-right: 10px;">Reject Action</a>
                     <a href="https://cockpit.axim.us.com/actions" style="background: #3b82f6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block;">Review in Cockpit</a>
                   </div>`;
                 }
@@ -737,25 +744,24 @@ const onyx_handler: any = {
       );
 
       // Pulse Sync: Fetch external social data and forward to Rust backend
-      const mockedThreadsPayload = {
-        source: "threads_api_stub",
-        type: "content_engine_daily",
-        posts: [
-          {
-            id: "post_1",
-            content: "Exploring the new AXiM Core update!",
-            timestamp: new Date().toISOString(),
-          },
-          {
-            id: "post_2",
-            content: "The future of automation is here.",
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      };
-
-      const payloadString = JSON.stringify(mockedThreadsPayload);
       const secret = env.GITHUB_WEBHOOK_SECRET;
+      if (!env.THREADS_FEED_URL || !secret) {
+        return;
+      }
+      const feedRes = await fetch(env.THREADS_FEED_URL, {
+        headers: env.THREADS_FEED_TOKEN
+          ? { Authorization: `Bearer ${env.THREADS_FEED_TOKEN}` }
+          : {},
+      });
+      if (!feedRes.ok) {
+        throw new Error(`Threads feed returned ${feedRes.status}`);
+      }
+      const feed = (await feedRes.json()) as { posts?: unknown[] };
+      const payloadString = JSON.stringify({
+        source: "threads_api",
+        type: "content_engine_daily",
+        posts: Array.isArray(feed.posts) ? feed.posts : [],
+      });
       const encoder = new TextEncoder();
       const key = await crypto.subtle.importKey(
         "raw",
