@@ -24,3 +24,6 @@ dev.pid
 
 # Git bundle archives
 *.bundle
+
+.claude.json
+pr_description.md
