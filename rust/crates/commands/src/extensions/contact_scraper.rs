@@ -69,8 +69,7 @@ impl MicroProgram for ContactScraper {
             let parsed_url = if target.starts_with("http") {
                 Url::parse(&target).map_err(|e| format!("Invalid URL: {e}"))?
             } else {
-                Url::parse(&format!("https://{target}"))
-                    .map_err(|e| format!("Invalid URL: {e}"))?
+                Url::parse(&format!("https://{target}")).map_err(|e| format!("Invalid URL: {e}"))?
             };
 
             if let Some(port) = parsed_url.port() {
