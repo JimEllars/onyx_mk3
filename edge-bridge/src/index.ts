@@ -24,9 +24,6 @@ export interface Env extends __BaseEnv_Env {
   CHAT_MODEL?: string;
   CRON_SECRET_KEY?: string;
   PUBLIC_BASE_URL?: string;
-  PASSPORT_JWT_ISSUER?: string;
-  PASSPORT_JWKS_URL?: string;
-  PASSPORT_JWT_AUDIENCE?: string;
   THREADS_FEED_URL?: string;
   THREADS_FEED_TOKEN?: string;
 }
