@@ -1,3 +1,4 @@
+import { verifyPassportJwt, isSuperAdmin, type PassportClaims } from "./passport";
 /**
  * Welcome to Cloudflare Workers!
  *
@@ -23,6 +24,9 @@ export interface Env extends __BaseEnv_Env {
   CHAT_MODEL?: string;
   CRON_SECRET_KEY?: string;
   PUBLIC_BASE_URL?: string;
+  PASSPORT_JWT_ISSUER?: string;
+  PASSPORT_JWKS_URL?: string;
+  PASSPORT_JWT_AUDIENCE?: string;
   THREADS_FEED_URL?: string;
   THREADS_FEED_TOKEN?: string;
 }
@@ -482,14 +486,17 @@ async function checkAuth(req: Request, env: Env, requireSuperUser: boolean = fal
   const onyxToken = `Bearer ${env.AXIM_ONYX_SECRET}`;
   const serviceKey = `Bearer ${env.AXIM_SERVICE_KEY}`;
 
-  // Passport JWT validation remains disabled until JWKS validation is configured.
-  const isJwt = false;
   const isInternalService = Boolean(env.AXIM_ONYX_SECRET) &&
     (equalSecrets(authHeader, onyxToken) || (
       Boolean(env.AXIM_SERVICE_KEY) && equalSecrets(authHeader, serviceKey)
     ));
 
-  if (!isInternalService) {
+  let passportClaims: PassportClaims | null = null;
+  if (!isInternalService && authHeader.startsWith("Bearer ")) {
+    passportClaims = await verifyPassportJwt(authHeader.slice(7), env);
+  }
+
+  if (!isInternalService && !passportClaims) {
     return new Response("Unauthorized", {
       status: 401,
       headers: getCorsHeaders(req),
@@ -497,24 +504,7 @@ async function checkAuth(req: Request, env: Env, requireSuperUser: boolean = fal
   }
 
   if (requireSuperUser) {
-    let isSuperUser = false;
-
-    if (isJwt) {
-      try {
-        const tokenParts = authHeader.split(' ')[1].split('.');
-        const payloadStr = atob(tokenParts[1].replace(/-/g, '+').replace(/_/g, '/'));
-        const payload = JSON.parse(payloadStr);
-        if (payload.email === 'james.ellars@axim.us.com' || payload.email === 'jrellars@gmail.com') {
-          isSuperUser = true;
-        }
-      } catch (e) {
-        console.error("error");
-      }
-    } else if (authHeader === onyxToken || authHeader === serviceKey) {
-      // Internal service keys are considered super-users for these routes
-      isSuperUser = true;
-    }
-
+    const isSuperUser = isInternalService || (passportClaims !== null && isSuperAdmin(passportClaims));
     if (!isSuperUser) {
       return new Response(JSON.stringify({
         type: "about:blank",
@@ -2506,6 +2496,68 @@ const onyx_handler: any = {
         } catch(e) {
           return new Response("Error processing request", { status: 500, headers: getCorsHeaders(request, env) });
         }
+      } else if (
+        request.method === "GET" &&
+        url.pathname === "/events"
+      ) {
+        // EventSource cannot set headers, so the passport token arrives as a query param.
+        const queryToken = url.searchParams.get("token");
+        const sseReq = new Request(request.url, {
+          method: "GET",
+          headers: { Origin: request.headers.get("Origin") || "", ...(queryToken ? { Authorization: `Bearer ${queryToken}` } : {}) },
+        });
+        const authError = await checkAuth(sseReq, env, true);
+        if (authError) return authError;
+        if (!env.HITL_APPROVAL_KV) {
+          return new Response("HITL store not configured", { status: 503, headers: getCorsHeaders(request, env) });
+        }
+
+        const kv = env.HITL_APPROVAL_KV;
+        const encoder = new TextEncoder();
+        const { readable, writable } = new TransformStream();
+        const writer = writable.getWriter();
+        const seen = new Set<string>();
+        const send = (chunk: string) => writer.write(encoder.encode(chunk));
+
+        ctx?.waitUntil?.((async () => {
+          try {
+            await send(": connected\n\n");
+            for (let i = 0; i < 12; i++) {
+              const list = await kv.list();
+              for (const key of list.keys) {
+                if (seen.has(key.name) || key.name.startsWith("action_decision:")) continue;
+                const raw = await kv.get(key.name);
+                if (!raw) continue;
+                let parsed: any;
+                try { parsed = JSON.parse(raw); } catch { continue; }
+                if (parsed.status !== "pending") continue;
+                seen.add(key.name);
+                await send(`event: action_pending\ndata: ${JSON.stringify({
+                  action_id: key.name,
+                  tool_name: parsed.tool_name,
+                  risk_level: parsed.risk_level,
+                  description: parsed.description,
+                  parameters: parsed.parameters ?? parsed.params,
+                  timestamp: parsed.timestamp,
+                })}\n\n`);
+              }
+              await send(": keepalive\n\n");
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+          } catch {
+            // client disconnected
+          } finally {
+            try { await writer.close(); } catch { /* already closed */ }
+          }
+        })());
+
+        return new Response(readable, {
+          headers: {
+            ...getCorsHeaders(request, env),
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+          },
+        });
       } else if (
         request.method === "GET" &&
         url.pathname === "/api/v1/onyx/swarm-state"

@@ -43,4 +43,5 @@ jobs:
         run: |
           npm ci --legacy-peer-deps
           npm run typecheck
+          npm test
           npm run build
