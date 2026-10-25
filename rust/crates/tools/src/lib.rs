@@ -1910,45 +1910,55 @@ fn execute_tool_with_enforcer(
         "RunTaskPacket" => from_value::<TaskPacket>(input).and_then(run_task_packet),
         "robot_create_project" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
-            let typed_input = from_value::<crate::axim_ops::RobotCreateProjectInput>(input).map_err(|e| e.to_string())?;
+            let typed_input = from_value::<crate::axim_ops::RobotCreateProjectInput>(input)
+                .map_err(|e| e.to_string())?;
             tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(crate::axim_ops::execute_robot_create_project(typed_input))
+                tokio::runtime::Handle::current()
+                    .block_on(crate::axim_ops::execute_robot_create_project(typed_input))
             })
             .map(|res| serde_json::to_string(&res).unwrap_or_default())
             .map_err(|e| e.to_string())
         }
         "robot_spawn_sim" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
-            let typed_input = from_value::<crate::axim_ops::RobotSpawnSimInput>(input).map_err(|e| e.to_string())?;
+            let typed_input = from_value::<crate::axim_ops::RobotSpawnSimInput>(input)
+                .map_err(|e| e.to_string())?;
             tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(crate::axim_ops::execute_robot_spawn_sim(typed_input))
+                tokio::runtime::Handle::current()
+                    .block_on(crate::axim_ops::execute_robot_spawn_sim(typed_input))
             })
             .map(|res| serde_json::to_string(&res).unwrap_or_default())
             .map_err(|e| e.to_string())
         }
         "robot_evaluate_policy" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
-            let typed_input = from_value::<crate::axim_ops::RobotEvaluatePolicyInput>(input).map_err(|e| e.to_string())?;
+            let typed_input = from_value::<crate::axim_ops::RobotEvaluatePolicyInput>(input)
+                .map_err(|e| e.to_string())?;
             tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(crate::axim_ops::execute_robot_evaluate_policy(typed_input))
+                tokio::runtime::Handle::current()
+                    .block_on(crate::axim_ops::execute_robot_evaluate_policy(typed_input))
             })
             .map(|res| serde_json::to_string(&res).unwrap_or_default())
             .map_err(|e| e.to_string())
         }
         "robot_deploy_ota" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
-            let typed_input = from_value::<crate::axim_ops::RobotDeployOtaInput>(input).map_err(|e| e.to_string())?;
+            let typed_input = from_value::<crate::axim_ops::RobotDeployOtaInput>(input)
+                .map_err(|e| e.to_string())?;
             tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(crate::axim_ops::execute_robot_deploy_ota(typed_input))
+                tokio::runtime::Handle::current()
+                    .block_on(crate::axim_ops::execute_robot_deploy_ota(typed_input))
             })
             .map(|res| serde_json::to_string(&res).unwrap_or_default())
             .map_err(|e| e.to_string())
         }
         "robot_emergency_stop" => {
             maybe_enforce_permission_check(enforcer, name, input)?;
-            let typed_input = from_value::<crate::axim_ops::RobotEmergencyStopInput>(input).map_err(|e| e.to_string())?;
+            let typed_input = from_value::<crate::axim_ops::RobotEmergencyStopInput>(input)
+                .map_err(|e| e.to_string())?;
             tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(crate::axim_ops::execute_robot_emergency_stop(typed_input))
+                tokio::runtime::Handle::current()
+                    .block_on(crate::axim_ops::execute_robot_emergency_stop(typed_input))
             })
             .map(|res| serde_json::to_string(&res).unwrap_or_default())
             .map_err(|e| e.to_string())
@@ -9664,7 +9674,8 @@ mod axim_ops_tests {
         // Ensure that mapping from_value doesn't panic and formats output.
         // We do not actually call execute_tool to avoid blocking in tests unless necessary,
         // but let's test arg parsing via from_value.
-        let result: Result<crate::axim_ops::RobotCreateProjectInput, _> = serde_json::from_value(input);
+        let result: Result<crate::axim_ops::RobotCreateProjectInput, _> =
+            serde_json::from_value(input);
         assert!(result.is_ok());
         let typed = result.unwrap();
         assert_eq!(typed.name, "Test Project");
@@ -9678,7 +9689,8 @@ mod axim_ops_tests {
             "reason": "Test"
         });
 
-        let result: Result<crate::axim_ops::RobotEmergencyStopInput, _> = serde_json::from_value(input);
+        let result: Result<crate::axim_ops::RobotEmergencyStopInput, _> =
+            serde_json::from_value(input);
         assert!(result.is_ok());
         let typed = result.unwrap();
         assert_eq!(typed.node_id_or_fleet, "fleet_alpha");

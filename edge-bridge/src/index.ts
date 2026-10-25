@@ -1,3 +1,4 @@
+import { verifyPassportJwt, isSuperAdmin, type PassportClaims } from "./passport";
 /**
  * Welcome to Cloudflare Workers!
  *
@@ -22,6 +23,9 @@ export interface Env extends __BaseEnv_Env {
   ONYX_EMERGENCY_SECRET?: string;
   CHAT_MODEL?: string;
   CRON_SECRET_KEY?: string;
+  PUBLIC_BASE_URL?: string;
+  THREADS_FEED_URL?: string;
+  THREADS_FEED_TOKEN?: string;
 }
 function parsePassportSession(request: Request): { role: string; [key: string]: any } {
   try {
@@ -479,14 +483,17 @@ async function checkAuth(req: Request, env: Env, requireSuperUser: boolean = fal
   const onyxToken = `Bearer ${env.AXIM_ONYX_SECRET}`;
   const serviceKey = `Bearer ${env.AXIM_SERVICE_KEY}`;
 
-  // Passport JWT validation remains disabled until JWKS validation is configured.
-  const isJwt = false;
   const isInternalService = Boolean(env.AXIM_ONYX_SECRET) &&
     (equalSecrets(authHeader, onyxToken) || (
       Boolean(env.AXIM_SERVICE_KEY) && equalSecrets(authHeader, serviceKey)
     ));
 
-  if (!isInternalService) {
+  let passportClaims: PassportClaims | null = null;
+  if (!isInternalService && authHeader.startsWith("Bearer ")) {
+    passportClaims = await verifyPassportJwt(authHeader.slice(7), env);
+  }
+
+  if (!isInternalService && !passportClaims) {
     return new Response("Unauthorized", {
       status: 401,
       headers: getCorsHeaders(req),
@@ -494,24 +501,7 @@ async function checkAuth(req: Request, env: Env, requireSuperUser: boolean = fal
   }
 
   if (requireSuperUser) {
-    let isSuperUser = false;
-
-    if (isJwt) {
-      try {
-        const tokenParts = authHeader.split(' ')[1].split('.');
-        const payloadStr = atob(tokenParts[1].replace(/-/g, '+').replace(/_/g, '/'));
-        const payload = JSON.parse(payloadStr);
-        if (payload.email === 'james.ellars@axim.us.com' || payload.email === 'jrellars@gmail.com') {
-          isSuperUser = true;
-        }
-      } catch (e) {
-        console.error("error");
-      }
-    } else if (authHeader === onyxToken || authHeader === serviceKey) {
-      // Internal service keys are considered super-users for these routes
-      isSuperUser = true;
-    }
-
+    const isSuperUser = isInternalService || (passportClaims !== null && isSuperAdmin(passportClaims));
     if (!isSuperUser) {
       return new Response(JSON.stringify({
         type: "about:blank",
@@ -635,6 +625,11 @@ const onyx_handler: any = {
       if (controller.cron === "0 12 * * *") {
         ctx?.waitUntil?.((async () => {
           if (!env.EMAILIT_API_KEY || !env.HITL_APPROVAL_KV) return;
+          if (!env.PUBLIC_BASE_URL) {
+            console.error("PUBLIC_BASE_URL is not set; skipping HITL digest email");
+            return;
+          }
+          const baseUrl = env.PUBLIC_BASE_URL.replace(/\/+$/, "");
 
           const pendingList = await env.HITL_APPROVAL_KV.list();
           let hitlHtml = "";
@@ -644,12 +639,11 @@ const onyx_handler: any = {
               try {
                 const parsed = JSON.parse(val);
                 if (parsed.status === 'pending') {
-                  const worker_domain = "api.axim.us.com"; // placeholder or use env var
                   hitlHtml += `
                   <div style="border: 1px solid #334155; padding: 15px; margin-bottom: 10px; border-radius: 8px;">
                     <p style="margin: 0 0 10px 0; font-size: 16px;"><strong>Action Required:</strong> ${parsed.description || 'System Proposal'}</p>
-                    <a href="https://${worker_domain}/api/v1/hitl/action?token=${key.name}&decision=approve" style="background: #10b981; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; margin-right: 10px;">Approve Action</a>
-                    <a href="https://${worker_domain}/api/v1/hitl/action?token=${key.name}&decision=reject" style="background: #ef4444; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; margin-right: 10px;">Reject Action</a>
+                    <a href="${baseUrl}/api/v1/hitl/action?token=${key.name}&decision=approve" style="background: #10b981; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; margin-right: 10px;">Approve Action</a>
+                    <a href="${baseUrl}/api/v1/hitl/action?token=${key.name}&decision=reject" style="background: #ef4444; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; margin-right: 10px;">Reject Action</a>
                     <a href="https://cockpit.axim.us.com/actions" style="background: #3b82f6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block;">Review in Cockpit</a>
                   </div>`;
                 }
@@ -737,25 +731,24 @@ const onyx_handler: any = {
       );
 
       // Pulse Sync: Fetch external social data and forward to Rust backend
-      const mockedThreadsPayload = {
-        source: "threads_api_stub",
-        type: "content_engine_daily",
-        posts: [
-          {
-            id: "post_1",
-            content: "Exploring the new AXiM Core update!",
-            timestamp: new Date().toISOString(),
-          },
-          {
-            id: "post_2",
-            content: "The future of automation is here.",
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      };
-
-      const payloadString = JSON.stringify(mockedThreadsPayload);
       const secret = env.GITHUB_WEBHOOK_SECRET;
+      if (!env.THREADS_FEED_URL || !secret) {
+        return;
+      }
+      const feedRes = await fetch(env.THREADS_FEED_URL, {
+        headers: env.THREADS_FEED_TOKEN
+          ? { Authorization: `Bearer ${env.THREADS_FEED_TOKEN}` }
+          : {},
+      });
+      if (!feedRes.ok) {
+        throw new Error(`Threads feed returned ${feedRes.status}`);
+      }
+      const feed = (await feedRes.json()) as { posts?: unknown[] };
+      const payloadString = JSON.stringify({
+        source: "threads_api",
+        type: "content_engine_daily",
+        posts: Array.isArray(feed.posts) ? feed.posts : [],
+      });
       const encoder = new TextEncoder();
       const key = await crypto.subtle.importKey(
         "raw",
@@ -2175,6 +2168,44 @@ const onyx_handler: any = {
         }
       } else if (
         request.method === "POST" &&
+        url.pathname === "/api/v1/playbook/trigger"
+      ) {
+        const authError = await checkAuth(request, env, true);
+        if (authError) return authError;
+
+        const ALLOWED_PLAYBOOKS = ["support_triage", "sync_lead_enrich"];
+        const playbookBody: any = parsedBody || {};
+        const playbook = playbookBody.playbook;
+        const jsonHeaders = addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId);
+        if (typeof playbook !== "string" || !ALLOWED_PLAYBOOKS.includes(playbook)) {
+          return new Response(JSON.stringify({ error: "Unknown playbook", allowed: ALLOWED_PLAYBOOKS }), { status: 400, headers: jsonHeaders });
+        }
+        if (!env.CORE_INGEST_URL) {
+          return new Response(JSON.stringify({ error: "CORE_INGEST_URL is not configured" }), { status: 503, headers: jsonHeaders });
+        }
+
+        const triggerEndpoint = `${new URL(env.CORE_INGEST_URL).origin}/api/v1/tasks/execute`;
+        try {
+          const coreRes = await fetch(triggerEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${env.AXIM_ONYX_SECRET || ""}`,
+              "X-Onyx-Trace-Id": traceId || "unknown"
+            },
+            body: JSON.stringify({
+              source_channel: "action_console",
+              intent: playbook,
+              meta_data: playbookBody.params && typeof playbookBody.params === "object" ? playbookBody.params : {},
+              timestamp: new Date().toISOString()
+            }),
+          });
+          return new Response(await coreRes.text(), { status: coreRes.status, headers: jsonHeaders });
+        } catch (err: any) {
+          return new Response(JSON.stringify({ error: "Core failure", details: err.message }), { status: 502, headers: jsonHeaders });
+        }
+      } else if (
+        request.method === "POST" &&
         url.pathname === "/api/v1/commands/dispatch"
       ) {
       const rawBody = await request.clone().text();
@@ -2195,7 +2226,34 @@ const onyx_handler: any = {
         }
 
         const taskPacket = { source_channel: "webhook_ingress", intent: "webhook_trigger", priority: "Standard", meta_data: payload, timestamp: new Date().toISOString() };
-        const bodyStr = JSON.stringify(taskPacket);
+        if (!env.CORE_INGEST_URL) {
+          return new Response(JSON.stringify({ error: "CORE_INGEST_URL is not configured" }), {
+            status: 503,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        }
+        try {
+          const dispatchRes = await fetch(`${new URL(env.CORE_INGEST_URL).origin}/api/v1/tasks/execute`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${env.AXIM_ONYX_SECRET || ""}`,
+              "X-Onyx-Trace-Id": traceId || "unknown"
+            },
+            body: JSON.stringify(taskPacket),
+          });
+          if (!dispatchRes.ok) {
+            return new Response(JSON.stringify({ error: "Core rejected dispatch", status: dispatchRes.status }), {
+              status: 502,
+              headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+            });
+          }
+        } catch (err: any) {
+          return new Response(JSON.stringify({ error: "Core failure", details: err.message }), {
+            status: 502,
+            headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
+          });
+        }
         return new Response(JSON.stringify({ status: "dispatched", task: payload.task, args: payload.args }), {
           status: 200,
           headers: addOnyxHeaders({ ...getCorsHeaders(request, env), "Content-Type": "application/json" }, edgeStatus, cacheStatus, traceId)
@@ -2435,6 +2493,68 @@ const onyx_handler: any = {
         } catch(e) {
           return new Response("Error processing request", { status: 500, headers: getCorsHeaders(request, env) });
         }
+      } else if (
+        request.method === "GET" &&
+        url.pathname === "/events"
+      ) {
+        // EventSource cannot set headers, so the passport token arrives as a query param.
+        const queryToken = url.searchParams.get("token");
+        const sseReq = new Request(request.url, {
+          method: "GET",
+          headers: { Origin: request.headers.get("Origin") || "", ...(queryToken ? { Authorization: `Bearer ${queryToken}` } : {}) },
+        });
+        const authError = await checkAuth(sseReq, env, true);
+        if (authError) return authError;
+        if (!env.HITL_APPROVAL_KV) {
+          return new Response("HITL store not configured", { status: 503, headers: getCorsHeaders(request, env) });
+        }
+
+        const kv = env.HITL_APPROVAL_KV;
+        const encoder = new TextEncoder();
+        const { readable, writable } = new TransformStream();
+        const writer = writable.getWriter();
+        const seen = new Set<string>();
+        const send = (chunk: string) => writer.write(encoder.encode(chunk));
+
+        ctx?.waitUntil?.((async () => {
+          try {
+            await send(": connected\n\n");
+            for (let i = 0; i < 12; i++) {
+              const list = await kv.list();
+              for (const key of list.keys) {
+                if (seen.has(key.name) || key.name.startsWith("action_decision:")) continue;
+                const raw = await kv.get(key.name);
+                if (!raw) continue;
+                let parsed: any;
+                try { parsed = JSON.parse(raw); } catch { continue; }
+                if (parsed.status !== "pending") continue;
+                seen.add(key.name);
+                await send(`event: action_pending\ndata: ${JSON.stringify({
+                  action_id: key.name,
+                  tool_name: parsed.tool_name,
+                  risk_level: parsed.risk_level,
+                  description: parsed.description,
+                  parameters: parsed.parameters ?? parsed.params,
+                  timestamp: parsed.timestamp,
+                })}\n\n`);
+              }
+              await send(": keepalive\n\n");
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+          } catch {
+            // client disconnected
+          } finally {
+            try { await writer.close(); } catch { /* already closed */ }
+          }
+        })());
+
+        return new Response(readable, {
+          headers: {
+            ...getCorsHeaders(request, env),
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+          },
+        });
       } else if (
         request.method === "GET" &&
         url.pathname === "/api/v1/onyx/swarm-state"

@@ -8,6 +8,7 @@ export default function SystemSidebar() {
     const activeVoiceTrunk = useDesktopAgentStore((state) => state.activeVoiceTrunk || 'DISCONNECTED');
     const agentMode = useDesktopAgentStore((state) => state.agentMode || 'STANDBY');
     const isSuperUser = useDesktopAgentStore((state) => state.isSuperUser || false);
+    const streamStatus = useDesktopAgentStore((state) => state.streamStatus);
     const swarmLock = useDesktopAgentStore((state) => state.swarmLock || 'unlocked');
 
     useEffect(() => {
@@ -151,6 +152,10 @@ export default function SystemSidebar() {
                 <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-slate-500 uppercase tracking-widest flex items-center gap-1">Swarm Lock <span className={`w-1.5 h-1.5 rounded-full ${swarmLock === 'unlocked' ? 'bg-emerald-500' : swarmLock === 'contention' ? 'bg-red-500' : 'bg-amber-500 animate-ping'} shadow-sm`}></span></span>
                     <span className={`text-[10px] font-bold tracking-wider ${swarmLock === 'unlocked' ? 'text-emerald-500' : swarmLock === 'contention' ? 'text-red-500' : 'text-amber-500'}`}>{swarmLock === 'unlocked' ? 'READY' : swarmLock === 'contention' ? 'CONTENTION' : 'LOCKED'}</span>
+                </div>
+                <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] text-slate-500 uppercase tracking-widest">Event Stream</span>
+                    <span className={`text-[10px] font-bold tracking-wider ${streamStatus === 'ONLINE' ? 'text-emerald-500' : streamStatus === 'OFFLINE' ? 'text-red-500' : 'text-amber-500'}`}>{streamStatus}</span>
                 </div>
                 <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-slate-500 uppercase tracking-widest">Auth Level</span>

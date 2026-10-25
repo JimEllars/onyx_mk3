@@ -427,15 +427,12 @@ pub fn create_router(state: AppState, queues: runtime::dispatch::SwarmQueues) ->
             queues,
             std::sync::Arc::new(task_dispatcher),
             |val| async move {
-                // Send standard relay packet
-
-                // Determine routing logic based on objective/intent from payload if needed.
-                // As a placeholder routing logic: If intent is "generate_nda" or "generate_demand_letter"
+                // Document intents fan out to persistence, Gmail and Sheets.
                 if let Some(intent) = val.get("intent").and_then(|i| i.as_str()) {
                     if intent == "generate_nda" || intent == "generate_demand_letter" {
-                        let _ = commands::actions::persistence_manager::PersistenceManager::dual_save(&val).await;
-                        let _ = commands::actions::google_workspace::GoogleWorkspaceAction::send_via_gmail(&val).await;
-                        let _ = commands::actions::google_sheets::GoogleSheetsAction::log_record(&val).await;
+                        if let Err(e) = commands::actions::persistence_manager::PersistenceManager::dual_save(&val).await { eprintln!("swarm dual_save failed: {e}"); }
+                        if let Err(e) = commands::actions::google_workspace::GoogleWorkspaceAction::send_via_gmail(&val).await { eprintln!("swarm gmail send failed: {e}"); }
+                        if let Err(e) = commands::actions::google_sheets::GoogleSheetsAction::log_record(&val).await { eprintln!("swarm sheets log failed: {e}"); }
                     }
                 }
             },
@@ -1407,7 +1404,7 @@ pub async fn handle_telemetry_health() -> impl IntoResponse {
         axum::Json(serde_json::json!({
             "edge_heartbeat_intercepts": edge_heartbeat,
             "daily_cron_runs": daily_cron,
-            "cache_hit_rate": 98.5,
+            "cache_hit_rate": null,
             "status": "healthy"
         })),
     )
@@ -1416,8 +1413,16 @@ pub async fn handle_telemetry_health() -> impl IntoResponse {
 
 #[axum::debug_handler]
 pub async fn handle_daily_cron(headers: axum::http::HeaderMap) -> impl IntoResponse {
-    let cron_secret =
-        std::env::var("CRON_SECRET_KEY").unwrap_or_else(|_| "default_cron_secret".to_string());
+    let cron_secret = match std::env::var("CRON_SECRET_KEY") {
+        Ok(s) if !s.trim().is_empty() => s,
+        _ => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                axum::Json(json!({"error": "CRON_SECRET_KEY is not configured"})),
+            )
+                .into_response();
+        }
+    };
 
     let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
     let expected_token = format!("Bearer {cron_secret}");

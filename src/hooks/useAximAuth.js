@@ -17,7 +17,13 @@ function parseJwt(token) {
     }
 }
 
-const AUTHORIZED_USERS = ['james.ellars@axim.us.com', 'jrellars@gmail.com'];
+const SUPER_ADMIN_ROLE = 'super-admin';
+
+function hasSuperAdminRole(token) {
+    const payload = parseJwt(token);
+    if (!payload || (payload.exp && payload.exp * 1000 <= Date.now())) return false;
+    return payload.app_metadata?.role === SUPER_ADMIN_ROLE;
+}
 
 function getCookie(name) {
     const value = `; ${document.cookie}`;
@@ -31,7 +37,9 @@ export function useAximAuth() {
 
   const validateToken = useCallback(async (jwtToken) => {
     if (!jwtToken) return false;
-    if (jwtToken === 'dev-token') return true;
+    if (import.meta.env.DEV && jwtToken === 'dev-token') return true;
+    // UI gating only; the edge worker re-verifies the signature and role on every call.
+    if (!hasSuperAdminRole(jwtToken)) return false;
 
     try {
       const response = await fetch('https://passport.axim.us.com/api/v1/auth/verify-token', {
@@ -40,18 +48,9 @@ export function useAximAuth() {
         }
       });
       if (!response.ok) return false;
-      const data = await response.json();
-
-      if (data && data.email && AUTHORIZED_USERS.includes(data.email)) {
-        return true;
-      }
-      return false;
+      return true;
     } catch (e) {
-      console.warn("Failed to contact passport, falling back to local decoding");
-      const payload = parseJwt(jwtToken);
-      if (payload && payload.email && AUTHORIZED_USERS.includes(payload.email)) {
-        return true;
-      }
+      console.warn('Failed to contact passport; denying access');
       return false;
     }
   }, []);
@@ -85,7 +84,7 @@ export function useAximAuth() {
           localStorage.removeItem('axim_passport_token');
           setToken(null);
           setIsAuthenticated(false);
-          setAuthError('User not in authorized whitelist or invalid token format.');
+          setAuthError('Not a super-admin or invalid token.');
           useDesktopAgentStore.setState({ role: "user", is_super_user: false, isSuperUser: false });
           window.location.href = 'https://passport.axim.us.com';
         }

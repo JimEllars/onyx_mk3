@@ -66,6 +66,9 @@ After deployment, invoke the CLI `doctor` command and the Worker health endpoint
 curl https://onyx-edge.axim.us.com/health
 ```
 
-Protected Worker routes accept only `Bearer` values matching `AXIM_ONYX_SECRET` or
-`AXIM_SERVICE_KEY`, plus route-specific verified HMAC signatures. Passport JWT
-support remains disabled until issuer, audience, and JWKS validation are configured.
+Protected Worker routes accept `Bearer` values matching `AXIM_ONYX_SECRET` or
+`AXIM_SERVICE_KEY`, or a Supabase passport JWT (RS256/ES256) verified against
+`PASSPORT_JWKS_URL`, `PASSPORT_JWT_ISSUER`, and `PASSPORT_JWT_AUDIENCE` (default
+`authenticated`), plus route-specific verified HMAC signatures. Super-user routes
+require `app_metadata.role` to be `super-admin` in the JWT (or an internal key).
+If the passport variables are unset, JWT auth is disabled.

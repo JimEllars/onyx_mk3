@@ -32,7 +32,10 @@
   "vars": {
     "CORE_INGEST_URL": "https://api.axim.us.com/v1/functions/telemetry-ingest",
     "ALLOWED_ORIGIN": "tauri://localhost",
-    "DEEPSEEK_MODEL": "deepseek-chat"
+    "DEEPSEEK_MODEL": "deepseek-chat",
+    "PASSPORT_JWT_ISSUER": "https://pvbcdndqjguzqeafhwhw.supabase.co/auth/v1",
+    "PASSPORT_JWKS_URL": "https://pvbcdndqjguzqeafhwhw.supabase.co/auth/v1/.well-known/jwks.json",
+    "PASSPORT_JWT_AUDIENCE": "authenticated"
   },
   "d1_databases": [
     {

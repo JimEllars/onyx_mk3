@@ -7,3 +7,11 @@ AXIM_INTERNAL_KEY=your_axim_internal_key_here
 CORE_INGEST_URL=https://api.axim.us.com/v1/functions/telemetry-ingest
 CHAT_MODEL=claude-3-5-sonnet-20241022
 ONYX_CLIENT_SECRET=your_onyx_client_secret_here
+
+PUBLIC_BASE_URL=
+THREADS_FEED_URL=
+THREADS_FEED_TOKEN=
+
+PASSPORT_JWT_ISSUER=
+PASSPORT_JWKS_URL=
+PASSPORT_JWT_AUDIENCE=authenticated
