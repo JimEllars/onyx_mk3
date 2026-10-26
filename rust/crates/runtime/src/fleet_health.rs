@@ -1,3 +1,9 @@
+#[async_trait::async_trait]
+pub trait FleetLlmEvaluator: Send + Sync {
+    async fn evaluate_diagnostic(&self, system_prompt: &str, model: &str)
+        -> Result<String, String>;
+}
+
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -45,6 +51,7 @@ pub fn create_global_fleet_status() -> GlobalFleetStatus {
 
 #[allow(clippy::too_many_lines)]
 pub async fn evaluate_health_with_ai(
+    _evaluator: Option<std::sync::Arc<dyn FleetLlmEvaluator>>,
     status: &GlobalFleetStatus,
     telemetry_logs: &serde_json::Value,
 ) {
@@ -582,6 +589,7 @@ pub struct RemediationAction {
 }
 
 pub async fn evaluate_health_with_ai_dynamic(
+    evaluator: Option<std::sync::Arc<dyn FleetLlmEvaluator>>,
     diagnostic_data: HealthDiagnostic,
     _mcp_manager: &McpServerManager,
 ) -> Result<RemediationAction, String> {
@@ -610,13 +618,32 @@ pub async fn evaluate_health_with_ai_dynamic(
         // A full MCP server inspection via `discover_tools_best_effort` can be done here if needed.
         let available_tools = allowlist.clone();
 
-        let _system_prompt = format!(
+        let system_prompt = format!(
             "You are an AI DevOps agent. Given the diagnostic: {diagnostic_data:?}\n            And the available tools: {available_tools:?}\n            Choose the best tool to resolve the issue. You MUST respond with a JSON object: {{\"tool_name\": \"name\", \"arguments\": {{}}, \"reason\": \"why\"}}"
         );
 
         let mut llm_action = None;
-        if let Ok(simulated_response) = std::env::var("SIMULATED_LLM_FLEET_RESPONSE") {
-            if let Ok(action) = serde_json::from_str::<RemediationAction>(&simulated_response) {
+        let start_time = std::time::Instant::now();
+
+        let client_result: Result<String, String> = if let Some(evaluator) = evaluator.as_ref() {
+            match tokio::time::timeout(std::time::Duration::from_millis(3000), async {
+                let model =
+                    std::env::var("ONYX_MODEL").unwrap_or_else(|_| "axim-default".to_string());
+                evaluator.evaluate_diagnostic(&system_prompt, &model).await
+            })
+            .await
+            {
+                Ok(res) => res,
+                Err(_) => Err("Timeout elapsed".to_string()),
+            }
+        } else {
+            Err("No evaluator provided".to_string())
+        };
+
+        let latency_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
+
+        if let Ok(text) = client_result {
+            if let Ok(action) = serde_json::from_str::<RemediationAction>(&text) {
                 if allowlist.contains(&action.tool_name.as_str()) {
                     llm_action = Some(action);
                 } else {
@@ -628,7 +655,22 @@ pub async fn evaluate_health_with_ai_dynamic(
             }
         }
 
-        llm_action.unwrap_or_else(|| fallback_dynamic_eval(&diagnostic_data))
+        if llm_action.is_none() {
+            println!("[Fleet Health] LLM eval failed or timed out, falling back.");
+        }
+
+        let action = llm_action.unwrap_or_else(|| fallback_dynamic_eval(&diagnostic_data));
+
+        let _ = crate::lane_events::handle_telemetry_event(&crate::lane_events::TelemetryEvent {
+            r#type: "health_evaluation_llm_metrics".to_string(),
+            payload: serde_json::json!({
+                "llm_eval_latency_ms": latency_ms,
+                "action_selected": action.tool_name
+            }),
+        })
+        .await;
+
+        action
     } else {
         fallback_dynamic_eval(&diagnostic_data)
     };
@@ -708,7 +750,7 @@ mod tests_ai_eval {
             mcp_server_status: "ok".to_string(),
         };
 
-        let action = evaluate_health_with_ai_dynamic(diag, &manager)
+        let action = evaluate_health_with_ai_dynamic(None, diag, &manager)
             .await
             .unwrap();
         assert_eq!(action.tool_name, "restart_mcp_server");
@@ -734,7 +776,7 @@ mod tests_ai_eval {
             mcp_server_status: "ok".to_string(),
         };
 
-        let action = evaluate_health_with_ai_dynamic(diag, &manager)
+        let action = evaluate_health_with_ai_dynamic(None, diag, &manager)
             .await
             .unwrap();
         // Since `rm_rf_slash` is blocked, it falls back to dynamic eval which picks `restart_mcp_server`

@@ -23,7 +23,7 @@
     "prettier": "^3.9.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.5",
     "wrangler": "^4.142.0"
   },
   "dependencies": {

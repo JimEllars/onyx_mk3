@@ -299,6 +299,7 @@ function addOnyxHeaders(
 
   if (status.provider) {
     h.set("X-Onyx-Provider", status.provider);
+
   } else if (h.has("X-Onyx-Fallback")) {
     h.set("X-Onyx-Provider", "cloudflare-workers-ai");
   }
@@ -1134,7 +1135,63 @@ const onyx_handler: any = {
           traceId,
         ),
       });
-    } else if (
+        } else if (request.method === "GET" && url.pathname === "/api/v1/telemetry/dlq-status") {
+      const authError = await checkAuth(request, env);
+      if (authError) return authError;
+
+      let unsynced_relays_depth = 0;
+      let unsynced_receipts_depth = 0;
+      let upstream_core_ok = true;
+
+      try {
+        if (env.EDGE_DLQ_KV) {
+          const listRes = await env.EDGE_DLQ_KV.list({ limit: 1000 });
+          unsynced_relays_depth = listRes.keys.length;
+        }
+
+        if (env.ONYX_DB) {
+           const result = await env.ONYX_DB.prepare(
+              "SELECT COUNT(*) as count FROM onyx_telemetry_logs WHERE synced = 0"
+           ).first();
+           if (result) {
+              unsynced_receipts_depth = result.count as number;
+           }
+        }
+
+        if (env.CORE_INGEST_URL) {
+           try {
+              const res = await fetch(env.CORE_INGEST_URL.replace(/\/$/, "") + "/health", { method: "HEAD", cf: { cacheEverything: false } });
+              upstream_core_ok = res.ok;
+           } catch(e) {
+              upstream_core_ok = false;
+           }
+        }
+      } catch (e) {
+         console.error("dlq-status fetch error");
+      }
+
+      return new Response(
+        JSON.stringify({
+          status: "healthy",
+          timestamp: new Date().toISOString(),
+          unsynced_relays_depth,
+          unsynced_receipts_depth,
+          edge_circuit_breaker: "closed",
+          upstream_core_ok,
+        }),
+        {
+          headers: addOnyxHeaders(
+            {
+              ...getCorsHeaders(request, env),
+              "Content-Type": "application/json",
+            },
+            edgeStatus,
+            cacheStatus,
+            traceId,
+          ),
+        },
+      );
+} else if (
       request.method === "POST" &&
       url.pathname === "/api/v1/telemetry/flush"
     ) {

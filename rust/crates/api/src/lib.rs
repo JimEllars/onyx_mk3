@@ -40,3 +40,30 @@ pub use telemetry::{
     MemoryTelemetrySink, SessionTraceRecord, SessionTracer, TelemetryEvent, TelemetrySink,
     DEFAULT_ANTHROPIC_VERSION,
 };
+
+#[async_trait::async_trait]
+impl runtime::fleet_health::FleetLlmEvaluator for client::ProviderClient {
+    async fn evaluate_diagnostic(
+        &self,
+        system_prompt: &str,
+        model: &str,
+    ) -> Result<String, String> {
+        let req = types::MessageRequest {
+            model: model.to_string(),
+            system: Some(system_prompt.to_string()),
+            messages: vec![types::InputMessage {
+                role: "user".to_string(),
+                content: vec![types::InputContentBlock::Text {
+                    text: "Evaluate".to_string(),
+                }],
+            }],
+            ..Default::default()
+        };
+        let res = self.send_message(&req).await.map_err(|e| e.to_string())?;
+        if let Some(types::OutputContentBlock::Text { text }) = res.content.first() {
+            Ok(text.clone())
+        } else {
+            Err("No text response".to_string())
+        }
+    }
+}
