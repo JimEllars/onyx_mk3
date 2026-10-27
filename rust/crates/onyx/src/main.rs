@@ -2237,7 +2237,14 @@ if let Some(sink) = telemetry::supabase::SupabaseTelemetrySink::new() {
                     .await
                 {
                     Ok(output) => {
-                        runtime::fleet_health::evaluate_health_with_ai(
+
+                        let model = std::env::var("ONYX_MODEL").unwrap_or_else(|_| "axim-default".to_string());
+                        let evaluator = if let Ok(client) = api::ProviderClient::from_model(&model) {
+                            Some(std::sync::Arc::new(client) as std::sync::Arc<dyn runtime::fleet_health::FleetLlmEvaluator>)
+                        } else {
+                            None
+                        };
+                        runtime::fleet_health::evaluate_health_with_ai(evaluator,
                             &fleet_status_telemetry,
                             &output.logs,
                         )
