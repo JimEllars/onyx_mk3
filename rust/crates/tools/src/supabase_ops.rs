@@ -1,6 +1,75 @@
 use runtime::RuntimeConfig;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InsertAximRecordInput {
+    pub source: String,
+    pub intent: String,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InsertAximRecordOutput {
+    pub success: bool,
+    pub id: Option<String>,
+}
+
+pub async fn insert_axim_record(
+    input: InsertAximRecordInput,
+    config: &RuntimeConfig,
+) -> Result<InsertAximRecordOutput, String> {
+    let supabase_url = config
+        .get("SUPABASE_URL")
+        .and_then(|v| v.as_str())
+        .map_or_else(
+            || std::env::var("SUPABASE_URL").unwrap_or_default(),
+            String::from,
+        );
+    let supabase_key = config
+        .get("SUPABASE_SERVICE_ROLE_KEY")
+        .and_then(|v| v.as_str())
+        .map_or_else(
+            || std::env::var("SUPABASE_SERVICE_ROLE_KEY").unwrap_or_default(),
+            String::from,
+        );
+
+    if supabase_url.is_empty() || supabase_key.is_empty() {
+        return Err("Missing Supabase credentials".to_string());
+    }
+
+    let client = reqwest::Client::new();
+    let url = format!("{supabase_url}/rest/v1/axim_core_events");
+
+    let payload = serde_json::json!({
+        "source": input.source,
+        "intent": input.intent,
+        "metadata": input.metadata,
+    });
+
+    let res = client
+        .post(&url)
+        .header("apikey", &supabase_key)
+        .header("Authorization", format!("Bearer {supabase_key}"))
+        .header("Content-Type", "application/json")
+        .header("Prefer", "return=representation")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if res.status().is_success() {
+        let response_data: Vec<Value> = res.json().await.unwrap_or_default();
+        let id = response_data
+            .first()
+            .and_then(|val| val.get("id"))
+            .and_then(|val| val.as_str())
+            .map(std::string::ToString::to_string);
+
+        Ok(InsertAximRecordOutput { success: true, id })
+    } else {
+        Err(format!("Supabase API error: {}", res.status()))
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryTelemetryLogsInput {

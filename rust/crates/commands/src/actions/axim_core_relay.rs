@@ -11,8 +11,12 @@ impl AximCoreRelayAction {
         let endpoint_env = "AXIM_CORE_API_URL";
         let key_env = "AXIM_INTERNAL_KEY";
 
-        let webhook_url =
-            std::env::var(endpoint_env).map_err(|e| format!("Missing {endpoint_env}: {e}"))?;
+        let Ok(webhook_url) = std::env::var(endpoint_env) else {
+            // Fallback to Supabase
+            Self::fallback_to_supabase(payload).await?;
+            return Ok(());
+        };
+
         let secret_key = std::env::var(key_env).unwrap_or_default();
 
         let payload_str =
@@ -40,15 +44,68 @@ impl AximCoreRelayAction {
             Ok(response) => {
                 let status = response.status();
                 let error_msg = format!("HTTP error: {status}");
+
+                // Fallback to Supabase on non-success status
+                Self::fallback_to_supabase(payload).await?;
                 Self::write_to_dlq(payload, &webhook_url, &error_msg).await;
                 Ok(())
             }
             Err(e) => {
                 let error_msg = format!("Network error: {e}");
+
+                // Fallback to Supabase on network error
+                Self::fallback_to_supabase(payload).await?;
                 Self::write_to_dlq(payload, &webhook_url, &error_msg).await;
                 Ok(())
             }
         }
+    }
+
+    async fn fallback_to_supabase(payload: &Value) -> Result<(), String> {
+        let supabase_url = std::env::var("SUPABASE_URL").unwrap_or_default();
+        let supabase_key = std::env::var("SUPABASE_SERVICE_ROLE_KEY").unwrap_or_default();
+
+        if supabase_url.is_empty() || supabase_key.is_empty() {
+            return Err("Missing Supabase credentials for fallback".to_string());
+        }
+
+        let client = reqwest::Client::new();
+        let url = format!("{supabase_url}/rest/v1/axim_core_events");
+
+        let source = payload
+            .get("source_channel")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        let intent = payload
+            .get("intent")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        let metadata = payload
+            .get("meta_data")
+            .unwrap_or(&serde_json::json!({}))
+            .clone();
+
+        let db_payload = serde_json::json!({
+            "source": source,
+            "intent": intent,
+            "metadata": metadata,
+        });
+
+        let res = client
+            .post(&url)
+            .header("apikey", &supabase_key)
+            .header("Authorization", format!("Bearer {supabase_key}"))
+            .header("Content-Type", "application/json")
+            .json(&db_payload)
+            .send()
+            .await
+            .map_err(|e| format!("Supabase fallback network error: {e}"))?;
+
+        if !res.status().is_success() {
+            return Err(format!("Supabase fallback error: {}", res.status()));
+        }
+
+        Ok(())
     }
 
     #[allow(clippy::unused_async)]
