@@ -102,6 +102,21 @@ impl MicroProgram for NDAGenerator {
         };
 
         if status == "Generated" {
+            // Trigger Axim Core Relay for generated document
+            let relay_payload = json!({
+                "source_channel": payload.source_channel,
+                "intent": payload.intent,
+                "meta_data": {
+                    "status": "Generated",
+                    "document_url": document_url.clone().unwrap_or_default()
+                }
+            });
+            if let Err(e) =
+                crate::actions::axim_core_relay::AximCoreRelayAction::execute(&relay_payload).await
+            {
+                eprintln!("AximCoreRelay fallback failed: {e}");
+            }
+
             let payload_to_save = json!({
                 "type": "nda",
                 "document_url": document_url,
