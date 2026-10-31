@@ -147,7 +147,11 @@ describe('A4 — missing KV bindings fail loudly instead of reporting success', 
     expect(text).toContain('EDGE_DLQ_KV');
   });
 
-  it('mcp/execute returns 503 rather than success when HITL_APPROVAL_KV is absent', async () => {
+  it('mcp/execute never reports success when the decision cannot be applied', async () => {
+    // Phase B moved approvals onto a Core relay. KV is now a best-effort record,
+    // and the only thing that makes a decision "applied" is Core accepting it.
+    // With no relay configured this must be a 503 carrying applied:false — never
+    // the bare success:true it used to return while resuming nothing.
     const body = JSON.stringify({ action_id: 'a1', decision: 'approve' });
     const req = new Request('http://localhost/api/v1/mcp/execute', {
       method: 'POST',
@@ -159,9 +163,10 @@ describe('A4 — missing KV bindings fail loudly instead of reporting success', 
     });
     const res = await worker.fetch(req, ENV, CTX);
     expect(res.status).toBe(503);
-    const text = await res.text();
-    expect(text).toContain('HITL_APPROVAL_KV');
-    expect(text).not.toContain('"success":true');
+    const payload = JSON.parse(await res.text());
+    expect(payload.applied).toBe(false);
+    expect(payload.success).toBe(false);
+    expect(payload.reason).toContain('CORE_HITL_URL');
   });
 
   it('ecosystem/event returns 503 rather than a 202 drop when ECOSYSTEM_METRICS_KV is absent', async () => {

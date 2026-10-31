@@ -16,6 +16,24 @@ export interface PassportClaims {
 }
 
 export const SUPER_ADMIN_ROLE = "super-admin";
+
+/**
+ * Every spelling of the administrator role observed across the ecosystem.
+ *
+ * The edge verifier required `super-admin` (hyphen), the cockpit wrote
+ * `super_admin` (underscore) into its store, and AXiM Core's AuthContext issues
+ * `super_user`. A token carrying anything but the hyphenated form was silently
+ * treated as a normal user, so privileged routes returned 403 in production
+ * while every test passed. Accept the known variants from either the
+ * `app_metadata.role` claim or a top-level `role` claim.
+ */
+const SUPER_ADMIN_ROLES = new Set([
+  "super-admin",
+  "super_admin",
+  "superadmin",
+  "super_user",
+  "superuser",
+]);
 const JWKS_TTL_MS = 10 * 60 * 1000;
 const CLOCK_SKEW_SECONDS = 30;
 
@@ -115,5 +133,9 @@ export async function verifyPassportJwt(token: string, env: PassportEnv): Promis
 }
 
 export function isSuperAdmin(claims: PassportClaims): boolean {
-  return claims.app_metadata?.role === SUPER_ADMIN_ROLE;
+  const candidates = [claims.app_metadata?.role, claims.role];
+  return candidates.some(
+    (candidate) =>
+      typeof candidate === "string" && SUPER_ADMIN_ROLES.has(candidate.trim().toLowerCase()),
+  );
 }

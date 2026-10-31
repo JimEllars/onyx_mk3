@@ -18,6 +18,12 @@ export interface Env extends __BaseEnv_Env {
   EMAILIT_API_KEY?: string;
   ONYX_CLIENT_SECRET?: string;
   ONYX_EMERGENCY_SECRET?: string;
+  /** Core HITL resolver, e.g. https://<project>.supabase.co/functions/v1/resolve-hitl */
+  CORE_HITL_URL?: string;
+  /** Core Supabase origin, used to derive CORE_HITL_URL when it is not set */
+  CORE_SUPABASE_URL?: string;
+  /** Service-role key for the Core project; required to apply a decision */
+  CORE_SERVICE_ROLE_KEY?: string;
   CHAT_MODEL?: string;
   CRON_SECRET_KEY?: string;
   PUBLIC_BASE_URL?: string;
@@ -63,6 +69,149 @@ export async function verifyHmacSignature(
   }
 }
 
+
+type HitlStatus = "Approved" | "Rejected";
+
+interface HitlApplyResult {
+  recorded: boolean;
+  applied: boolean;
+  core_status: number;
+  reason?: string;
+}
+
+/**
+ * Map every decision spelling the cockpit or an email link might send onto the
+ * two values Core's `resolve-hitl` accepts. Returns null for anything else so
+ * the caller can reject rather than record a meaningless status.
+ */
+function normalizeHitlDecision(raw: unknown): HitlStatus | null {
+  if (typeof raw !== "string") return null;
+  switch (raw.trim().toLowerCase()) {
+    case "approve":
+    case "approved":
+      return "Approved";
+    case "reject":
+    case "rejected":
+    case "deny":
+    case "denied":
+      return "Rejected";
+    default:
+      return null;
+  }
+}
+
+function resolveHitlUrl(env: Env): string | null {
+  if (env.CORE_HITL_URL) return env.CORE_HITL_URL;
+  if (env.CORE_SUPABASE_URL) {
+    return `${env.CORE_SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/resolve-hitl`;
+  }
+  return null;
+}
+
+/**
+ * Apply a HITL decision.
+ *
+ * A decision is only "applied" when Core's `resolve-hitl` function accepts it.
+ * Recording it in KV and reporting success without relaying was the previous
+ * behaviour: the cockpit showed APPROVED, the ticket vanished, and nothing
+ * resumed. Callers must use `applied`, never a bare 200, to decide whether the
+ * approval took effect.
+ */
+async function applyHitlDecision(
+  env: Env,
+  actionId: string,
+  status: HitlStatus,
+  operatorNotes: string | undefined,
+  actor: string,
+): Promise<HitlApplyResult> {
+  const decidedAt = new Date().toISOString();
+
+  // 1. Durable local record (best effort; KV is not the source of truth).
+  if (env.HITL_APPROVAL_KV) {
+    const record = { action_id: actionId, status, operator_notes: operatorNotes ?? null, actor, decided_at: decidedAt };
+    await env.HITL_APPROVAL_KV.put(`action_decision:${actionId}`, JSON.stringify(record), { expirationTtl: 86400 });
+  }
+  if (env.EDGE_DLQ_KV) {
+    await env.EDGE_DLQ_KV.put(
+      `mcp_resolution:${actionId}:${Date.now()}`,
+      JSON.stringify({ action_id: actionId, status, operator_notes: operatorNotes ?? null, actor, decided_at: decidedAt }),
+      { expirationTtl: 86400 * 7 },
+    );
+  }
+
+  // 2. Relay to Core — the only step that actually applies anything.
+  const url = resolveHitlUrl(env);
+  if (!url) {
+    return { recorded: true, applied: false, core_status: 0, reason: "CORE_HITL_URL is not configured" };
+  }
+  if (!env.CORE_SERVICE_ROLE_KEY) {
+    return { recorded: true, applied: false, core_status: 0, reason: "CORE_SERVICE_ROLE_KEY is not configured" };
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.CORE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ log_id: actionId, status, action_payload: null }),
+    });
+    if (!res.ok) {
+      return { recorded: true, applied: false, core_status: res.status, reason: `core responded ${res.status}` };
+    }
+    return { recorded: true, applied: true, core_status: res.status };
+  } catch (err) {
+    return {
+      recorded: true,
+      applied: false,
+      core_status: 0,
+      reason: `relay failed: ${err instanceof Error ? err.message : "unknown error"}`,
+    };
+  }
+}
+
+/**
+ * Perimeter guard for CGI argument injection, path traversal and PHP probes.
+ *
+ * The previous implementation matched substrings of `url.search` / `url.pathname`
+ * from `new URL()`, which is normalised but NOT percent-decoded, so
+ * `/?%61uto_prepend_file=x` and `/%252e%252e/` both passed. Its traversal clauses
+ * were also dead for single-encoded input, because the URL parser resolves
+ * `%2e%2e` segments before the check runs. Decode twice (to defeat double
+ * encoding) and match the decoded form.
+ */
+function cgiGuard(request: Request): Response | null {
+  const url = new URL(request.url);
+
+  let path = url.pathname;
+  let query = url.search;
+  for (let i = 0; i < 2; i += 1) {
+    try {
+      path = decodeURIComponent(path);
+      query = decodeURIComponent(query);
+    } catch {
+      // Malformed percent-encoding; evaluate what we already have.
+      break;
+    }
+  }
+  const pathLower = path.toLowerCase();
+  const queryLower = query.toLowerCase();
+
+  const cgiHit = /([?&]-d\b|auto_prepend_file|auto_append_file|allow_url_include|disable_functions|safe_mode)/.test(queryLower);
+  const traversal = /(^|[\/\\])(\.|%2e){1,2}([\/\\]|$)/.test(pathLower);
+  const phpProbe = /\.php([\/]|$)|\/wp-admin|\/wp-login\.php|xmlrpc\.php/.test(pathLower);
+
+  if (cgiHit || traversal || phpProbe) {
+    const reason = cgiHit ? "CGI argument injection" : traversal ? "path traversal" : "PHP probe";
+    return new Response(JSON.stringify({ error: `Forbidden: ${reason} detected` }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  return null;
+}
 
 /**
  * Resolve the Core telemetry ingest URL.
@@ -891,16 +1040,8 @@ const onyx_handler: any = {
 
     const url = new URL(request.url);
 
-    const searchParams = url.search.toLowerCase();
-    const pathname = url.pathname.toLowerCase();
-
-    if (searchParams.includes("?-d") || searchParams.includes("auto_prepend_file") || searchParams.includes("auto_append_file") || searchParams.includes("allow_url_include") || searchParams.includes("disable_functions") || searchParams.includes("safe_mode")) {
-      return new Response(JSON.stringify({ error: "Forbidden: CGI argument injection detected" }), { status: 403, headers: { "Content-Type": "application/json" } });
-    }
-
-    if (pathname.includes("..") || pathname.includes("%2e%2e") || pathname.endsWith(".php") || pathname.includes("/wp-admin") || pathname.includes("/wp-login.php") || pathname.includes("xmlrpc.php")) {
-      return new Response("Forbidden", { status: 403 });
-    }
+    const guardResponse = cgiGuard(request);
+    if (guardResponse) return guardResponse;
 
     if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/v1/health")) {
       return new Response(JSON.stringify({ status: "healthy", upstream: "operational", active_sessions: "unknown", memory_usage: "unknown", service: "onyx-edge-bridge", version: "mk3-2.2", timestamp: new Date().toISOString() }), { status: 200, headers: { "Content-Type": "application/json", ...getCorsHeaders(request, env) } });
@@ -1410,24 +1551,22 @@ const onyx_handler: any = {
       url.pathname === "/api/v1/onyx/summon"
     ) {
       const rawBody = await request.clone().text();
-      const isValidHmac = await verifyHmacSignature(request, rawBody, env.ONYX_CLIENT_SECRET);
-      if (!isValidHmac) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
-      }
 
-      const authHeader = request.headers.get("Authorization");
-      const cookieHeader = request.headers.get("Cookie");
-      let hasValidCookie = false;
-      if (cookieHeader) {
-        const match = cookieHeader.match(/(?:^|;\s*)axim_session=([^;]*)/);
-        if (match && match[1]) hasValidCookie = true;
-      }
-      const expectedToken = `Bearer ${env.ONYX_CLIENT_SECRET}`;
-      if ((!authHeader || authHeader !== expectedToken) && !hasValidCookie) {
-        const origin = request.headers.get("Origin") || "unknown";
-        const ip = request.headers.get("cf-connecting-ip") || "unknown";
-        console.error("error");
-        return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Unauthorized Access", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
+      // Machine callers sign with ONYX_CLIENT_SECRET. Operators authenticate with
+      // a Passport JWT, which is what the cockpit actually sends. Previously this
+      // route required the HMAC *and* a bearer of the same shared secret, so the
+      // browser could never satisfy it and every message 401'd. The unvalidated
+      // `axim_session` cookie check is gone: a cookie whose value is never
+      // verified is not a credential.
+      const hasValidHmac = await verifyHmacSignature(
+        request,
+        rawBody,
+        env.ONYX_CLIENT_SECRET,
+      );
+      if (!hasValidHmac) {
+        const authError = await checkAuth(request, env);
+        if (authError) {
+          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Unauthorized Access", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
           status: 401,
           headers: addOnyxHeaders(
             {
@@ -1438,7 +1577,8 @@ const onyx_handler: any = {
             cacheStatus,
             traceId,
           ),
-        });
+          });
+        }
       }
 
       // We pass the request directly to the core ingest since we authenticated successfully.
@@ -2413,53 +2553,118 @@ const onyx_handler: any = {
           });
         }
       } else if (
-        request.method === "GET" &&
+        request.method === "POST" &&
         url.pathname === "/api/v1/hitl/action"
       ) {
-        const token = url.searchParams.get("token");
-        const decision = url.searchParams.get("decision");
+        // A decision is an action, so it is a POST with an authenticated actor.
+        // This used to be a GET with the decision in the query string, which
+        // mail scanners, link previewers and browser prefetch all fire.
+        const authError = await checkAuth(request, env, true);
+        if (authError) return authError;
 
-        if (!token || !decision) {
-          return new Response("Missing token or decision", { status: 400 });
-        }
-
-        if (!env.HITL_APPROVAL_KV) {
-          return new Response("HITL KV missing", { status: 500 });
-        }
-
-        const actionStr = await env.HITL_APPROVAL_KV.get(token);
-        if (!actionStr) {
-          return new Response("Invalid or expired token", { status: 400 });
-        }
-
+        let body: { action_id?: string; decision?: unknown; operator_notes?: string };
         try {
-          const action = JSON.parse(actionStr);
-          if (action.status !== 'pending') {
-            return new Response("Decision already applied", { status: 400 });
-          }
+          body = await request.json();
+        } catch {
+          return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
 
-          action.status = decision;
-          await env.HITL_APPROVAL_KV.put(token, JSON.stringify(action), { expirationTtl: 3600 }); // keep for an hour
+        const actionId = body.action_id;
+        if (!actionId || typeof actionId !== "string") {
+          return new Response(JSON.stringify({ error: "Missing action_id" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
 
-          // Ideally route this back to Rust runtime, here just update KV to reflect processed state
+        const status = normalizeHitlDecision(body.decision);
+        if (!status) {
+          return new Response(
+            JSON.stringify({ error: "decision must be approve or reject" }),
+            { status: 400, headers: { "Content-Type": "application/json" } },
+          );
+        }
 
-          const html = `<html><head><style>body { font-family: monospace; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }</style></head><body><h1>Action ${decision === 'approve' ? 'Approved' : 'Rejected'} Successfully</h1></body></html>`;
+        const actor =
+          request.headers.get("cf-access-authenticated-user-email") ||
+          request.headers.get("x-axim-operator") ||
+          "operator";
 
-          return new Response(html, {
-            status: 200,
+        const result = await applyHitlDecision(
+          env,
+          actionId,
+          status,
+          body.operator_notes,
+          actor,
+        );
+
+        // 200 only when Core accepted the decision. Anything else is a failure the
+        // operator must see, even though the decision was recorded locally.
+        const httpStatus = result.applied ? 200 : result.core_status === 0 ? 503 : 502;
+
+        return new Response(
+          JSON.stringify({
+            success: result.applied,
+            applied: result.applied,
+            recorded: result.recorded,
+            action_id: actionId,
+            status,
+            core_status: result.core_status,
+            ...(result.reason ? { reason: result.reason } : {}),
+            decided_at: new Date().toISOString(),
+          }),
+          {
+            status: httpStatus,
             headers: addOnyxHeaders(
               {
                 ...getCorsHeaders(request, env),
-                "Content-Type": "text/html",
+                "Content-Type": "application/json",
               },
               edgeStatus,
               cacheStatus,
               traceId,
             ),
+          },
+        );
+      } else if (
+        request.method === "GET" &&
+        url.pathname === "/api/v1/hitl/action"
+      ) {
+        // Read-only view of a ticket. Mutating on GET was the defect; the endpoint
+        // stays for the "here is what you are approving" page only.
+        const token = url.searchParams.get("token");
+        if (!token) {
+          return new Response(JSON.stringify({ error: "Missing token" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
           });
-        } catch(e) {
-          return new Response("Error processing token", { status: 500 });
         }
+        if (url.searchParams.has("decision")) {
+          return new Response(
+            JSON.stringify({
+              error:
+                "Decisions are no longer accepted on GET. POST /api/v1/hitl/action with { action_id, decision } and an operator credential.",
+            }),
+            { status: 405, headers: { "Content-Type": "application/json", Allow: "POST" } },
+          );
+        }
+        if (!env.HITL_APPROVAL_KV) {
+          return missingBinding(request, env, "HITL_APPROVAL_KV", "HITL ticket lookup");
+        }
+        const record = await env.HITL_APPROVAL_KV.get(token);
+        if (!record) {
+          return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(record, {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
 
       } else if (
         request.method === "POST" &&
@@ -2475,27 +2680,36 @@ const onyx_handler: any = {
             return new Response("Missing action_id or decision", { status: 400, headers: getCorsHeaders(request, env) });
           }
 
-          if (!env.HITL_APPROVAL_KV) {
-            return missingBinding(request, env, "HITL_APPROVAL_KV", "HITL decision recording");
-          }
-          {
-             const key = `action_decision:${action_id}`;
-             const record = { action_id, decision, operator_notes, timestamp: new Date().toISOString() };
-             await env.HITL_APPROVAL_KV.put(key, JSON.stringify(record), { expirationTtl: 86400 }); // 24 hours
+          const status = normalizeHitlDecision(decision);
+          if (!status) {
+            return new Response(JSON.stringify({ error: "decision must be approve or reject" }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
           }
 
-          if (env.EDGE_DLQ_KV) {
-             const dlqKey = `mcp_resolution:${action_id}:${Date.now()}`;
-             await env.EDGE_DLQ_KV.put(dlqKey, JSON.stringify({ action_id, decision, operator_notes, resolved_at: new Date().toISOString() }), { expirationTtl: 86400 * 7 });
-          }
+          // Same path as POST /api/v1/hitl/action. Previously this wrote a KV key
+          // nothing reads and answered success:true, so the cockpit showed an
+          // approval that never resumed anything.
+          const result = await applyHitlDecision(
+            env,
+            action_id,
+            status,
+            operator_notes,
+            request.headers.get("cf-access-authenticated-user-email") || "operator",
+          );
 
           return new Response(JSON.stringify({
-             success: true,
+             success: result.applied,
+             applied: result.applied,
+             recorded: result.recorded,
              action_id,
-             decision,
+             status,
+             core_status: result.core_status,
+             ...(result.reason ? { reason: result.reason } : {}),
              resolved_at: new Date().toISOString()
           }), {
-            status: 200,
+            status: result.applied ? 200 : result.core_status === 0 ? 503 : 502,
             headers: addOnyxHeaders(
               {
                 ...getCorsHeaders(request, env),
@@ -2575,6 +2789,9 @@ const onyx_handler: any = {
         request.method === "GET" &&
         url.pathname === "/api/v1/onyx/swarm-state"
       ) {
+        const swarmAuthError = await checkAuth(request, env);
+        if (swarmAuthError) return swarmAuthError;
+
         let locks = [];
         if (env.ONYX_DISPATCH_LOCKS) {
            const list = await env.ONYX_DISPATCH_LOCKS.list();
@@ -2994,43 +3211,7 @@ const onyx_handler: any = {
           cacheStatus,
           traceId,
         );
-            } else if (request.method === "POST" && url.pathname === "/api/v1/onyx/summon") {
-        const authHeader = request.headers.get("Authorization");
-        const token = authHeader?.split(" ")[1];
-        if (token !== env.AXIM_ONYX_SECRET) {
-          return new Response("Unauthorized", { status: 401, headers: getCorsHeaders(request, env) });
-        }
-
-        try {
-          const body: any = await request.json();
-          const { action, server_name, transport, command, args } = body;
-
-          if (action !== "connect_mcp" || !server_name || !transport) {
-            return new Response(JSON.stringify({ error: "Invalid MCP summon payload: 'server_name' and 'transport' are required." }), { status: 400, headers: { "Content-Type": "application/json", ...getCorsHeaders(request, env) } });
-          }
-
-          // Normally we'd forward to CORE_INGEST_URL, but here we can just queue it to DLQ or emulate success.
-          // Since core ingestion is an internal detail, let's buffer it to DLQ so the Rust backend can pull it,
-          // or just return success as requested by spec.
-          if (env.EDGE_DLQ_KV) {
-             const key = `mcp_summon:${server_name}:${Date.now()}`;
-             await env.EDGE_DLQ_KV.put(key, JSON.stringify(body), { expirationTtl: 86400 });
-          }
-
-          return new Response(JSON.stringify({
-            status: "success",
-            action: "connect_mcp",
-            server_name,
-            message: "MCP connection request queued for Onyx daemon."
-          }), {
-            status: 200,
-            headers: { "Content-Type": "application/json", ...getCorsHeaders(request, env) }
-          });
-        } catch(e) {
-          return new Response("Invalid JSON payload", { status: 400, headers: getCorsHeaders(request, env) });
-        }
-
-      } else if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/v1/health")) {
+            } else if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/v1/health")) {
         return new Response(JSON.stringify({
           status: 'healthy',
           upstream: 'operational',
@@ -3136,16 +3317,8 @@ export default {
     let response;
     const url = new URL(request.url);
 
-    const searchParams = url.search.toLowerCase();
-    const pathname = url.pathname.toLowerCase();
-
-    if (searchParams.includes("?-d") || searchParams.includes("auto_prepend_file") || searchParams.includes("auto_append_file") || searchParams.includes("allow_url_include") || searchParams.includes("disable_functions") || searchParams.includes("safe_mode")) {
-      return new Response(JSON.stringify({ error: "Forbidden: CGI argument injection detected" }), { status: 403, headers: { "Content-Type": "application/json" } });
-    }
-
-    if (pathname.includes("..") || pathname.includes("%2e%2e") || pathname.endsWith(".php") || pathname.includes("/wp-admin") || pathname.includes("/wp-login.php") || pathname.includes("xmlrpc.php")) {
-      return new Response("Forbidden", { status: 403 });
-    }
+    const guardResponse = cgiGuard(request);
+    if (guardResponse) return guardResponse;
 
 
     const isChatEndpoint = url.pathname === "/api/v1/chat" && request.method === "POST";
@@ -3255,18 +3428,7 @@ export default {
     if (response.status === 429) {
       if (env.ONYX_DB) {
         const ip = request.headers.get("cf-connecting-ip") || "unknown";
-        const url = new URL(request.url);
 
-    const searchParams = url.search.toLowerCase();
-    const pathname = url.pathname.toLowerCase();
-
-    if (searchParams.includes("?-d") || searchParams.includes("auto_prepend_file") || searchParams.includes("auto_append_file") || searchParams.includes("allow_url_include") || searchParams.includes("disable_functions") || searchParams.includes("safe_mode")) {
-      return new Response(JSON.stringify({ error: "Forbidden: CGI argument injection detected" }), { status: 403, headers: { "Content-Type": "application/json" } });
-    }
-
-    if (pathname.includes("..") || pathname.includes("%2e%2e") || pathname.endsWith(".php") || pathname.includes("/wp-admin") || pathname.includes("/wp-login.php") || pathname.includes("xmlrpc.php")) {
-      return new Response("Forbidden", { status: 403 });
-    }
 
         ctx?.waitUntil?.(
           env.ONYX_DB.prepare(
