@@ -65,6 +65,18 @@
     {
       "binding": "ONYX_KV",
       "id": "84ebf13dd7d04a308474784c50603a5f"
+    },
+    {
+      "binding": "ECOSYSTEM_METRICS_KV",
+      "id": "82793751d3924b32bdf654716258f552"
+    },
+    {
+      "binding": "EDGE_DLQ_KV",
+      "id": "893b9bc503874204a6f40450b1177af7"
+    },
+    {
+      "binding": "HITL_APPROVAL_KV",
+      "id": "c2946428a321491a9ffc2a152a017017"
     }
   ],
   "triggers": {

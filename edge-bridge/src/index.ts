@@ -8,9 +8,6 @@ import { verifyPassportJwt, isSuperAdmin, type PassportClaims } from "./passport
 import { z } from "zod";
 
 export interface Env extends __BaseEnv_Env {
-  ECOSYSTEM_METRICS_KV?: KVNamespace;
-  EDGE_DLQ_KV?: KVNamespace;
-  HITL_APPROVAL_KV?: KVNamespace;
   AXIM_SERVICE_KEY?: string;
   AXIM_ONYX_SECRET?: string;
   DEEPSEEK_API_KEY?: string;
