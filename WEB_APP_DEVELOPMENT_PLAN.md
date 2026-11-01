@@ -1,8 +1,27 @@
 # AXiM Onyx Mk3 Web App - Continued Development Plan
 
-Status as of 2026-11-01 (branch `feat/onyx-hud-phase1-connection-hardening`).
-Each item now records where it stands and which file proves it, because "planned" and
-"shipped" kept being confused.
+Status as of 2026-11-02 (post-merge). Each item records where it stands and which file
+proves it, because "planned" and "shipped" kept being confused.
+
+**Merged to `main` this cycle (PRs #288-#294).**
+
+| PR | What landed | Proof |
+|---|---|---|
+| #288 | Phase A edge containment: no secret reflection, mock session mint deleted, telemetry authenticated | `edge-bridge/test/phase-a-hardening.test.ts` |
+| #289 | Phase B operator auth, HITL relay to Core, decode-aware deny list | `edge-bridge/test/phase-b-hardening.test.ts` |
+| #290 | Canonical `super_admin`, legacy spellings reported | `src/lib/__tests__/roles.test.js` |
+| #291 | Versioned HMAC signatures with a dual-accept window | `edge-bridge/test/signature-window.test.ts` |
+| #292 | **Phases 1-3**: backoff, 3-state connection badge, live DLQ polling, RCA inspector, domain personas, canonical HITL relay | `src/lib/__tests__/*`, `src/components/hud/__tests__/*`, `edge-bridge/test/domain-context.test.ts` |
+| #293 | Daily cron actually runs; retention cutoffs bound in the column's own unit | `edge-bridge/test/cron-retention.test.ts` |
+| #294 | **Phase 4**: `onyx daemon` serves the compiled HUD from the binary on `127.0.0.1:3141` | `rust/crates/onyx/src/daemon.rs` |
+
+All four plan phases are now on `main`. Remaining work is tracked in "Next candidates"
+below, not in the phase list.
+
+**Housekeeping for the operator:** `feat/onyx-hud-phase2-3-telemetry-personas` (commit
+`b10bec1`) is superseded by #292 and should be deleted rather than merged. The four
+Dependabot PRs (#262, #263, #274, #285) each touch one package; they are handled by the
+grouped `dependabot.yml` added in this cycle.
 
 ## Current State Review
 The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as a Headless UI wrapper for the core Onyx Rust engine.
