@@ -449,3 +449,14 @@ the two signer edits are reviewed by reading only. They are small (one `format!`
 headers, one `?`), and `SystemTime`/`UNIX_EPOCH` are already imported in the relay, but
 they must be built and tested in CI or locally before release. Everything else on this
 branch was executed.
+
+---
+
+## Per-change appendices (from 2026-11-01 onward)
+
+One file per change, to stop every rebase conflicting on this file (see
+`review/WORKING_AGREEMENT.md` §5a).
+
+| Date | Change | Appendix |
+|---|---|---|
+| 2026-11-01 | HUD connection hardening, live DLQ telemetry, RCA inspector, personas, HITL relay (`feat/onyx-hud-phase1-connection-hardening`) | [`AGENTS_VERIFICATION.d/2026-11-01-hud-telemetry-personas.md`](AGENTS_VERIFICATION.d/2026-11-01-hud-telemetry-personas.md) |

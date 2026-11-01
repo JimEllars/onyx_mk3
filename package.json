@@ -5,7 +5,8 @@
   "scripts": {
     "build": "npm ci && vite build && npm --prefix edge-bridge ci --legacy-peer-deps && npm --prefix edge-bridge run build",
     "deploy": "npm run build && npm --prefix edge-bridge run deploy",
-    "deploy:dry-run": "npm run build && npm --prefix edge-bridge run deploy:dry-run"
+    "deploy:dry-run": "npm run build && npm --prefix edge-bridge run deploy:dry-run",
+    "test": "vitest run"
   },
   "dependencies": {
     "react": "^19.2.8",
@@ -14,11 +15,15 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
     "@vitejs/plugin-react": "^6.1.0",
     "autoprefixer": "^10.5.4",
+    "jsdom": "^30.1.3",
     "postcss": "^8.5.26",
     "tailwindcss": "^3.4.19",
-    "vite": "^8.3.0"
+    "vite": "^8.3.0",
+    "vitest": "^5.0.5"
   },
   "type": "module"
 }
