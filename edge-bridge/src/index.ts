@@ -878,6 +878,23 @@ async function bootstrapDatabase(env: Env): Promise<void> {
   void env;
 }
 
+/**
+ * Cron expressions that mean "the daily run".
+ *
+ * The deployed triggers are "0 0 * * *" plus a five-minute schedule (see
+ * wrangler.jsonc), but this handler used to test for "0 12 * * *" exactly, so the
+ * daily digest never ran. Matching a set rather than one literal means the
+ * schedule can move without silently disabling the job again.
+ */
+export const DAILY_CRONS = ["0 0 * * *", "0 12 * * *"];
+
+export function isDailyCron(cron: string | undefined): boolean {
+  return typeof cron === "string" && DAILY_CRONS.includes(cron);
+}
+
+/** Retention window for edge-owned D1 rows. */
+export const RETENTION_WINDOW_DAYS = 30;
+
 async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
   if (!env.ONYX_STATE) return;
   const listResult = await env.ONYX_STATE.list({
@@ -932,7 +949,7 @@ const onyx_handler: any = {
         ctx?.waitUntil?.(drainIngestDlq(env, ctx));
       }
 
-      if (controller.cron === "0 12 * * *") {
+      if (isDailyCron(controller.cron)) {
         ctx?.waitUntil?.((async () => {
           if (!env.EMAILIT_API_KEY || !env.HITL_APPROVAL_KV) return;
           if (!env.PUBLIC_BASE_URL) {
@@ -986,23 +1003,38 @@ const onyx_handler: any = {
             }),
           });
         })());
-      }
 
-      const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
-      if (env.ONYX_DB) {
-        ctx?.waitUntil?.(
-          env.ONYX_DB.batch([
-            env.ONYX_DB.prepare(
-              "DELETE FROM onyx_telemetry_logs WHERE created_at < ?",
-            ).bind(thirtyDaysAgo),
-            env.ONYX_DB.prepare(
-              "DELETE FROM onyx_command_audit_logs WHERE created_at < ?",
-            ).bind(thirtyDaysAgo),
-            env.ONYX_DB.prepare(
-              "DELETE FROM onyx_rate_limit_logs WHERE blocked_at < ?",
-            ).bind(thirtyDaysAgo),
-          ]),
-        );
+        // Retention belongs to the daily run. It used to sit outside this branch,
+        // so a 30-day DELETE batch was issued on every five-minute tick — and
+        // because the telemetry cutoff was expressed in seconds against a column
+        // that stores milliseconds, every row matched and the table was emptied
+        // every five minutes. That is the table the DLQ drain replays from.
+        const nowMs = Date.now();
+        const retentionMs = RETENTION_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+        // onyx_telemetry_logs.created_at is written with Date.now() (milliseconds);
+        // onyx_rate_limit_logs.blocked_at is written as epoch seconds. Bind each
+        // cutoff in the unit its own column uses — do not share one value.
+        const telemetryCutoffMs = nowMs - retentionMs;
+        const secondsCutoff = Math.floor(nowMs / 1000) - retentionMs / 1000;
+
+        if (env.ONYX_DB) {
+          ctx?.waitUntil?.(
+            env.ONYX_DB.batch([
+              env.ONYX_DB.prepare(
+                "DELETE FROM onyx_telemetry_logs WHERE created_at < ?",
+              ).bind(telemetryCutoffMs),
+              // Nothing writes onyx_command_audit_logs today, so this statement
+              // is a no-op; seconds is the unit its sibling tables use until a
+              // writer lands and settles it.
+              env.ONYX_DB.prepare(
+                "DELETE FROM onyx_command_audit_logs WHERE created_at < ?",
+              ).bind(secondsCutoff),
+              env.ONYX_DB.prepare(
+                "DELETE FROM onyx_rate_limit_logs WHERE blocked_at < ?",
+              ).bind(secondsCutoff),
+            ]),
+          );
+        }
       }
       if (env.ONYX_PROMPT_CACHE) {
         await env.ONYX_PROMPT_CACHE.put(

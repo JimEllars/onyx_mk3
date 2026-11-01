@@ -58,11 +58,28 @@ The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as 
   - [ ] Wallet connections passively sync telemetry to AXiM Core via the Edge Bridge.
   - [ ] Unified transaction ledger view in the `ActionConsole`.
 
-## Standing defects to clear (found, not yet fixed)
+## Standing defects
+
+### Fixed on 2026-11-01 (`feat/onyx-fleet-health-rollup`)
+
+1. **Daily cron never ran.** `scheduled()` tested `controller.cron === "0 12 * * *"` while
+   `wrangler.jsonc` deploys `0 0 * * *` and `*/5 * * * *` — digest email and retention were
+   dead code. Now matched through `isDailyCron()`.
+2. **Retention deleted the whole telemetry table.** The cutoff was epoch seconds against
+   `onyx_telemetry_logs.created_at`, which holds milliseconds, and the batch ran on every
+   five-minute tick rather than daily. Fixed in units and cadence; `test/cron-retention.test.ts`
+   pins both.
+
+### Still open
 
 1. **`clippy::assert_is_empty` (5 hits) in `rust/crates/plugins/src/lib.rs:2519,2520,2538,2540,2541.**
    New in clippy 1.99. CI runs `cargo clippy --workspace` without `-D warnings`, so CI stays
-   green, but the stricter `-D warnings` gate in our runbook fails. Fix needs a compiled
-   environment: clippy's own suggestion is `assert_eq!(manifest.tools, [] as [PluginToolManifest; 0])`.
-2. **Duplicate PR #284** — redundant against the merged Phase A/B work; close it once the
-   author confirms (not actionable from this branch; #288–#291 already carry the change).
+   green, but the stricter `-D warnings` gate in our runbook fails. Needs a compiled
+   environment; clippy's suggestion is `assert_eq!(manifest.tools, [] as [PluginToolManifest; 0])`.
+2. **`onyx_command_audit_logs` has no writer.** One reference exists in the whole worker — the
+   `DELETE` in the retention batch. Do not build a fleet-health or audit panel over it: it
+   will read zeros forever. Either add the writer or drop the table.
+3. **Digest send time.** The daily job now runs at 00:00 UTC because that is the deployed
+   trigger. If midday was intended, change `edge-bridge/wrangler.jsonc:85` to `0 12 * * *`.
+4. **Duplicate PR #284** — already merged; not actionable. The open Dependabot queue (#263,
+   #262, #274, #285) needs a decision from the operator.

@@ -460,3 +460,4 @@ One file per change, to stop every rebase conflicting on this file (see
 | Date | Change | Appendix |
 |---|---|---|
 | 2026-11-01 | HUD connection hardening, live DLQ telemetry, RCA inspector, personas, HITL relay (`feat/onyx-hud-phase1-connection-hardening`) | [`AGENTS_VERIFICATION.d/2026-11-01-hud-telemetry-personas.md`](AGENTS_VERIFICATION.d/2026-11-01-hud-telemetry-personas.md) |
+| 2026-11-01 | Daily cron restored, retention cutoffs un-mixed (`feat/onyx-fleet-health-rollup`) | [`AGENTS_VERIFICATION.d/2026-11-01-cron-retention-units.md`](AGENTS_VERIFICATION.d/2026-11-01-cron-retention-units.md) |
