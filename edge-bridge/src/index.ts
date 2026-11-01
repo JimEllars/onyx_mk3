@@ -24,21 +24,6 @@ export interface Env extends __BaseEnv_Env {
   THREADS_FEED_URL?: string;
   THREADS_FEED_TOKEN?: string;
 }
-function parsePassportSession(request: Request): { role: string; [key: string]: any } {
-  try {
-    const cookieHeader = request.headers.get("Cookie") || "";
-    const match = cookieHeader.match(/(?:^|;\s*)axim_passport_session=([^;]*)/);
-    if (match && match[1]) {
-      const decoded = decodeURIComponent(match[1]);
-      return JSON.parse(decoded);
-    }
-  } catch (e) {
-    console.warn("Failed to parse axim_passport_session", e);
-  }
-  return { role: "guest" };
-}
-
-
 export async function verifyHmacSignature(
   request: Request,
   rawBody: string,
@@ -78,6 +63,59 @@ export async function verifyHmacSignature(
   }
 }
 
+
+/**
+ * Resolve the Core telemetry ingest URL.
+ *
+ * CORE_INGEST_URL may be configured either as a bare origin
+ * ("https://api.axim.us.com") or as a fully-qualified ingest path
+ * ("https://api.axim.us.com/telemetry"). The previous code unconditionally
+ * appended "/functions/v1/telemetry-ingress", which produced a duplicated,
+ * non-existent path against any configured value.
+ */
+function resolveIngestUrl(base: string): string {
+  const trimmed = base.replace(/\/+$/, "");
+  if (/\/(telemetry-ingress|telemetry-ingest|telemetry)$/.test(trimmed)) {
+    return trimmed;
+  }
+  return `${trimmed}/telemetry`;
+}
+
+/**
+ * Fail loudly when a KV binding the handler depends on is absent.
+ *
+ * HITL_APPROVAL_KV, EDGE_DLQ_KV and ECOSYSTEM_METRICS_KV are declared optional
+ * in the Env interface but are not declared in wrangler.jsonc. The handlers used
+ * to skip their writes and still answer 200/202, which made a non-functional
+ * feature look functional. A missing binding is a deployment fault and must
+ * surface as 503, not as success.
+ */
+function missingBinding(
+  request: Request,
+  env: Env,
+  binding: string,
+  feature: string,
+): Response {
+  console.error(
+    `[onyx-edge] required KV binding ${binding} is not configured; ${feature} is unavailable`,
+  );
+  return new Response(
+    JSON.stringify({
+      type: "about:blank",
+      title: "Service Unavailable",
+      status: 503,
+      detail: `${feature} is unavailable: binding ${binding} is not configured on this deployment.`,
+      instance: new URL(request.url).pathname,
+    }),
+    {
+      status: 503,
+      headers: {
+        ...getCorsHeaders(request, env),
+        "Content-Type": "application/problem+json",
+      },
+    },
+  );
+}
 
 const ALLOWED_ORIGINS = [
   "https://axim.us.com",
@@ -520,48 +558,6 @@ async function checkAuth(req: Request, env: Env, requireSuperUser: boolean = fal
   return null;
 }
 
-async function verifyAximSignature(
-  request: Request,
-  env: Env,
-  bodyText: string,
-): Promise<Response | null> {
-  const signature = request.headers.get("x-axim-signature");
-  if (!signature) {
-    return new Response("Missing x-axim-signature header", { status: 401 });
-  }
-  if (!env.AXIM_INTERNAL_KEY) {
-    return new Response("AXIM_INTERNAL_KEY not configured", { status: 500 });
-  }
-
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(env.AXIM_INTERNAL_KEY),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign", "verify"],
-  );
-
-  const signatureBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(bodyText),
-  );
-
-  const signatureArray = Array.from(new Uint8Array(signatureBuffer));
-  const signatureHex = signatureArray
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  // Support either direct hex or sha256= prefix format
-  const expectedSignature = `sha256=${signatureHex}`;
-  if (signature !== signatureHex && signature !== expectedSignature) {
-    return new Response("Invalid HMAC signature", { status: 403 });
-  }
-
-  return null;
-}
-
 async function bootstrapDatabase(env: Env): Promise<void> {
   void env;
 }
@@ -986,7 +982,35 @@ const onyx_handler: any = {
     ) {
       ctx?.waitUntil?.(bootstrapDatabase(env));
       try {
-        const payload = (await request.clone().json()) as {
+        const rawBody = await request.clone().text();
+
+        // SECURITY: this route is reachable before the global HMAC gate, so it must
+        // authenticate itself. Accept a valid HMAC over the raw body (satellite
+        // style) or a service/bearer credential (AXIM_ONYX_SECRET / AXIM_SERVICE_KEY
+        // or a Passport JWT). Anonymous callers are rejected.
+        const hmacOk = await verifyHmacSignature(request, rawBody, env.AXIM_INTERNAL_KEY);
+        if (!hmacOk) {
+          const authError = await checkAuth(request, env);
+          if (authError) {
+            return new Response(
+              JSON.stringify({ error: "Unauthorized" }),
+              {
+                status: 401,
+                headers: addOnyxHeaders(
+                  {
+                    ...getCorsHeaders(request, env),
+                    "Content-Type": "application/json",
+                  },
+                  edgeStatus,
+                  cacheStatus,
+                  traceId,
+                ),
+              },
+            );
+          }
+        }
+
+        const payload = JSON.parse(rawBody || "{}") as {
           session_id?: string;
           status?: string;
         };
@@ -1030,8 +1054,7 @@ const onyx_handler: any = {
           );
         }
         const ingestUrl =
-          env.CORE_INGEST_URL.replace(/\/$/, "") +
-          "/functions/v1/telemetry-ingress";
+          resolveIngestUrl(env.CORE_INGEST_URL);
         ctx?.waitUntil?.(
           fetchWithRetry(ingestUrl, {
             method: "POST",
@@ -1136,6 +1159,10 @@ const onyx_handler: any = {
       const authError = await checkAuth(request, env);
       if (authError) return authError;
 
+      if (!env.EDGE_DLQ_KV) {
+        return missingBinding(request, env, "EDGE_DLQ_KV", "DLQ status");
+      }
+
       let unsynced_relays_depth = 0;
       let unsynced_receipts_depth = 0;
       let upstream_core_ok = true;
@@ -1193,6 +1220,12 @@ const onyx_handler: any = {
       url.pathname === "/api/v1/telemetry/flush"
     ) {
       ctx?.waitUntil?.(bootstrapDatabase(env));
+
+      // SECURITY: previously unauthenticated. Anyone could force an outbound replay
+      // of up to 100 stored rows per call and have them marked synced.
+      const flushAuthError = await checkAuth(request, env, true);
+      if (flushAuthError) return flushAuthError;
+
       if (!env.CORE_INGEST_URL) {
         return new Response(
           JSON.stringify({
@@ -1220,8 +1253,7 @@ const onyx_handler: any = {
           const rows = result.results;
           if (rows && rows.length > 0) {
             const ingestUrl =
-              env.CORE_INGEST_URL.replace(/\/$/, "") +
-              "/functions/v1/telemetry-ingress";
+              resolveIngestUrl(env.CORE_INGEST_URL);
             for (const row of rows) {
 
               // Generate HMAC signature for telemetry
@@ -1323,10 +1355,13 @@ const onyx_handler: any = {
       const expectedToken = "Bearer " + env.ONYX_EMERGENCY_SECRET;
       // Validate bearer token or HMAC header against env.ONYX_EMERGENCY_SECRET.
       if (!authHeader || authHeader !== expectedToken) {
+        // SECURITY: never reflect a server secret back to the caller. This branch
+        // previously returned AXIM_ONYX_SECRET in the Authorization header, which
+        // escalated a holder of ONYX_EMERGENCY_SECRET to the master Onyx secret.
         return new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401,
           headers: addOnyxHeaders(
-              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
+              { "Content-Type": "application/json" },
             edgeStatus, cacheStatus, traceId
           )
         });
@@ -1344,7 +1379,7 @@ const onyx_handler: any = {
         return new Response(JSON.stringify({ error: "Forbidden: Unrecognized executive identity." }), {
           status: 403,
           headers: addOnyxHeaders(
-              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
+              { "Content-Type": "application/json" },
             edgeStatus, cacheStatus, traceId
           )
         });
@@ -1366,7 +1401,7 @@ const onyx_handler: any = {
       return new Response(JSON.stringify({ status: "success", reply, timestamp: new Date().toISOString() }), {
         status: 200,
         headers: addOnyxHeaders(
-              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
+              { "Content-Type": "application/json" },
           edgeStatus, cacheStatus, traceId
         )
       });
@@ -1707,9 +1742,24 @@ const onyx_handler: any = {
         // Strict HMAC Validation for payload-mutating requests
         // Exclude /api/v1/webhooks which uses specific partner logic
         if (url.pathname !== "/api/v1/webhooks") {
-          const sigError = await verifyAximSignature(request, env, rawBodyText);
-          if (sigError) {
-            return sigError;
+          // Constant-time verification (crypto.subtle.verify) over the raw body.
+          // verifyAximSignature compared hex strings with !==, which short-circuits
+          // on the first differing byte and leaks the expected digest by timing.
+          const sigOk = await verifyHmacSignature(
+            request,
+            rawBodyText,
+            env.AXIM_INTERNAL_KEY,
+          );
+          if (!sigOk) {
+            return new Response(
+              request.headers.get("x-axim-signature")
+                ? "Invalid HMAC signature"
+                : "Missing x-axim-signature header",
+              {
+                status: request.headers.get("x-axim-signature") ? 403 : 401,
+                headers: getCorsHeaders(request, env),
+              },
+            );
           }
         }
         if (rawBodyText) {
@@ -1850,97 +1900,6 @@ const onyx_handler: any = {
           );
         }
 } else if (
-        request.method === "POST" &&
-        url.pathname === "/api/v1/passport/verify"
-      ) {
-        // Task 1: AXiM Passport Edge Handoff Endpoint
-        const payload = parsedBody || {};
-        const { token } = payload as { token?: string };
-
-        if (!token) {
-          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Missing token", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
-            status: 400,
-            headers: addOnyxHeaders({
-              ...getCorsHeaders(request, env),
-              "Content-Type": "application/json"
-            }, edgeStatus, cacheStatus, traceId)
-          });
-        }
-
-        // Validate token signature or exchange it with Supabase Auth
-        let userProfile: any = null;
-        let isAuthorized = false;
-
-        try {
-          if (!env.CORE_INGEST_URL) {
-            throw new Error("CORE_INGEST_URL not configured for Supabase validation");
-          }
-
-          // In a real scenario, we'd ping Supabase or verify JWT here.
-          // We will mock the validation logic based on instructions:
-          // Enforce strict Google OIDC whitelist checking and Web3 SIWE.
-          // For sandbox purposes, we assume 'token' can be decoded or mapped.
-
-          // Basic mock validation for instructions:
-          const decodedToken = atob(token);
-          const tokenData = JSON.parse(decodedToken);
-          const email = tokenData.email || '';
-          const wallet = tokenData.wallet || '';
-
-          const whitelistedEmails = ['jrellars@gmail.com', 'jamesellars@jkrenewables.com'];
-          const isWhitelistedEmail = whitelistedEmails.includes(email.toLowerCase());
-          const isWhitelistedWallet = !!wallet; // basic check for SIWE
-
-          if (isWhitelistedEmail || isWhitelistedWallet) {
-            isAuthorized = true;
-            userProfile = { email, wallet };
-          }
-        } catch (err) {
-          console.error("error");
-          // If token isn't our mock base64, check if it equals some static keys for dev
-          if (token === "test_jrellars") {
-            isAuthorized = true;
-            userProfile = { email: 'jrellars@gmail.com' };
-          } else if (token === "test_jamesellars") {
-            isAuthorized = true;
-            userProfile = { email: 'jamesellars@jkrenewables.com' };
-          } else if (token === "test_wallet") {
-             isAuthorized = true;
-             userProfile = { wallet: "0x123...abc" };
-          }
-        }
-
-        if (!isAuthorized) {
-          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Unauthorized user or invalid token", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
-            status: 403,
-            headers: addOnyxHeaders({
-              ...getCorsHeaders(request, env),
-              "Content-Type": "application/json"
-            }, edgeStatus, cacheStatus, traceId)
-          });
-        }
-
-        // Return a signed master Supabase JWT session object (mocking for Edge Worker return)
-        const mockSupabaseSession = {
-          access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock_supabase_access_token",
-          token_type: "bearer",
-          expires_in: 3600,
-          refresh_token: "mock_supabase_refresh_token",
-          user: userProfile
-        };
-
-        return new Response(JSON.stringify({
-          status: "success",
-          session: mockSupabaseSession
-        }), {
-          status: 200,
-          headers: addOnyxHeaders({
-            ...getCorsHeaders(request, env),
-            "Content-Type": "application/json"
-          }, edgeStatus, cacheStatus, traceId)
-        });
-
-      } else if (
         request.method === "GET" &&
         url.pathname === "/api/v1/rate-limit/metrics"
       ) {
@@ -2516,7 +2475,10 @@ const onyx_handler: any = {
             return new Response("Missing action_id or decision", { status: 400, headers: getCorsHeaders(request, env) });
           }
 
-          if (env.HITL_APPROVAL_KV) {
+          if (!env.HITL_APPROVAL_KV) {
+            return missingBinding(request, env, "HITL_APPROVAL_KV", "HITL decision recording");
+          }
+          {
              const key = `action_decision:${action_id}`;
              const record = { action_id, decision, operator_notes, timestamp: new Date().toISOString() };
              await env.HITL_APPROVAL_KV.put(key, JSON.stringify(record), { expirationTtl: 86400 }); // 24 hours
@@ -2642,18 +2604,24 @@ const onyx_handler: any = {
         url.pathname === "/api/v1/ecosystem/event"
       ) {
         // Step 1: Ecosystem Event Ingress
+        //
+        // The global gate above already verified X-Axim-Signature over these exact
+        // bytes with AXIM_INTERNAL_KEY. This route previously re-verified the same
+        // header against AXIM_ONYX_SECRET, so a caller had to produce one signature
+        // that was simultaneously valid under two different keys — unreachable for
+        // every client, including Core's onyx-bridge relay. Authentication here is
+        // the gate's responsibility; this handler only parses.
         const rawBody = await request.clone().text();
-        const isValid = await verifyHmacSignature(request, rawBody, env.AXIM_ONYX_SECRET);
-        if (!isValid) {
-          return new Response("Unauthorized", { status: 401 });
-        }
 
         try {
           const payload = JSON.parse(rawBody);
           const eventId = crypto.randomUUID();
           const kvKey = `metric_${payload.source_app || "unknown"}_${Date.now()}_${eventId}`;
 
-          if (env.ECOSYSTEM_METRICS_KV) {
+          if (!env.ECOSYSTEM_METRICS_KV) {
+            return missingBinding(request, env, "ECOSYSTEM_METRICS_KV", "Ecosystem event ingestion");
+          }
+          {
             ctx?.waitUntil?.(
               env.ECOSYSTEM_METRICS_KV.put(
                 kvKey,
