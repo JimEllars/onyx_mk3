@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import useDesktopAgentStore from '../store/useDesktopAgentStore';
+import { adminRoleFromClaims, isSuperAdminClaims } from '../lib/roles';
 
 // Decodes the JWT without verifying signature (for client-side reading)
-function parseJwt(token) {
+export function parseJwt(token) {
     try {
         const base64Url = token.split('.')[1];
         if (!base64Url) return null;
         const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+        // globalThis.atob rather than window.atob: the module then decodes under
+        // jsdom and plain Node too, which is what the unit tests exercise.
+        const jsonPayload = decodeURIComponent(globalThis.atob(base64).split('').map(function(c) {
             return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
         }).join(''));
 
@@ -18,14 +21,24 @@ function parseJwt(token) {
 }
 
 // Canonical role is super_admin. The other spellings remain accepted while the
-// ecosystem converges; see edge-bridge/src/passport.ts.
-const SUPER_ADMIN_ROLE = 'super_admin';
-const SUPER_ADMIN_ROLES = ['super_admin', 'super-admin', 'superadmin', 'super_user', 'superuser'];
+// ecosystem converges; the shared implementation lives in src/lib/roles.js and
+// mirrors edge-bridge/src/passport.ts.
+//
+// This used to read `payload.app_metadata.SUPER_ADMIN_ROLES`, a claim nobody
+// issues: every real Passport token either threw (`.includes` of undefined) or
+// resolved to a ReferenceError because `role` was never declared, so the gate
+// denied valid super-admins.
+export function hasSuperAdminRole(token, now = Date.now()) {
+    const claims = parseJwt(token);
+    if (!claims) return false;
+    if (typeof claims.exp === 'number' && claims.exp * 1000 <= now) return false;
 
-function hasSuperAdminRole(token) {
-    const payload = parseJwt(token);
-    if (!payload || (payload.exp && payload.exp * 1000 <= Date.now())) return false;
-    return payload.app_metadata?.SUPER_ADMIN_ROLES.includes(String(role || '').toLowerCase());
+    const role = adminRoleFromClaims(claims);
+    if (!role) return false;
+    if (role !== 'super_admin') {
+        console.warn(`legacy admin role in passport token: ${role}`);
+    }
+    return isSuperAdminClaims(claims);
 }
 
 function getCookie(name) {
@@ -42,7 +55,15 @@ export function useAximAuth() {
     if (!jwtToken) return false;
     if (import.meta.env.DEV && jwtToken === 'dev-token') return true;
     // UI gating only; the edge worker re-verifies the signature and role on every call.
-    if (!hasSuperAdminRole(jwtToken)) return false;
+    // A malformed token must deny, never throw out of the auth effect.
+    let isAdmin = false;
+    try {
+      isAdmin = hasSuperAdminRole(jwtToken);
+    } catch (error) {
+      console.warn('Could not read roles from token; denying', error);
+      return false;
+    }
+    if (!isAdmin) return false;
 
     try {
       const response = await fetch('https://passport.axim.us.com/api/v1/auth/verify-token', {

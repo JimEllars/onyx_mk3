@@ -1,18 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import useAgentConnection from '../../hooks/useAgentConnection';
 import useDesktopAgentStore from '../../store/useDesktopAgentStore';
+import useDlqStatus from '../../hooks/useDlqStatus';
+import { decisionLabel, submitHitlDecision, HITL_OUTCOME } from '../../lib/hitlDecision';
 import PlaybookTrigger from './PlaybookTrigger';
+import RcaInspector from './RcaInspector';
+
+function statusCodeOf(event) {
+    const raw = event?.status_code ?? event?.status ?? event?.code;
+    const parsed = typeof raw === 'string' ? Number.parseInt(raw, 10) : raw;
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isServerError(event) {
+    const code = statusCodeOf(event);
+    if (code !== null) return code >= 500 && code <= 599;
+    return event?.level === 'error' && (event?.kind === 'http' || event?.is_5xx === true);
+}
+
+function formatDepth(value) {
+    return typeof value === 'number' ? String(value) : '--';
+}
 
 export default function ActionConsole({ peerConnection }) {
     const { status } = useAgentConnection(peerConnection);
     const { pendingHitlActions, updateHitlActionStatus, telemetryEvents } = useDesktopAgentStore();
+    const dlq = useDlqStatus();
 
     const [isWaiting, setIsWaiting] = useState(false);
-    const [queueTelemetry, setQueueTelemetry] = useState({
-        loadTimeMs: 0,
-        errorRate: 0,
-        routingEfficiency: 100
-    });
+    const [inspectedEvent, setInspectedEvent] = useState(null);
+
+    const recentServerErrors = useMemo(
+        () => (telemetryEvents || []).filter(isServerError).slice(-25).reverse(),
+        [telemetryEvents],
+    );
 
     useEffect(() => {
         const handleWaiting = () => {
@@ -32,80 +53,44 @@ export default function ActionConsole({ peerConnection }) {
                     updateHitlActionStatus(action.id, 'EXPIRED');
                 }
             });
-
-            // Calculate mock/derived telemetry for the ticket queue
-            const recentEvents = telemetryEvents ? telemetryEvents.slice(-20) : [];
-            const errorCount = recentEvents.filter(e => e.status === 'error' || e.level === 'error').length;
-            const errorRateCalc = recentEvents.length > 0 ? Math.round((errorCount / recentEvents.length) * 100) : 0;
-
-            const apiUrl = import.meta.env.VITE_ONYX_WORKER_URL || '';
-            const started = performance.now();
-            fetch(`${apiUrl}/api/v1/telemetry/health`)
-                .then((res) => {
-                    const loadTime = Math.round(performance.now() - started);
-                    setQueueTelemetry({
-                        loadTimeMs: loadTime,
-                        errorRate: errorRateCalc,
-                        routingEfficiency: res.ok ? Math.max(0, 100 - errorRateCalc) : 0
-                    });
-                })
-                .catch(() => setQueueTelemetry((prev) => ({ ...prev, errorRate: errorRateCalc, routingEfficiency: 0 })));
-
         }, 5000); // check every 5 seconds
 
         return () => clearInterval(interval);
-    }, [pendingHitlActions, updateHitlActionStatus, telemetryEvents]);
+    }, [pendingHitlActions, updateHitlActionStatus]);
 
     let voiceColor = 'text-gray-500';
     if (status === 'CONNECTED') voiceColor = 'text-emerald-500';
     else if (status === 'RECONNECTING') voiceColor = 'text-yellow-500';
     else if (status === 'RECONNECT NEEDED' || status === 'DISCONNECTED') voiceColor = 'text-red-500';
 
-    const handleApprove = async (actionId) => {
-        try {
-            updateHitlActionStatus(actionId, 'APPROVING...');
-            const token = localStorage.getItem('axim_passport_token');
-            const apiUrl = import.meta.env.VITE_ONYX_WORKER_URL || '';
-            const response = await fetch(`${apiUrl}/api/v1/mcp/execute`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ action_id: actionId, decision: 'approved' })
-            });
-            if (response.ok) {
-                updateHitlActionStatus(actionId, 'APPROVED'); setTimeout(() => { useDesktopAgentStore.setState(state => ({ pendingHitlActions: state.pendingHitlActions.filter(a => a.id !== actionId) })) }, 1500);
-            } else {
-                updateHitlActionStatus(actionId, 'FAILED');
-            }
-        } catch (e) {
-            updateHitlActionStatus(actionId, 'FAILED');
+    const decide = async (actionId, decision) => {
+        const token = localStorage.getItem('axim_passport_token');
+        updateHitlActionStatus(actionId, decision === 'approve' ? 'APPROVING...' : 'REJECTING...');
+
+        const result = await submitHitlDecision({
+            actionId,
+            decision,
+            token,
+            apiUrl: (import.meta.env.VITE_ONYX_WORKER_URL || '').replace(/\/$/, ''),
+        });
+
+        // QUEUED and FAILED both keep the ticket visible: the operator still has
+        // to do something, and silently clearing it would hide an unapplied
+        // approval. Only a confirmed outcome retires the row.
+        const label = decisionLabel(result);
+        updateHitlActionStatus(actionId, result.reason ? `${label} — ${result.reason}` : label);
+
+        if (result.outcome === HITL_OUTCOME.APPROVED || result.outcome === HITL_OUTCOME.REJECTED) {
+            setTimeout(() => {
+                useDesktopAgentStore.setState(state => ({
+                    pendingHitlActions: state.pendingHitlActions.filter(a => a.id !== actionId),
+                }));
+            }, 1500);
         }
     };
 
-    const handleReject = async (actionId) => {
-        try {
-            updateHitlActionStatus(actionId, 'REJECTING...');
-            const token = localStorage.getItem('axim_passport_token');
-            const apiUrl = import.meta.env.VITE_ONYX_WORKER_URL || '';
-            const response = await fetch(`${apiUrl}/api/v1/mcp/execute`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ action_id: actionId, decision: 'rejected' })
-            });
-            if (response.ok) {
-                updateHitlActionStatus(actionId, 'REJECTED'); setTimeout(() => { useDesktopAgentStore.setState(state => ({ pendingHitlActions: state.pendingHitlActions.filter(a => a.id !== actionId) })) }, 1500);
-            } else {
-                updateHitlActionStatus(actionId, 'FAILED');
-            }
-        } catch (e) {
-            updateHitlActionStatus(actionId, 'FAILED');
-        }
-    };
+    const handleApprove = (actionId) => decide(actionId, 'approve');
+    const handleReject = (actionId) => decide(actionId, 'reject');
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -123,6 +108,10 @@ export default function ActionConsole({ peerConnection }) {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [pendingHitlActions]);
 
+    const dlqColor = dlq.status === 'live' ? 'text-emerald-400' : dlq.status === 'stale' ? 'text-amber-400' : 'text-rose-400';
+    const coreSyncOk = dlq.data?.upstream_core_ok;
+    const relaysInFlight = (dlq.data?.unsynced_relays_depth ?? 0) + (dlq.data?.unsynced_receipts_depth ?? 0);
+
     return (
         <div className="action-console w-80 lg:w-96 p-5 bg-slate-900 text-slate-100 flex flex-col gap-6 rounded-l-xl shadow-2xl border-l border-t border-b border-slate-800 h-full overflow-hidden font-mono relative z-10">
             <div className="flex flex-col gap-3 border-b border-slate-700/50 pb-4">
@@ -136,21 +125,58 @@ export default function ActionConsole({ peerConnection }) {
                     </div>
                 </div>
 
-                {/* Telemetry Integration Panel */}
+                {/* Live DLQ telemetry, polled from GET /api/v1/telemetry/dlq-status */}
                 <div className="grid grid-cols-3 gap-2 text-center mt-2">
                     <div className="bg-slate-800/40 rounded p-2 border border-slate-700/50 flex flex-col justify-center">
-                        <span className="text-[9px] text-slate-400 uppercase tracking-wider block mb-1">Queue Load</span>
-                        <span className={`text-xs font-semibold ${queueTelemetry.loadTimeMs < 50 ? 'text-emerald-400' : 'text-amber-400'}`}>{queueTelemetry.loadTimeMs}ms</span>
+                        <span className="text-[9px] text-slate-400 uppercase tracking-wider block mb-1">Unsynced</span>
+                        <span className={`text-xs font-semibold ${relaysInFlight > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                            {dlq.data ? formatDepth(relaysInFlight) : '--'}
+                        </span>
                     </div>
                     <div className="bg-slate-800/40 rounded p-2 border border-slate-700/50 flex flex-col justify-center">
-                        <span className="text-[9px] text-slate-400 uppercase tracking-wider block mb-1">Error Rate</span>
-                        <span className={`text-xs font-semibold ${queueTelemetry.errorRate > 5 ? 'text-red-400' : 'text-emerald-400'}`}>{queueTelemetry.errorRate}%</span>
+                        <span className="text-[9px] text-slate-400 uppercase tracking-wider block mb-1">Core Sync</span>
+                        <span className={`text-xs font-semibold ${coreSyncOk === true ? 'text-emerald-400' : coreSyncOk === false ? 'text-rose-400' : 'text-slate-500'}`}>
+                            {coreSyncOk === true ? 'UP' : coreSyncOk === false ? 'DOWN' : '--'}
+                        </span>
                     </div>
                     <div className="bg-slate-800/40 rounded p-2 border border-slate-700/50 flex flex-col justify-center">
-                        <span className="text-[9px] text-slate-400 uppercase tracking-wider block mb-1">Routing Eff</span>
-                        <span className="text-xs font-semibold text-blue-400">{queueTelemetry.routingEfficiency}%</span>
+                        <span className="text-[9px] text-slate-400 uppercase tracking-wider block mb-1">DLQ Feed</span>
+                        <span className={`text-xs font-semibold ${dlqColor}`}>
+                            {dlq.status.toUpperCase()}
+                        </span>
                     </div>
                 </div>
+                <p className="text-[9px] text-slate-500 leading-tight">
+                    {dlq.error
+                        ? `dlq-status: ${dlq.error}${dlq.consecutiveFailures ? ` (${dlq.consecutiveFailures} fails)` : ''}`
+                        : dlq.data
+                            ? `breaker ${dlq.data.edge_circuit_breaker} · relays ${formatDepth(dlq.data.unsynced_relays_depth)} · receipts ${formatDepth(dlq.data.unsynced_receipts_depth)}`
+                            : 'polling /api/v1/telemetry/dlq-status…'}
+                </p>
+
+                {recentServerErrors.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                        <h3 className="text-[9px] font-bold text-slate-500 tracking-widest uppercase">
+                            Recent 5xx ({recentServerErrors.length})
+                        </h3>
+                        <ul className="max-h-24 overflow-y-auto custom-scrollbar flex flex-col gap-1">
+                            {recentServerErrors.map((event, index) => (
+                                <li key={event.id || `${index}-${event.timestamp || index}`} className="flex items-center justify-between gap-2 bg-rose-950/30 border border-rose-900/40 rounded px-2 py-1">
+                                    <span className="text-[9px] text-rose-300 truncate">
+                                        {(event.micro_app || event.source || event.service || 'micro-app')} · {statusCodeOf(event) ?? 'ERR'}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setInspectedEvent(event)}
+                                        className="text-[9px] font-bold tracking-wider text-slate-300 hover:text-white border border-slate-700 rounded px-1.5 py-0.5"
+                                    >
+                                        RCA
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
             </div>
 
             <div className="hitl-queue flex-1 overflow-y-auto pr-2 custom-scrollbar">
@@ -218,7 +244,7 @@ export default function ActionConsole({ peerConnection }) {
                                             </button>
                                         </div>
                                     ) : (
-                                        <span className={`text-[9px] font-bold tracking-wider px-2 py-1 rounded shadow-inner uppercase ${action.status === 'APPROVED' ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-800/60' : action.status === 'EXPIRED' || action.status === 'REJECTED' ? 'bg-red-900/40 text-red-400 border border-red-800/60' : 'bg-amber-900/40 text-amber-400 border border-amber-800/60'}`}>
+                                        <span className={`text-[9px] font-bold tracking-wider px-2 py-1 rounded shadow-inner uppercase ${action.status.startsWith('APPROVED') ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-800/60' : action.status.startsWith('EXPIRED') || action.status.startsWith('REJECTED') || action.status === 'FAILED' ? 'bg-red-900/40 text-red-400 border border-red-800/60' : 'bg-amber-900/40 text-amber-400 border border-amber-800/60'}`}>
                                             {action.status}
                                         </span>
                                     )}
@@ -230,6 +256,10 @@ export default function ActionConsole({ peerConnection }) {
             </div>
 
             <PlaybookTrigger />
+
+            {inspectedEvent && (
+                <RcaInspector event={inspectedEvent} onClose={() => setInspectedEvent(null)} />
+            )}
 
             <style jsx="true">{`
                 .custom-scrollbar::-webkit-scrollbar {
