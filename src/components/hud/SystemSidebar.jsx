@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import useDesktopAgentStore from '../../store/useDesktopAgentStore';
+import { connectionBadgeClasses, toConnectionBadge } from '../../lib/connectionState';
 
 export default function SystemSidebar() {
     const [llmHealth, setLlmHealth] = useState({ healthy: 0, total: 0 });
@@ -93,6 +94,12 @@ export default function SystemSidebar() {
     const gatewayColor = telemetry.gatewayStatus === 'OPERATIONAL' ? 'text-emerald-500' : 'text-amber-500';
     const latencyColor = telemetry.latency !== null && telemetry.latency < 100 ? 'bg-emerald-500' : 'bg-amber-500';
 
+    // One vocabulary for every transport: Online / Reconnecting / Offline.
+    const eventBadge = toConnectionBadge(streamStatus);
+    const eventClasses = connectionBadgeClasses(eventBadge);
+    const voiceBadge = toConnectionBadge(activeVoiceTrunk);
+    const voiceClasses = connectionBadgeClasses(voiceBadge);
+
     return (
         <div className="system-sidebar w-64 p-5 bg-slate-900 border-r border-slate-800 flex flex-col space-y-4 font-mono shadow-2xl relative z-10">
             <div className="mb-4 pb-4 border-b border-slate-700/50 flex items-center gap-3">
@@ -155,7 +162,10 @@ export default function SystemSidebar() {
                 </div>
                 <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-slate-500 uppercase tracking-widest">Event Stream</span>
-                    <span className={`text-[10px] font-bold tracking-wider ${streamStatus === 'ONLINE' ? 'text-emerald-500' : streamStatus === 'OFFLINE' ? 'text-red-500' : 'text-amber-500'}`}>{streamStatus}</span>
+                    <span className={`text-[10px] font-bold tracking-wider flex items-center gap-1.5 ${eventClasses.text}`} data-connection-badge="event-stream" data-state={eventBadge}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${eventClasses.dot}`}></span>
+                        {eventBadge}
+                    </span>
                 </div>
                 <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-slate-500 uppercase tracking-widest">Auth Level</span>
@@ -163,7 +173,10 @@ export default function SystemSidebar() {
                 </div>
                 <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-slate-500 uppercase tracking-widest">Voice Trunk</span>
-                    <span className={`text-[10px] font-bold tracking-wider ${activeVoiceTrunk === 'ACTIVE' ? 'text-emerald-500' : activeVoiceTrunk === 'RECONNECTING' ? 'text-yellow-500' : 'text-slate-500'}`}>{activeVoiceTrunk}</span>
+                    <span className={`text-[10px] font-bold tracking-wider flex items-center gap-1.5 ${voiceClasses.text}`} data-connection-badge="voice-trunk" data-state={voiceBadge}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${voiceClasses.dot}`}></span>
+                        {voiceBadge}
+                    </span>
                 </div>
                 <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-slate-500 uppercase tracking-widest">Agent Mode</span>

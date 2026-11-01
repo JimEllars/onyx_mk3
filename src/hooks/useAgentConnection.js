@@ -1,12 +1,21 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import useDesktopAgentStore from '../store/useDesktopAgentStore';
+import { computeBackoffDelay } from '../lib/connectionState';
+
+const MAX_RETRIES = 10;
 
 export default function useAgentConnection(peerConnection) {
     const addHitlAction = useDesktopAgentStore((state) => state.addHitlAction);
     const [status, setStatus] = useState('DISCONNECTED');
+    // Mirrored into state (not just a ref) so consumers re-render as it climbs.
+    const [retryCount, setRetryCount] = useState(0);
     const retryCountRef = useRef(0);
-    const maxRetries = 10;
     const retryTimerRef = useRef(null);
+
+    const bumpRetryCount = useCallback((value) => {
+        retryCountRef.current = value;
+        setRetryCount(value);
+    }, []);
 
     useEffect(() => {
         if (!peerConnection) return;
@@ -17,20 +26,23 @@ export default function useAgentConnection(peerConnection) {
 
             if (state === 'connected' && iceState === 'connected') {
                 setStatus('CONNECTED');
-                retryCountRef.current = 0; // reset on successful connection
+                bumpRetryCount(0);
                 if (retryTimerRef.current) {
                     clearTimeout(retryTimerRef.current);
                     retryTimerRef.current = null;
                 }
-            } else if (state === 'disconnected' || state === 'failed' || iceState === 'disconnected' || iceState === 'failed') {
-                if (retryCountRef.current < maxRetries) {
+            } else if (
+                state === 'disconnected' ||
+                state === 'failed' ||
+                iceState === 'disconnected' ||
+                iceState === 'failed'
+            ) {
+                if (retryCountRef.current < MAX_RETRIES) {
                     setStatus('RECONNECTING');
 
-                    const backoff = Math.min(10000, 500 * Math.pow(2, retryCountRef.current));
-                    const jitter = Math.random() * 500;
-                    const delay = backoff + jitter;
-
-                    retryCountRef.current += 1;
+                    // Same 1s -> 30s curve as the SSE transport.
+                    const delay = computeBackoffDelay(retryCountRef.current);
+                    bumpRetryCount(retryCountRef.current + 1);
 
                     if (retryTimerRef.current) {
                         clearTimeout(retryTimerRef.current);
@@ -49,7 +61,6 @@ export default function useAgentConnection(peerConnection) {
         peerConnection.addEventListener('connectionstatechange', handleConnectionStateChange);
         peerConnection.addEventListener('iceconnectionstatechange', handleConnectionStateChange);
 
-        // Initial check
         handleConnectionStateChange();
 
         return () => {
@@ -57,10 +68,10 @@ export default function useAgentConnection(peerConnection) {
             peerConnection.removeEventListener('iceconnectionstatechange', handleConnectionStateChange);
             if (retryTimerRef.current) {
                 clearTimeout(retryTimerRef.current);
+                retryTimerRef.current = null;
             }
         };
-    }, [peerConnection]);
-
+    }, [peerConnection, bumpRetryCount]);
 
     useEffect(() => {
         const token = localStorage.getItem('axim_passport_token');
@@ -88,12 +99,12 @@ export default function useAgentConnection(peerConnection) {
                 // Close and reconnect manually so backoff applies to every failure.
                 eventSource.close();
                 if (disposed) return;
-                if (attempts >= maxRetries) {
+                if (attempts >= MAX_RETRIES) {
                     setStreamStatus('OFFLINE');
                     return;
                 }
                 setStreamStatus('RECONNECTING');
-                const delay = Math.min(30000, 1000 * Math.pow(2, attempts)) + Math.random() * 500;
+                const delay = computeBackoffDelay(attempts);
                 attempts += 1;
                 timer = setTimeout(connect, delay);
             };
@@ -107,10 +118,10 @@ export default function useAgentConnection(peerConnection) {
                         risk_level: payload.risk_level,
                         description: payload.description,
                         params: payload.parameters,
-                        timestamp: payload.timestamp || Date.now()
+                        timestamp: payload.timestamp || Date.now(),
                     });
                 } catch (e) {
-                    console.error("Failed to parse action_pending event", e);
+                    console.error('Failed to parse action_pending event', e);
                 }
             });
         };
@@ -124,5 +135,5 @@ export default function useAgentConnection(peerConnection) {
         };
     }, [addHitlAction]);
 
-    return { status, retryCount: retryCountRef.current };
+    return { status, retryCount };
 }

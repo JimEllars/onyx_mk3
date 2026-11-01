@@ -1,22 +1,114 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAximAuth } from '../../hooks/useAximAuth';
+import { computeBackoffDelay, isRetryableStatus } from '../../lib/connectionState';
+import {
+    describeJsonResponse,
+    extractSseData,
+    isEventStream,
+    normalizeStreamPayload,
+    splitSseFrames,
+} from '../../lib/chatStream';
+import {
+    DOMAIN_CONTEXTS,
+    buildSummonPayload,
+    readStoredDomainContext,
+    resolveDomainContext,
+    writeStoredDomainContext,
+} from '../../lib/domainContexts';
+
+const MAX_RETRIES = 3;
 
 export default function ChatInterface() {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [isStreaming, setIsStreaming] = useState(false);
     const [streamStatus, setStreamStatus] = useState('');
-    const messagesEndRef = useRef(null);
     const [hasError, setHasError] = useState(false);
+    const [domainContextId, setDomainContextId] = useState(() => readStoredDomainContext());
+    const messagesEndRef = useRef(null);
     const { isAuthenticated, token, loginWithPassport, authError } = useAximAuth();
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
+    const domainContext = resolveDomainContext(domainContextId);
 
     useEffect(() => {
-        scrollToBottom();
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    const selectDomainContext = (id) => {
+        const stored = writeStoredDomainContext(id);
+        setDomainContextId(stored);
+    };
+
+    const appendAssistantText = (text) => {
+        if (!text) return;
+        setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === 'assistant') {
+                next[next.length - 1] = { ...last, content: last.content + text };
+            } else {
+                next.push({ role: 'assistant', content: text });
+            }
+            return next;
+        });
+    };
+
+    const consumeStream = async (response) => {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const { frames, rest } = splitSseFrames(buffer);
+            buffer = rest;
+
+            for (const frame of frames) {
+                for (const data of extractSseData(frame)) {
+                    const event = normalizeStreamPayload(data);
+
+                    if (event.kind === 'delta') {
+                        appendAssistantText(event.text);
+                    } else if (event.kind === 'done') {
+                        setStreamStatus('');
+                        return;
+                    } else if (event.kind === 'status') {
+                        handleStatusEvent(event.state);
+                    } else if (event.kind === 'tool') {
+                        setMessages((prev) => [
+                            ...prev,
+                            {
+                                role: 'system',
+                                isStart: event.started,
+                                content: event.started
+                                    ? `⚡ Swarm Agent executing: [${event.name}]...`
+                                    : `✅ Swarm Agent completed: [${event.name}]`,
+                            },
+                        ]);
+                    }
+                }
+            }
+        }
+    };
+
+    const handleStatusEvent = (state) => {
+        if (state === 'WAITING_ON_USER') {
+            window.dispatchEvent(new CustomEvent('onyx_waiting_on_user'));
+        } else if (state === 'PROVIDER_FAILOVER') {
+            setStreamStatus('PROVIDER_FAILOVER');
+            setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last && last.role === 'assistant') {
+                    next[next.length - 1] = { ...last, isFailover: true };
+                }
+                return next;
+            });
+        }
+    };
 
     const attemptFetch = async (userMessage, retryCount = 0) => {
         try {
@@ -25,97 +117,57 @@ export default function ChatInterface() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`,
                 },
-                body: JSON.stringify({ message: userMessage })
+                body: JSON.stringify(buildSummonPayload({ message: userMessage, domainContextId })),
             });
 
             if (!response.ok) {
                 if (response.status === 429) {
                     setHasError(true);
                     setStreamStatus('Rate Limited (Asguard). Please slow down.');
-                    throw new Error(`Asguard rate limit exceeded.`);
+                    return;
                 }
                 if (response.status === 401 || response.status === 403) {
                     setHasError(true);
                     setStreamStatus('Authentication Failure (Asguard). Unauthorized request.');
-                    throw new Error(`Authentication failure.`);
+                    return;
                 }
-                if (response.status === 502 || response.status === 503) {
-                    if (retryCount < 3) {
-                         setStreamStatus(`Re-routing connection... (Attempt ${retryCount + 1})`);
-                         await new Promise(r => setTimeout(r, 2000));
-                         return attemptFetch(userMessage, retryCount + 1);
-                    }
-                    setHasError(true);
-                    throw new Error(`Network error! status: ${response.status}`);
-                } else {
-                    setHasError(true);
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                if (isRetryableStatus(response.status) && retryCount < MAX_RETRIES) {
+                    const delay = computeBackoffDelay(retryCount);
+                    setStreamStatus(
+                        `Re-routing connection... (Attempt ${retryCount + 1}, retrying in ${Math.round(delay / 1000)}s)`,
+                    );
+                    await new Promise((r) => setTimeout(r, delay));
+                    return attemptFetch(userMessage, retryCount + 1);
                 }
-            } else {
-                setStreamStatus('Connected');
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder('utf-8');
-                let buffer = '';
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-
-                    buffer += decoder.decode(value, { stream: true });
-                    const parts = buffer.split('\n\n');
-                    buffer = parts.pop() || '';
-
-                    for (const part of parts) {
-                        if (part.startsWith('data: ')) {
-                            const dataStr = part.slice(6);
-                            if (dataStr === '[DONE]') {
-                                setIsStreaming(false);
-                                setStreamStatus('');
-                                return;
-                            }
-                            try {
-                                const parsed = JSON.parse(dataStr);
-                                if (parsed.type === 'status' && parsed.state === 'WAITING_ON_USER') {
-                                    window.dispatchEvent(new CustomEvent('onyx_waiting_on_user'));
-                                } else if (parsed.type === 'status' && parsed.state === 'PROVIDER_FAILOVER') {
-                                    setStreamStatus('PROVIDER_FAILOVER');
-                                    setMessages(prev => {
-                                        const newMsgs = [...prev];
-                                        const last = newMsgs[newMsgs.length - 1];
-                                        if (last && last.role === 'assistant') {
-                                            last.isFailover = true;
-                                        }
-                                        return newMsgs;
-                                    });
-                                } else if (parsed.type === 'tool_start') {
-                                    setMessages(prev => [...prev, { role: 'system', isStart: true, content: `⚡ Swarm Agent executing: [${parsed.tool_name}]...` }]);
-                                } else if (parsed.type === 'tool_finish') {
-                                    setMessages(prev => [...prev, { role: 'system', content: `✅ Swarm Agent completed: [${parsed.tool_name}]` }]);
-                                } else {
-                                    setMessages(prev => {
-                                        const newMessages = [...prev];
-                                        const lastMessage = newMessages[newMessages.length - 1];
-                                        if (lastMessage && lastMessage.role === 'assistant') {
-                                            lastMessage.content += (parsed.chunk || '');
-                                        }
-                                        return newMessages;
-                                    });
-                                }
-                            } catch (err) {
-                                /* void 0; */
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (error) {
-            /* void 0; */
-            if (!hasError) {
-                setStreamStatus('Stream failed. Attempting reconnect without refresh...');
                 setHasError(true);
+                setStreamStatus(`Network error! status: ${response.status}`);
+                return;
             }
+
+            setStreamStatus('Connected');
+
+            if (isEventStream(response.headers.get('content-type'))) {
+                await consumeStream(response);
+                return;
+            }
+
+            // Core accepted the payload and answered with a queued acknowledgement
+            // rather than a stream. Render it instead of leaving an empty bubble.
+            const body = await response.json().catch(() => null);
+            const { text } = describeJsonResponse(body, response.status);
+            appendAssistantText(text);
+            setStreamStatus('');
+        } catch (error) {
+            if (retryCount < MAX_RETRIES) {
+                const delay = computeBackoffDelay(retryCount);
+                setStreamStatus(`Stream failed. Reconnecting in ${Math.round(delay / 1000)}s...`);
+                await new Promise((r) => setTimeout(r, delay));
+                return attemptFetch(userMessage, retryCount + 1);
+            }
+            setHasError(true);
+            setStreamStatus('Stream failed. Attempting reconnect without refresh...');
         } finally {
             setIsStreaming(false);
         }
@@ -127,8 +179,11 @@ export default function ChatInterface() {
 
         const userMessage = input;
         setInput('');
-        setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-        setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+        setMessages((prev) => [
+            ...prev,
+            { role: 'user', content: userMessage },
+            { role: 'assistant', content: '' },
+        ]);
         setIsStreaming(true);
         setStreamStatus('Initializing Stream...');
 
@@ -162,30 +217,66 @@ export default function ChatInterface() {
 
     return (
         <div className="flex flex-col h-full bg-slate-900 rounded-lg shadow-xl overflow-hidden border border-slate-700">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-700/60 bg-slate-900/80">
+                <span className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">Domain</span>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Domain context">
+                    {DOMAIN_CONTEXTS.map((ctx) => {
+                        const active = ctx.id === domainContext.id;
+                        return (
+                            <button
+                                key={ctx.id}
+                                type="button"
+                                onClick={() => selectDomainContext(ctx.id)}
+                                aria-pressed={active}
+                                data-domain-context={ctx.id}
+                                title={ctx.blurb}
+                                className={`text-[10px] font-mono tracking-wide px-2.5 py-1 rounded-full border transition-colors ${
+                                    active
+                                        ? 'bg-indigo-500/20 border-indigo-400/60 text-indigo-200'
+                                        : 'bg-slate-800/60 border-slate-700/70 text-slate-400 hover:text-slate-200 hover:border-slate-500'
+                                }`}
+                            >
+                                {ctx.label}
+                            </button>
+                        );
+                    })}
+                </div>
+                <span className="ml-auto text-[9px] font-mono text-slate-500 truncate max-w-[45%]" title={domainContext.blurb}>
+                    {domainContext.blurb}
+                </span>
+            </div>
+
             <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
                 {messages.map((msg, index) => {
                     if (msg.role === 'system') {
                         return (
                             <div key={`sys-${index}`} className="flex justify-center my-2">
-                                <span className={`bg-slate-800/80 border border-blue-500/20 text-blue-300/80 text-xs px-3 py-1.5 rounded-full font-mono shadow-sm ${msg.isStart ? "animate-pulse" : "opacity-75"}`}>
+                                <span className={`bg-slate-800/80 border border-blue-500/20 text-blue-300/80 text-xs px-3 py-1.5 rounded-full font-mono shadow-sm ${msg.isStart ? 'animate-pulse' : 'opacity-75'}`}>
                                     {msg.content}
                                 </span>
                             </div>
                         );
                     }
+                    const isPendingAssistant = msg.role === 'assistant' && msg.content === '' && isStreaming;
                     return (
-                        <div key={`msg-${index}`} className={`p-4 rounded-xl shadow-md max-w-[85%] ${msg.role === 'user' ? 'bg-indigo-600/90 text-white ml-auto border border-indigo-500/50' : 'bg-slate-800/80 text-emerald-300 border border-slate-700/80 self-start'}`}>
-                            {msg.content}
+                        <div key={`msg-${index}`} className={`p-4 rounded-xl shadow-md max-w-[85%] whitespace-pre-wrap ${msg.role === 'user' ? 'bg-indigo-600/90 text-white ml-auto border border-indigo-500/50' : 'bg-slate-800/80 text-emerald-300 border border-slate-700/80 self-start'}`}>
+                            {isPendingAssistant ? (
+                                <span className="flex gap-1 items-center">
+                                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
+                                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse delay-75"></span>
+                                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-pulse delay-150"></span>
+                                </span>
+                            ) : (
+                                msg.content
+                            )}
+                            {msg.isFailover && (
+                                <span className="block mt-2 text-[10px] uppercase tracking-widest text-amber-400 font-mono">
+                                    Provider failover active
+                                </span>
+                            )}
                         </div>
                     );
                 })}
-                {isStreaming && (
-                     <div className="bg-slate-700 text-slate-100 self-start p-3 rounded-lg flex gap-1 items-center max-w-[85%]">
-                         <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse"></div>
-                         <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse delay-75"></div>
-                         <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse delay-150"></div>
-                     </div>
-                )}
                 <div ref={messagesEndRef} />
             </div>
 
@@ -201,7 +292,7 @@ export default function ChatInterface() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     disabled={isStreaming}
-                    placeholder="Summon Onyx Mk3..."
+                    placeholder={`Summon Onyx Mk3 — ${domainContext.label}...`}
                     className="flex-1 bg-slate-900 text-white rounded p-3 border border-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder-slate-500"
                 />
                 <button

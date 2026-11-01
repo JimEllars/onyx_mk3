@@ -348,3 +348,198 @@ anonymous decision rejection, plain CGI names, `/health`).
 - **B8 workers test pool.** `@cloudflare/vitest-pool-workers` is installed but the repo
   pins vitest 5 against a peer of vitest 4; migrating needs a dependency decision first.
   Until then KV/D1 behaviour is asserted through guards and fakes, not `workerd`.
+
+---
+
+# Verification Log — HUD Stream Repair, Live DLQ Telemetry & Multi-Persona Context (2026-11-01)
+
+**Branch:** `fix/onyx-phase-b-hitl-and-chat-auth` (stacked on `c6258b8`, Phase B)
+**Base:** `c6258b8`
+**Scope:** `src/` (React HUD), `tests/web/`, `package.json`, embedded bundle in
+`rust/crates/onyx/static/`. No Rust source changed — see "Environment limitation".
+
+## Environment limitation (blocks two of the five runbook checks)
+
+This authoring environment has no C toolchain and no root, so Rust binaries cannot
+be linked here. This is a pre-existing constraint of the sandbox, not a regression
+in the repository — `rust/build.log` and `rust/test.log` in the tree are stale
+artifacts from a container build under `/app/rust` and do not describe the current
+head.
+
+Installed for this session (no root required):
+`rustup` -> `rustc 1.99.1` / `cargo 1.99.1` / `rustfmt 1.10.0`, and `zig 0.14.1`
+as a `cc`/`ar` shim (`~/bin/cc`).
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt --all -- --check` | **PASS** (exit 0) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | **NOT RUN — blocked** |
+| `cargo test --workspace` | **NOT RUN — blocked** |
+
+Why clippy/test cannot run here:
+
+1. No `cc`, `gcc`, `clang`, `cmake`, `make` or `ld` on the image, and no `sudo`.
+2. With the zig shim, C **compilation** works (`zig cc -c` succeeds), but zig's
+   `ld.lld` link step hangs indefinitely in this sandbox — reproduced on a 3-line
+   hello-world: `timeout 90 zig cc t.c -o t` -> exit 124, 0 CPU used.
+3. Falling back to `rust-lld` is also impossible: only `libc.so.6` and `libm.so.6`
+   are present, with no `crt1.o` / `Scrt1.o` / `crti.o` / `crtn.o`, so host
+   artifacts (proc-macros, build scripts) cannot be linked.
+
+No claim of Rust compilation is made for this change. It is frontend and test-only,
+so the untested surface is limited to one rebuilt asset bundle (below).
+
+### Stale Rust errors in the tree are not current
+
+`rust/build.log` / `rust/test.log` record `E0428` (`State` defined multiple times)
+and `E0004` (`CliAction::State` not covered) against `crates/onyx/src/main.rs`. Those
+logs are from `/app/rust` and predate the current head. At `c6258b8`:
+
+- `State` is declared exactly once in `enum CliAction` (`main.rs:863`).
+- `CliAction::State { output_format }` is handled (`main.rs:776`).
+- `CliAction::ServeHeadless { port }` exists and is handled (`main.rs:791`, `main.rs:1124`).
+
+Both logs should be deleted rather than trusted. They are excluded from this commit
+by `.gitignore` (`*.log`).
+
+## Defects fixed
+
+### D1 — Assistant text was silently discarded (both response shapes)
+
+`ChatInterface.jsx` parsed only `{"chunk": "..."}`. Neither real response shape
+carries that field:
+
+- `textSsePayload()` (`edge-bridge/src/index.ts:354`) emits
+  `{"type":"content_block_delta","delta":{"type":"text_delta","text":"..."}}`.
+- The accepted-payload path returns `application/json`
+  `{"status":"success","message":"Summon payload queued successfully."}` — no SSE
+  frames at all, so the old reader loop finished with an empty assistant bubble.
+
+Result: an operator saw their own message and an empty reply on every path.
+
+Fix: pure parsers in `src/lib/chatStream.js` (`splitSseFrames`, `extractSseData`,
+`normalizeStreamPayload`, `describeJsonResponse`, `isEventStream`), and
+`ChatInterface` now branches on `content-type`. Legacy `{chunk}` and OpenAI
+`choices[0].delta.content` shapes are still accepted.
+
+### D2 — Ticket expiry interval rebuilt on every telemetry event
+
+`ActionConsole.jsx` ran its 5s interval with `telemetryEvents` in the dependency
+array, so each incoming event tore down and recreated the timer — and each tick
+fired a `fetch` to `/api/v1/telemetry/health`. On a busy stream that is a timer
+churn plus an unbounded request rate.
+
+Fix: expiry is its own effect depending on tickets only; telemetry is polled on a
+fixed 15s `GET /api/v1/telemetry/dlq-status`.
+
+### D3 — HITL failures were indistinguishable from success
+
+The console treated any non-`ok` response as a bare `FAILED`. The edge
+(`index.ts:2557-2628`) returns `200` only when Core **applied** the decision, and
+otherwise `502`/`503` with `reason` + `core_status`. The operator now sees
+`Decision not applied — <reason>`.
+
+Also moved the decision call to the canonical `POST /api/v1/hitl/action`
+(`index.ts:2557`); both routes share `applyHitlDecision`, so behaviour is
+unchanged but the console now uses the documented endpoint.
+
+### D4 — Keyboard shortcuts captured while typing
+
+`Enter`/`Y`/`N`/`Escape` approval shortcuts fired while the operator was typing in
+an input. Now ignored when the event target is `INPUT` or `TEXTAREA`.
+
+### D5 — `retryCount` never re-rendered; WebRTC cap was 10s not 30s
+
+`useAgentConnection` returned `retryCountRef.current` — a ref, so consumers never
+re-rendered as it climbed. The WebRTC path also capped at `Math.min(10000, ...)`
+while the SSE path used 30s. Both transports now share
+`computeBackoffDelay()` (1s -> 30s, full jitter) and the counter is state.
+
+### D6 — Sidebar exposed transport enums instead of states
+
+`SystemSidebar` rendered raw `streamStatus` / `activeVoiceTrunk` values
+(`CONNECTING`, `RECONNECT NEEDED`, `ACTIVE`). Both rows now render
+`ONLINE` / `RECONNECTING` / `OFFLINE` with distinct colour + dot, tagged
+`data-connection-badge` / `data-state` for tests.
+
+## Implemented (plan Phases 2 & 3)
+
+- **Phase 2 — live telemetry + RCA inspector.** `ActionConsole` polls
+  `GET /api/v1/telemetry/dlq-status` with the Passport bearer, showing depth,
+  breaker state and Core reachability (`src/lib/rca.js: summarizeDlqStatus`). An
+  expandable inspector lists 5xx/error records from the telemetry buffer newest
+  first, with app, status, trace id and the formatted JSON payload
+  (`collectRcaRecords`, `formatRcaJson`).
+- **Phase 3 — multi-persona context.** `ChatInterface` renders an
+  `aria-pressed` pill switcher for `axim_core`, `robotics_lab`,
+  `speedreport_network`, `axim_academy`; the selection is persisted and sent as
+  `domain_context` in the summon body. `edge-bridge` forwards the parsed body to
+  `CORE_INGEST_URL` opaquely (`index.ts:1618-1640`), so no edge change was needed.
+- **Phase 1 — completed the remaining gaps**: 30s cap on the WebRTC path, reactive
+  retry counter, three-state badges.
+
+## Verification
+
+```
+cd rust && cargo fmt --all -- --check
+  exit 0
+
+npm test                       # root, new script -> node --test
+  1..37
+  # tests 37
+  # pass 37
+  # fail 0
+
+cd edge-bridge && npm run typecheck
+  tsc --noEmit -> exit 0
+
+cd edge-bridge && npm test
+  Test Files  4 passed (4)
+       Tests  48 passed (48)
+
+cd edge-bridge && npm run deploy:dry-run
+  Total Upload: 110.72 KiB / gzip: 19.33 KiB
+  --dry-run: exiting now.  (exit 0)
+
+NODE_ENV=development npx vite build
+  ✓ 32 modules transformed.
+  rust/crates/onyx/static/index.html                   3.01 kB
+  rust/crates/onyx/static/assets/index-DpO9gtOz.css   21.32 kB
+  rust/crates/onyx/static/assets/index-DCYk_SVp.js   443.13 kB
+  ✓ built in 14.80s
+```
+
+`npm ci` needs `NODE_ENV=development`: this sandbox exports `NODE_ENV=production`,
+which makes npm skip devDependencies and leaves `vite` uninstalled. That is an
+environment quirk; the repo's `build` script is unchanged.
+
+The rebuild replaces the committed bundle (`index-BQrnB38z.js` /
+`index-Qqsa6i3X.css`) with `index-DCYk_SVp.js` / `index-DpO9gtOz.css`. The
+committed bundle was stale relative to `src/`, and `edge-bridge/wrangler.jsonc`
+serves that same directory as worker assets — so the daemon and the edge were
+both shipping an outdated HUD. Committing the rebuild is required for
+consistency, not cosmetic.
+
+## Test coverage added
+
+`tests/web/*.test.js` — 37 assertions, `node:test`, zero new dependencies:
+
+| File | Covers |
+| --- | --- |
+| `chatStream.test.js` | SSE framing, the exact `textSsePayload()` wire fixture, `[DONE]`, legacy + OpenAI shapes, status/tool frames, JSON acknowledgement, JSON error bodies |
+| `connectionState.test.js` | 1s->30s curve, ceiling clamp, jitter bound, invalid attempts, 3-state mapping, badge classes, retryable statuses |
+| `domainContexts.test.js` | persona ids, frozen catalogue, fallback, payload construction, localStorage round-trip + failure |
+| `rca.test.js` | 5xx detection, record normalisation, ordering/limits, DLQ summarisation, error rate, cycle-safe JSON |
+
+## Deliberately not in this change
+
+- **Phase 4 `--daemon` mode.** `CliAction::ServeHeadless` already binds an axum
+  router (`main.rs:2060`) and `rust/crates/onyx/static/` already holds the HUD
+  assets, so the gap is a `--daemon` alias plus `rust-embed` in place of
+  `tower-http`'s `fs` feature. That is a type-checked Rust change and **cannot be
+  compiled in this environment** — it must not be written blind. Needs a CI runner
+  with `build-essential`.
+- **Cross-satellite JWKS/HMAC parity** (Support System, Nexus CRM, Hardware Link).
+  Those repositories are not in this workspace; verifying them from here would be
+  guesswork.
+- **PR #284 closure.** Requires a maintainer decision; see Next Steps in the report.
