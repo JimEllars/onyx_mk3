@@ -311,10 +311,19 @@ double-encoded traversal, path-info `.php`, wp-admin, xmlrpc) all 403; a plain
 
 ```
 cd edge-bridge
+npx wrangler types ./src/worker-configuration.d.ts --config wrangler.jsonc   # regenerated
 npx tsc --noEmit                      # exit 0
 npx vitest run                        # 4 files, 48 tests, all pass
 npx wrangler deploy --dry-run         # valid; CORE_INGEST_URL + CORE_HITL_URL present
 ```
+
+**CI caught a real defect here.** Adding `CORE_HITL_URL` to `wrangler.jsonc` makes
+`wrangler types` emit it as a *literal* type in `__BaseEnv_Env`, so the hand-written
+`CORE_HITL_URL?: string` in `Env` became an incompatible override and `npm run build`
+(typegen + typecheck) failed on the PR. The override is removed — the binding is now
+consumed from the generated type — and `worker-configuration.d.ts` is regenerated and
+committed. This is exactly why `npm run build` must be run, not just `tsc`: local
+typechecks passed because the committed `.d.ts` predated the config change.
 
 ## Proof that the new tests fail on the Phase A head
 

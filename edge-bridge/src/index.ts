@@ -18,8 +18,9 @@ export interface Env extends __BaseEnv_Env {
   EMAILIT_API_KEY?: string;
   ONYX_CLIENT_SECRET?: string;
   ONYX_EMERGENCY_SECRET?: string;
-  /** Core HITL resolver, e.g. https://<project>.supabase.co/functions/v1/resolve-hitl */
-  CORE_HITL_URL?: string;
+  // CORE_HITL_URL is declared in wrangler.jsonc, so it arrives through
+  // __BaseEnv_Env; re-declaring it here breaks `wrangler types` (the generated
+  // type is the literal URL, not string | undefined).
   /** Core Supabase origin, used to derive CORE_HITL_URL when it is not set */
   CORE_SUPABASE_URL?: string;
   /** Service-role key for the Core project; required to apply a decision */
