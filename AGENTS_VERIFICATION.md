@@ -200,3 +200,160 @@ was accepted).
   (plain Node + vitest). The tests do not use `@cloudflare/vitest-pool-workers`, so KV,
   D1 and `request.cf` are still absent in tests; binding behaviour is inferred from
   guards, not exercised.
+
+---
+
+# Verification Log — Phase B: Decision Path & Operator Auth (2026-10-31)
+
+**Branch:** `fix/onyx-phase-b-hitl-and-chat-auth`
+**Base:** `e559a3c` (Phase A tip; Phase A is still unmerged, so this branch stacks on it)
+**Scope:** `edge-bridge/` only.
+
+Every change has a test in `edge-bridge/test/phase-b-hardening.test.ts` that **failed
+against `e559a3c`**; the failure list is at the end.
+
+## B1 — The cockpit can authenticate (`index.ts`, `/api/v1/onyx/summon`)
+
+**Before.** The route required a valid HMAC over the body with `ONYX_CLIENT_SECRET`
+**and** `Authorization: Bearer ${ONYX_CLIENT_SECRET}` **or** an `axim_session` cookie
+whose value was never validated. `ChatInterface.jsx:24-31` sends
+`Bearer <passport JWT>`, so every message 401'd. The only way to satisfy the old
+contract was to ship a server secret in the browser bundle.
+
+**After.** Machine callers still sign with `ONYX_CLIENT_SECRET`. Operators authenticate
+with `checkAuth` (Passport JWT, or a service bearer). The presence-only cookie path is
+removed — an unverified cookie is not a credential.
+
+**Also removed.** The unreachable duplicate `/api/v1/onyx/summon` handler (~1.8 KB) that
+sat after the global gate with weaker bearer-only auth. It was dead because the first
+branch matched; one reordering would have made it live.
+
+**Tests.** `accepts a service bearer without an HMAC`, `still rejects a caller with no
+credential`, `no longer trusts a presence-only session cookie`.
+
+## B3 — One HITL decision path, relayed to Core (`index.ts`)
+
+**Before.** Two mechanisms, neither effective:
+
+| Path | Behaviour |
+|---|---|
+| `POST /api/v1/mcp/execute` | wrote `action_decision:<id>` to KV, returned `{success:true}`; **nothing reads that key** |
+| `GET /api/v1/hitl/action?token=&decision=` | state-changing GET, decision in the query string, no auth; comment: *"Ideally route this back to Rust runtime, here just update KV"* |
+
+**After.**
+
+- `POST /api/v1/hitl/action` — `checkAuth(…, requireSuperUser)`; body
+  `{ action_id, decision, operator_notes? }`; `decision` normalised through an allowlist
+  (`approve|approved` → `Approved`, `reject|rejected|deny|denied` → `Rejected`);
+  records `actor` + `decided_at` in KV (best effort) and **relays to Core's
+  `resolve-hitl`** with `{log_id, status, action_payload}`.
+- `GET /api/v1/hitl/action` with a `decision` param → **405** with `Allow: POST`.
+  Without one, it is a read-only ticket view.
+- `POST /api/v1/mcp/execute` now calls the same `applyHitlDecision` helper.
+
+**Response contract.** `applied` is true only when Core accepts the decision.
+`200` applied · `502` Core rejected · `503` relay not configured. `recorded` and
+`reason` are always present so an operator can tell "saved but not applied" from
+"failed".
+
+**New configuration.** `CORE_HITL_URL` (added to `wrangler.jsonc`, pointing at the
+Core project's `resolve-hitl`), `CORE_SUPABASE_URL` (fallback for deriving the URL), and
+`CORE_SERVICE_ROLE_KEY` (secret, must be set by an operator).
+
+**Tests.** unauthenticated → 401; GET with decision → 405; unknown decision → 400;
+no relay → 503 `applied:false` + local record written; Core 200 → 200 `applied:true`
+with the exact URL/header/body asserted; Core 500 → 502 `applied:false`.
+
+**Changed A4 assertion.** The Phase A test `mcp/execute returns 503 rather than success
+when HITL_APPROVAL_KV is absent` was replaced with
+`mcp/execute never reports success when the decision cannot be applied`. Decisions no
+longer depend on KV — Core is the source of truth — so asserting that a missing binding
+503s was asserting the wrong contract. The new assertion still forbids `success:true`
+without an applied decision.
+
+## B5 — One administrator role, all spellings (`passport.ts:18-36, 118-125`)
+
+**Before.** `isSuperAdmin` required `app_metadata.role === "super-admin"` exactly.
+The cockpit wrote `super_admin` to its store and Core's `AuthContext.jsx:121` issues
+`super_user`, so a real token would have been treated as a normal user and every
+privileged route would 403 while tests passed.
+
+**After.** `SUPER_ADMIN_ROLES` accepts `super-admin`, `super_admin`, `superadmin`,
+`super_user`, `superuser` from either `app_metadata.role` or a top-level `role` claim.
+
+**Tests.** four accepted spellings, plus normal-user and missing-role rejection.
+
+## B6 — Swarm state requires a credential (`index.ts`, `/api/v1/onyx/swarm-state`)
+
+Anonymous callers could enumerate every dispatch lock. Now `checkAuth`.
+
+**Test.** anonymous → 401.
+
+## B7 — Deny list decodes before matching (`index.ts`, `cgiGuard`)
+
+**Before.** Three copies of a substring check over `url.search` / `url.pathname` from
+`new URL()`, which is normalised but **not** percent-decoded. `/?%61uto_prepend_file=x`
+passed. The traversal clauses were dead for single-encoded input (the parser resolves
+`%2e%2e` first). The third copy sat inside the 429 logger, unreachable, and would have
+returned a response that skipped the Analytics write.
+
+**After.** One `cgiGuard()`: decode path and query twice (defeating double-encoding),
+then match `[?&]-d`, the five CGI keywords, a traversal regex, and
+`\.php(/|$)|/wp-admin|/wp-login.php|xmlrpc.php`. The two live copies call it; the dead
+third copy is deleted.
+
+**Tests.** nine bypass vectors (encoded name, encoded `-d`, encoded underscore,
+double-encoded traversal, path-info `.php`, wp-admin, xmlrpc) all 403; a plain
+`../` path is 404 because the URL parser already neutralised it (asserted as
+`[403,404]`, never served); `/health` still 200.
+
+## Commands and results
+
+```
+cd edge-bridge
+npx wrangler types ./src/worker-configuration.d.ts --config wrangler.jsonc   # regenerated
+npx tsc --noEmit                      # exit 0
+npx vitest run                        # 4 files, 48 tests, all pass
+npx wrangler deploy --dry-run         # valid; CORE_INGEST_URL + CORE_HITL_URL present
+```
+
+**CI caught a real defect here.** Adding `CORE_HITL_URL` to `wrangler.jsonc` makes
+`wrangler types` emit it as a *literal* type in `__BaseEnv_Env`, so the hand-written
+`CORE_HITL_URL?: string` in `Env` became an incompatible override and `npm run build`
+(typegen + typecheck) failed on the PR. The override is removed — the binding is now
+consumed from the generated type — and `worker-configuration.d.ts` is regenerated and
+committed. This is exactly why `npm run build` must be run, not just `tsc`: local
+typechecks passed because the committed `.d.ts` predated the config change.
+
+## Proof that the new tests fail on the Phase A head
+
+`test/phase-b-hardening.test.ts` run against `e559a3c` with `src/index.ts` and
+`src/passport.ts` reverted:
+
+```
+Test Files  1 failed (1)
+     Tests  16 failed | 9 passed (25)
+```
+
+The 16 failures cover B1 (×2), B3 (×5), B5 (×3), B6 (×1), B7 (×5). The 9 that pass are
+regression guards for behaviour that was already correct (anonymous summon rejection,
+anonymous decision rejection, plain CGI names, `/health`).
+
+## Operator actions required
+
+1. `wrangler secret put CORE_SERVICE_ROLE_KEY` — the Core project's service-role key.
+   Until it is set, every decision returns `503 applied:false` with
+   `reason: "CORE_SERVICE_ROLE_KEY is not configured"`. That is deliberate: the edge
+   will not claim an approval it cannot apply.
+2. Merge Phase A (`e559a3c`) before or with this branch — this stacks on it.
+
+## Deliberately not in this change
+
+- **B2 `X-Axim-Timestamp`.** Spans `rust/` and `axim-core-v1.2`; needs a coordinated
+  release or a dual-accept window. Separate change.
+- **B4 route-table refactor.** Replacing the 30-branch `if/else` chain is a mechanical
+  refactor over 3,300 lines. It should not ride along with security fixes. The gate
+  ordering hazard it addresses is documented in the Phase A appendix.
+- **B8 workers test pool.** `@cloudflare/vitest-pool-workers` is installed but the repo
+  pins vitest 5 against a peer of vitest 4; migrating needs a dependency decision first.
+  Until then KV/D1 behaviour is asserted through guards and fakes, not `workerd`.
