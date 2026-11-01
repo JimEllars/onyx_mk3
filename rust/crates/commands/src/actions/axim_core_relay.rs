@@ -17,13 +17,28 @@ impl AximCoreRelayAction {
             return Ok(());
         };
 
-        let secret_key = std::env::var(key_env).unwrap_or_default();
+        // Fail closed: signing with an empty key (the old `unwrap_or_default`)
+        // produced a valid-looking signature that no receiver would accept, and
+        // hid the misconfiguration until delivery failed.
+        let secret_key = std::env::var(key_env)
+            .map_err(|_| format!("{key_env} is not set; refusing to send an unsigned relay"))?;
 
         let payload_str =
             serde_json::to_string(payload).map_err(|e| format!("Serialization error: {e}"))?;
 
+        // Version 2 signature: HMAC over "<timestamp>.<body>", with the timestamp
+        // sent in a header. Binding the timestamp into the signed bytes means a
+        // captured request cannot be re-dated. Receivers accept the legacy
+        // body-only form until their SIGNATURE_LEGACY_SUNSET.
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .to_string();
+        let signed_payload = format!("{timestamp}.{payload_str}");
+
         let key = hmac::Key::new(hmac::HMAC_SHA256, secret_key.as_bytes());
-        let signature = hmac::sign(&key, payload_str.as_bytes());
+        let signature = hmac::sign(&key, signed_payload.as_bytes());
         let signature_hex = hex::encode(signature.as_ref());
 
         let client = reqwest::Client::builder()
@@ -34,6 +49,8 @@ impl AximCoreRelayAction {
         let res = client
             .post(&webhook_url)
             .header("Content-Type", "application/json")
+            .header("X-Axim-Timestamp", timestamp.as_str())
+            .header("X-Axim-Signature-Version", "2")
             .header("X-Axim-Signature", format!("sha256={signature_hex}"))
             .body(payload_str.clone())
             .send()

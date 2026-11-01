@@ -394,3 +394,58 @@ negative case (normal user, missing role) still passes.
 The canonical value is not yet enforced — legacy spellings still grant access on purpose.
 Once the metrics show zero `legacy_admin_role` events, `LEGACY_SUPER_ADMIN_ROLES` can be
 emptied in one line and the warning removed.
+
+---
+
+# Verification Log — Dual-Accept Signature Window (Onyx side) (2026-11-01)
+
+**Branch:** `feat/onyx-signature-dual-window` (stacked on the canonical-role branch)
+**Scope:** `edge-bridge/src/index.ts` (verifier), `rust/` signers, tests.
+
+## Verifier
+
+`verifyRequestSignature()` replaces the body-only check with the same policy Core now
+implements, so the two repositories can be deployed asynchronously:
+
+| Form | Headers | Signed material |
+|---|---|---|
+| v2 | `X-Axim-Signature-Version: 2`, `X-Axim-Timestamp: <unix>`, `X-Axim-Signature: sha256=<hex>` | `<timestamp>.<body>` |
+| legacy | `X-Axim-Signature: sha256=<hex>` | `<body>` |
+
+- v2 requires the timestamp and enforces ±300 s.
+- legacy is accepted until `SIGNATURE_LEGACY_SUNSET` (default `2026-12-31T00:00:00Z`),
+  then refused with a reason naming the sunset.
+- A legacy caller that supplies a timestamp still gets the freshness check.
+- `verifyHmacSignature()` remains as a boolean wrapper, so all existing call sites keep
+  working unchanged.
+
+## Signers (Rust)
+
+`axim_core_relay.rs` and the DLQ drainer in `dlq.rs` now emit
+`X-Axim-Timestamp` + `X-Axim-Signature-Version: 2` and sign `"<ts>.<body>"`. The drainer
+re-signs at send time, so a long-spooled entry is not rejected as stale. The relay also
+fails closed when `AXIM_INTERNAL_KEY` is unset, instead of signing with an empty key via
+`unwrap_or_default()`.
+
+## Verification
+
+```
+cd edge-bridge
+npx tsc --noEmit      # exit 0
+npx vitest run        # 5 files, 62 tests, all pass (50 + 12 new)
+```
+
+The 12 new tests assert: fresh v2 accepted; replay older than 300 s refused; **a
+signature over the original timestamp cannot be re-dated**; a body-only signature
+presented as v2 refused; v2 without a timestamp refused; legacy accepted before the
+sunset and refused after; a per-environment sunset override respected; a stale timestamp
+on the legacy path refused; wrong secret rejected on both forms; no secret and malformed
+input fail closed without throwing.
+
+## Not verified — read this before merging
+
+**The Rust changes were not compiled.** `cargo` is not available in this environment, so
+the two signer edits are reviewed by reading only. They are small (one `format!`, three
+headers, one `?`), and `SystemTime`/`UNIX_EPOCH` are already imported in the relay, but
+they must be built and tested in CI or locally before release. Everything else on this
+branch was executed.
