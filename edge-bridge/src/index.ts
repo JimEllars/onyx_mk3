@@ -34,49 +34,128 @@ export interface Env extends __BaseEnv_Env {
   CORE_SERVICE_ROLE_KEY?: string;
   CHAT_MODEL?: string;
   CRON_SECRET_KEY?: string;
+  /** ISO date after which the body-only (legacy) signature form is refused. */
+  SIGNATURE_LEGACY_SUNSET?: string;
   PUBLIC_BASE_URL?: string;
   THREADS_FEED_URL?: string;
   THREADS_FEED_TOKEN?: string;
 }
-export async function verifyHmacSignature(
+/**
+ * Versioned request signing with a date-keyed dual-accept window.
+ *
+ * Signatures over the raw body alone are replayable forever. The replacement
+ * signs `<timestamp>.<body>` and carries the timestamp in a header, so a
+ * receiver can reject stale requests.
+ *
+ *   v2     : X-Axim-Signature-Version: 2
+ *            X-Axim-Timestamp: <unix seconds>      (required)
+ *            X-Axim-Signature: sha256=<hex HMAC(secret, "<ts>.<body>")>
+ *   legacy : X-Axim-Signature: sha256=<hex HMAC(secret, body)>
+ *
+ * Both are accepted until SIGNATURE_LEGACY_SUNSET (default 2026-12-31) so the
+ * two repositories can be deployed asynchronously; after that date the legacy
+ * form is refused and the window closes by date rather than by coordination.
+ */
+export const SIGNATURE_V2 = "2";
+export const SIGNATURE_MAX_SKEW_SECONDS = 300;
+export const DEFAULT_LEGACY_SUNSET = "2026-12-31T00:00:00Z";
+
+export interface SignatureVerdict {
+  ok: boolean;
+  mode: "v2" | "legacy" | "none";
+  reason?: string;
+}
+
+export async function verifyRequestSignature(
   request: Request,
   rawBody: string,
-  secret: string | undefined
-): Promise<boolean> {
+  secret: string | undefined,
+  options: { nowMs?: number; legacySunset?: string } = {},
+): Promise<SignatureVerdict> {
   try {
-    if (!secret) return false;
-    const signatureHeader = request.headers.get("X-Axim-Signature");
-    if (!signatureHeader) return false;
+    if (!secret) return { ok: false, mode: "none", reason: "no signing secret configured" };
 
-    const cleanSig = signatureHeader.replace(/^sha256=/, "").trim();
-    if (cleanSig.length !== 64 || !/^[0-9a-fA-F]{64}$/.test(cleanSig)) {
-      return false;
+    const nowMs = options.nowMs ?? Date.now();
+    const sunsetMs = Date.parse(options.legacySunset ?? DEFAULT_LEGACY_SUNSET);
+
+    const signatureHeader = request.headers.get("X-Axim-Signature");
+    if (!signatureHeader) return { ok: false, mode: "none", reason: "missing signature" };
+
+    const cleanSig = signatureHeader.replace(/^sha256=/i, "").trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(cleanSig)) {
+      return { ok: false, mode: "none", reason: "malformed signature" };
     }
 
-    const sigBytes = new Uint8Array(
-      cleanSig.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
-    );
+    const rawTimestamp = request.headers.get("X-Axim-Timestamp");
+    const version = request.headers.get("X-Axim-Signature-Version")?.trim();
 
-    const encoder = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      "raw",
-      encoder.encode(secret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"]
-    );
+    const verifyOver = async (message: string): Promise<boolean> => {
+      const encoder = new TextEncoder();
+      const sigBytes = new Uint8Array(
+        cleanSig.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)),
+      );
+      const key = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(secret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["verify"],
+      );
+      return crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(message));
+    };
 
-    return await crypto.subtle.verify(
-      "HMAC",
-      key,
-      sigBytes,
-      encoder.encode(rawBody)
-    );
+    if (version === SIGNATURE_V2) {
+      if (!rawTimestamp) {
+        return { ok: false, mode: "v2", reason: "v2 signature requires X-Axim-Timestamp" };
+      }
+      const timestamp = Number.parseInt(rawTimestamp, 10);
+      if (!Number.isFinite(timestamp)) {
+        return { ok: false, mode: "v2", reason: "invalid timestamp" };
+      }
+      if (Math.abs(nowMs / 1000 - timestamp) > SIGNATURE_MAX_SKEW_SECONDS) {
+        return { ok: false, mode: "v2", reason: "timestamp outside the 5 minute window" };
+      }
+      return (await verifyOver(`${timestamp}.${rawBody}`))
+        ? { ok: true, mode: "v2" }
+        : { ok: false, mode: "v2", reason: "signature mismatch" };
+    }
+
+    if (Number.isFinite(sunsetMs) && nowMs > sunsetMs) {
+      return {
+        ok: false,
+        mode: "legacy",
+        reason: `legacy signature form is retired (sunset ${new Date(sunsetMs).toISOString()})`,
+      };
+    }
+
+    if (rawTimestamp) {
+      const timestamp = Number.parseInt(rawTimestamp, 10);
+      if (
+        Number.isFinite(timestamp) &&
+        Math.abs(nowMs / 1000 - timestamp) > SIGNATURE_MAX_SKEW_SECONDS
+      ) {
+        return { ok: false, mode: "legacy", reason: "timestamp outside the 5 minute window" };
+      }
+    }
+
+    return (await verifyOver(rawBody))
+      ? { ok: true, mode: "legacy" }
+      : { ok: false, mode: "legacy", reason: "signature mismatch" };
   } catch (err) {
-    return false;
+    return { ok: false, mode: "none", reason: err instanceof Error ? err.message : "error" };
   }
 }
 
+/** Boolean wrapper kept for existing call sites. */
+export async function verifyHmacSignature(
+  request: Request,
+  rawBody: string,
+  secret: string | undefined,
+  legacySunset?: string,
+): Promise<boolean> {
+  const verdict = await verifyRequestSignature(request, rawBody, secret, { legacySunset });
+  return verdict.ok;
+}
 
 type HitlStatus = "Approved" | "Rejected";
 
