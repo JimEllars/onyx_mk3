@@ -1,5 +1,33 @@
 # AXiM Onyx Mk3 Web App - Continued Development Plan
 
+## Status — 2026-11-01 (cycle audit)
+
+**Merged (`main`, through PR #291):** edge containment (Phase A), HITL relay + operator auth
+(Phase B), canonical `super_admin`, versioned HMAC signatures with a dual-accept window.
+
+**Phases 1-3 of this plan are implemented and awaiting merge in PR #292**
+(`feat/onyx-hud-phase1-connection-hardening`, CI fully green: `cargo fmt`, `cargo clippy`,
+`cargo test --workspace`, integration tests, edge worker build, web build, deploy-and-verify).
+That branch adds `src/lib/backoff.js`, `useDlqStatus.js`, `RcaInspector.jsx`,
+`DomainContextSwitcher.jsx`, `hitlDecision.js`/`roles.js` plus their tests, and hardens the
+edge `domain-context` path. **Do not re-implement Phases 1-3 on a new branch** — extend #292.
+
+**PR #293** (`feat/onyx-fleet-health-rollup`) stacks the edge cron/retention fix on top of
+#292. Because its base is a feature branch, CI only runs two checks for it (edge worker build
++ GitGuardian); retarget it to `main` once #292 merges so the Rust and web gates run.
+
+**Phase 4 (embedded daemon) landed this cycle** on `feat/onyx-daemon-embedded-hud`:
+`onyx daemon` / `onyx --daemon` serves the compiled HUD from the binary on `127.0.0.1:3141`
+with `/api/v1/health`, `/api/telemetry/summary`, `/metrics`, a SPA fallback, a
+traversal/CGI-injection deny list and CSP hardening. See `CHANGELOG.md` and
+`AGENTS_VERIFICATION.md`.
+
+**Housekeeping for the operator:** `feat/onyx-hud-phase2-3-telemetry-personas` (commit
+`b10bec1`) is superseded by #292 — same scope, no PR, smaller test surface. Recommend
+retiring it rather than merging. Four Dependabot PRs (#262, #263, #274, #285) are open on
+root `package.json`/`package-lock.json` and overlap with the lockfile churn in #292; rebase
+the winner after #292 lands.
+
 ## Current State Review
 The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as a Headless UI wrapper for the core Onyx Rust engine.
 1. **Architecture & Styling**: The application is structured with a central `App.jsx` orchestrating the main layout. It uses a modern dark-themed aesthetic powered by Tailwind CSS. The layout includes:

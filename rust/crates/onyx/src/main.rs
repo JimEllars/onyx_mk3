@@ -8,9 +8,11 @@
     clippy::unused_self
 )]
 pub(crate) mod app;
+pub(crate) mod daemon;
 pub(crate) mod db;
 mod init;
 use crate::app::{run_repl, LiveCli, PromptHistoryEntry, RuntimePluginState};
+use crate::daemon::run_daemon;
 mod input;
 mod render;
 mod tui;
@@ -789,6 +791,7 @@ pub(crate) fn run() -> Result<(), Box<dyn std::error::Error>> {
         CliAction::HelpTopic(topic) => print_help_topic(topic),
         CliAction::Help { output_format } => print_help(output_format)?,
         CliAction::ServeHeadless { port } => run_serve_headless(port)?,
+        CliAction::Daemon { host, port } => run_daemon(&host, port)?,
     }
     Ok(())
 }
@@ -796,6 +799,10 @@ pub(crate) fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CliAction {
     ServeHeadless {
+        port: u16,
+    },
+    Daemon {
+        host: String,
         port: u16,
     },
     DumpManifests {
@@ -919,6 +926,8 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliAction, String> {
     let mut allowed_tool_values = Vec::new();
     let mut compact = false;
     let mut base_commit: Option<String> = None;
+    let mut wants_daemon = false;
+    let mut daemon_args: Vec<String> = Vec::new();
     let mut rest = Vec::new();
     let mut index = 0;
 
@@ -974,6 +983,26 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliAction, String> {
             }
             "--compact" => {
                 compact = true;
+                index += 1;
+            }
+            // Global position only: `onyx serve-headless --port N` keeps its own
+            // `--port` handling inside the subcommand parser.
+            "--daemon" if rest.is_empty() => {
+                wants_daemon = true;
+                index += 1;
+            }
+            "--port" | "--host" if rest.is_empty() => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| format!("missing value for {}", args[index]))?;
+                daemon_args.push(args[index].clone());
+                daemon_args.push(value.clone());
+                index += 2;
+            }
+            flag if rest.is_empty()
+                && (flag.starts_with("--port=") || flag.starts_with("--host=")) =>
+            {
+                daemon_args.push(flag.to_string());
                 index += 1;
             }
             "--base-commit" => {
@@ -1051,6 +1080,18 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliAction, String> {
         return Ok(CliAction::Version { output_format });
     }
 
+    if wants_daemon {
+        let (host, port) = crate::daemon::parse_daemon_options(&daemon_args)?;
+        return Ok(CliAction::Daemon { host, port });
+    }
+
+    if !daemon_args.is_empty() {
+        return Err(
+            "`--port`/`--host` only apply to the daemon; use `onyx --daemon --port N` or `onyx daemon --port N`"
+                .to_string(),
+        );
+    }
+
     let allowed_tools = normalize_allowed_tools(&allowed_tool_values)?;
 
     if rest.is_empty() {
@@ -1122,6 +1163,10 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliAction, String> {
                 }
             }
             Ok(CliAction::ServeHeadless { port })
+        }
+        "daemon" => {
+            let (host, port) = crate::daemon::parse_daemon_options(&rest[1..])?;
+            Ok(CliAction::Daemon { host, port })
         }
         "prompt" => {
             let prompt = rest[1..].join(" ");
@@ -7984,6 +8029,11 @@ pub(crate) fn print_help_to(out: &mut impl Write) -> io::Result<()> {
         out,
         "      Diagnose local auth, config, workspace, and sandbox health"
     )?;
+    writeln!(out, "  onyx daemon [--port 3141] [--host 127.0.0.1]")?;
+    writeln!(
+        out,
+        "      Serve the embedded HUD and read-only telemetry JSON on the daemon port"
+    )?;
     writeln!(out, "  onyx dump-manifests")?;
     writeln!(out, "  onyx bootstrap-plan")?;
     writeln!(out, "  onyx agents")?;
@@ -8955,6 +9005,60 @@ fn main() {
                 output_format: CliOutputFormat::Text,
             }
         );
+    }
+
+    #[test]
+    fn parses_daemon_subcommand_and_flag() {
+        assert_eq!(
+            parse_args(&["daemon".to_string()]).expect("daemon subcommand should parse"),
+            CliAction::Daemon {
+                host: crate::daemon::DEFAULT_DAEMON_HOST.to_string(),
+                port: crate::daemon::DEFAULT_DAEMON_PORT,
+            }
+        );
+        assert_eq!(
+            parse_args(&[
+                "--daemon".to_string(),
+                "--port".to_string(),
+                "3150".to_string(),
+            ])
+            .expect("daemon flag should parse"),
+            CliAction::Daemon {
+                host: crate::daemon::DEFAULT_DAEMON_HOST.to_string(),
+                port: 3150,
+            }
+        );
+        assert_eq!(
+            parse_args(&[
+                "daemon".to_string(),
+                "--host".to_string(),
+                "0.0.0.0".to_string(),
+            ])
+            .expect("explicit daemon host should parse"),
+            CliAction::Daemon {
+                host: "0.0.0.0".to_string(),
+                port: crate::daemon::DEFAULT_DAEMON_PORT,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_serve_headless_port_without_stealing_it_for_the_daemon() {
+        assert_eq!(
+            parse_args(&[
+                "serve-headless".to_string(),
+                "--port".to_string(),
+                "4711".to_string(),
+            ])
+            .expect("serve-headless should keep its own --port"),
+            CliAction::ServeHeadless { port: 4711 }
+        );
+    }
+
+    #[test]
+    fn rejects_daemon_bind_flags_without_daemon() {
+        assert!(parse_args(&["--port".to_string(), "3150".to_string()]).is_err());
+        assert!(parse_args(&["--host".to_string(), "0.0.0.0".to_string()]).is_err());
     }
 
     #[test]
