@@ -15,25 +15,38 @@ export interface PassportClaims {
   [key: string]: unknown;
 }
 
-export const SUPER_ADMIN_ROLE = "super-admin";
-
 /**
- * Every spelling of the administrator role observed across the ecosystem.
- *
- * The edge verifier required `super-admin` (hyphen), the cockpit wrote
+ * The canonical administrator role string. Standardised on by the Sprint 8.4
+ * decision: the edge verifier used `super-admin` (hyphen), the cockpit wrote
  * `super_admin` (underscore) into its store, and AXiM Core's AuthContext issues
  * `super_user`. A token carrying anything but the hyphenated form was silently
  * treated as a normal user, so privileged routes returned 403 in production
- * while every test passed. Accept the known variants from either the
- * `app_metadata.role` claim or a top-level `role` claim.
+ * while every test passed.
  */
-const SUPER_ADMIN_ROLES = new Set([
-  "super-admin",
-  "super_admin",
-  "superadmin",
-  "super_user",
-  "superuser",
-]);
+export const SUPER_ADMIN_ROLE = "super_admin";
+
+/**
+ * Legacy spellings still accepted during the migration window. They are strictly
+ * fallbacks: `super_admin` is authoritative, and any other match is reported so
+ * the usage can be tracked and eventually removed.
+ */
+const LEGACY_SUPER_ADMIN_ROLES = ["super-admin", "superadmin", "super_user", "superuser"];
+
+const SUPER_ADMIN_ROLES = new Set([SUPER_ADMIN_ROLE, ...LEGACY_SUPER_ADMIN_ROLES]);
+
+/** The role string a token actually carries, lower-cased, if it grants admin. */
+export function adminRoleFrom(claims: PassportClaims): string | undefined {
+  const candidates = [claims.app_metadata?.role, claims.role];
+  return candidates
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim().toLowerCase())
+    .find((value) => SUPER_ADMIN_ROLES.has(value));
+}
+
+/** True when the token carries a legacy spelling rather than the canonical one. */
+export function isLegacyAdminRole(role: string | undefined): boolean {
+  return Boolean(role) && role !== SUPER_ADMIN_ROLE && SUPER_ADMIN_ROLES.has(role as string);
+}
 const JWKS_TTL_MS = 10 * 60 * 1000;
 const CLOCK_SKEW_SECONDS = 30;
 
@@ -133,9 +146,5 @@ export async function verifyPassportJwt(token: string, env: PassportEnv): Promis
 }
 
 export function isSuperAdmin(claims: PassportClaims): boolean {
-  const candidates = [claims.app_metadata?.role, claims.role];
-  return candidates.some(
-    (candidate) =>
-      typeof candidate === "string" && SUPER_ADMIN_ROLES.has(candidate.trim().toLowerCase()),
-  );
+  return adminRoleFrom(claims) !== undefined;
 }
