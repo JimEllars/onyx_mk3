@@ -1,4 +1,11 @@
-import { verifyPassportJwt, isSuperAdmin, type PassportClaims } from "./passport";
+import {
+  adminRoleFrom,
+  isLegacyAdminRole,
+  isSuperAdmin,
+  SUPER_ADMIN_ROLE,
+  verifyPassportJwt,
+  type PassportClaims,
+} from "./passport";
 /**
  * Welcome to Cloudflare Workers!
  *
@@ -684,6 +691,30 @@ async function checkAuth(req: Request, env: Env, requireSuperUser: boolean = fal
       status: 401,
       headers: getCorsHeaders(req),
     });
+  }
+
+  if (passportClaims) {
+    // Canonical role is super_admin. Anything else that still grants admin is a
+    // legacy spelling: accept it during the migration window, but make the usage
+    // visible so it can be tracked and eventually removed.
+    const role = adminRoleFrom(passportClaims);
+    if (isLegacyAdminRole(role)) {
+      const warning = {
+        event: "legacy_admin_role",
+        role,
+        canonical: SUPER_ADMIN_ROLE,
+        path: new URL(req.url).pathname,
+        timestamp: new Date().toISOString(),
+      };
+      console.warn(JSON.stringify(warning));
+      // Surface it in the edge metrics dataset when bound, so the count is
+      // queryable rather than buried in logs.
+      env.ONYX_EDGE_METRICS?.writeDataPoint?.({
+        blobs: ["legacy_admin_role", String(role), warning.path],
+        doubles: [1],
+        indexes: ["legacy_admin_role"],
+      });
+    }
   }
 
   if (requireSuperUser) {

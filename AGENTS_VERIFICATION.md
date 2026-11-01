@@ -357,3 +357,40 @@ anonymous decision rejection, plain CGI names, `/health`).
 - **B8 workers test pool.** `@cloudflare/vitest-pool-workers` is installed but the repo
   pins vitest 5 against a peer of vitest 4; migrating needs a dependency decision first.
   Until then KV/D1 behaviour is asserted through guards and fakes, not `workerd`.
+
+---
+
+# Verification Log — Canonical Admin Role (2026-11-01)
+
+**Branch:** `fix/onyx-phase-b2-canonical-role` (stacked on Phase B)
+**Scope:** `edge-bridge/src/passport.ts`, `edge-bridge/src/index.ts`, `src/hooks/useAximAuth.js`
+
+## Change
+
+- `SUPER_ADMIN_ROLE` is now **`super_admin`** (underscore), per the Sprint 8.4 decision.
+- `adminRoleFrom(claims)` returns the role a token actually carries; `isLegacyAdminRole()`
+  reports whether that role is a legacy spelling. `super-admin`, `superadmin`,
+  `super_user` and `superuser` remain accepted strictly as fallbacks.
+- `checkAuth` emits a structured `console.warn` **and** an Analytics Engine data point
+  (`blobs: [legacy_admin_role, role, path]`) whenever a legacy spelling is the one that
+  granted access, so the usage is queryable rather than buried in logs.
+- The cockpit (`useAximAuth.js`) checks the same set rather than the single hyphenated
+  string, so a legacy token no longer bounces a valid admin out of the UI.
+
+## Verification
+
+```
+cd edge-bridge
+npx tsc --noEmit      # exit 0
+npx vitest run        # 4 files, 50 tests, all pass (48 before + 2 new)
+```
+
+New tests assert: the canonical value is `super_admin` and is **not** reported as legacy;
+each legacy spelling still grants admin **and** is reported as legacy. The prior
+negative case (normal user, missing role) still passes.
+
+## Not done
+
+The canonical value is not yet enforced — legacy spellings still grant access on purpose.
+Once the metrics show zero `legacy_admin_role` events, `LEGACY_SUPER_ADMIN_ROLES` can be
+emptied in one line and the warning removed.

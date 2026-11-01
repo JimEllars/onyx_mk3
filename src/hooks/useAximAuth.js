@@ -17,12 +17,15 @@ function parseJwt(token) {
     }
 }
 
-const SUPER_ADMIN_ROLE = 'super-admin';
+// Canonical role is super_admin. The other spellings remain accepted while the
+// ecosystem converges; see edge-bridge/src/passport.ts.
+const SUPER_ADMIN_ROLE = 'super_admin';
+const SUPER_ADMIN_ROLES = ['super_admin', 'super-admin', 'superadmin', 'super_user', 'superuser'];
 
 function hasSuperAdminRole(token) {
     const payload = parseJwt(token);
     if (!payload || (payload.exp && payload.exp * 1000 <= Date.now())) return false;
-    return payload.app_metadata?.role === SUPER_ADMIN_ROLE;
+    return payload.app_metadata?.SUPER_ADMIN_ROLES.includes(String(role || '').toLowerCase());
 }
 
 function getCookie(name) {

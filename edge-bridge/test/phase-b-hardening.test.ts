@@ -10,7 +10,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import worker from '../src/index';
-import { isSuperAdmin } from '../src/passport';
+import { adminRoleFrom, isLegacyAdminRole, isSuperAdmin, SUPER_ADMIN_ROLE } from '../src/passport';
 
 const SRC = readFileSync(fileURLToPath(new URL('../src/index.ts', import.meta.url)), 'utf8');
 
@@ -211,6 +211,22 @@ describe('B5 — one administrator role, however it is spelled', () => {
     ['top-level role', { role: 'super_admin' }],
   ])('accepts %s', (_label, claims) => {
     expect(isSuperAdmin(claims as any)).toBe(true);
+  });
+
+  it('canonical role is super_admin and is not reported as legacy', () => {
+    expect(SUPER_ADMIN_ROLE).toBe('super_admin');
+    const role = adminRoleFrom({ app_metadata: { role: 'super_admin' } } as any);
+    expect(role).toBe('super_admin');
+    expect(isLegacyAdminRole(role)).toBe(false);
+  });
+
+  it('legacy spellings still grant admin but are reported as legacy', () => {
+    for (const legacy of ['super-admin', 'superadmin', 'super_user', 'superuser']) {
+      const role = adminRoleFrom({ app_metadata: { role: legacy } } as any);
+      expect(role).toBe(legacy);
+      expect(isLegacyAdminRole(role), `${legacy} should be flagged legacy`).toBe(true);
+      expect(isSuperAdmin({ app_metadata: { role: legacy } } as any)).toBe(true);
+    }
   });
 
   it('rejects a normal user and a missing role', () => {
