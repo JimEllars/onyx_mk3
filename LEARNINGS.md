@@ -81,3 +81,10 @@ When adding cross-service telemetry and resilient fallback states, ensuring deep
     like a lost brace. Same class of failure as the missing backtick in item 9: cheap parser
     run over the changed files before believing a build error is real. Use line comments, or
     quote the expression as a string.
+
+17. **A stacked PR gets almost no CI in this repo.** `web-ci.yml` and
+    `edge-bridge-sync.yml` declare `pull_request: branches: [main]`, so a PR whose base is
+    another feature branch runs only `Workers Builds` and GitGuardian. When stacking, the
+    suites that would exercise the change (including `npm test` in `edge-bridge`) run for the
+    first time only after the base merges and the PR is retargeted. Verify locally and say so
+    in the PR body; do not read "green checks" on a stacked PR as coverage of the change.
