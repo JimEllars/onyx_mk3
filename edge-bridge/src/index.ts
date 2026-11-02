@@ -895,6 +895,103 @@ export function isDailyCron(cron: string | undefined): boolean {
 /** Retention window for edge-owned D1 rows. */
 export const RETENTION_WINDOW_DAYS = 30;
 
+/** Where an operator actually applies a HITL decision. */
+export const COCKPIT_ACTIONS_URL = "https://cockpit.axim.us.com/actions";
+
+/** A pending HITL ticket, reduced to the fields the digest renders. */
+export interface HitlDigestTicket {
+  token: string;
+  description?: string;
+}
+
+/**
+ * Escape a value for interpolation into HTML text or a double-quoted attribute.
+ *
+ * The digest interpolated `description` straight from KV into the briefing email.
+ * A pending ticket's description comes from a tool proposal, so whoever can
+ * influence a proposal could inject markup and links into an email that lands in
+ * the Lead Architect's inbox from a trusted internal sender.
+ */
+export function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Every pending ticket in the HITL store.
+ *
+ * Keys written by `applyHitlDecision` (`action_decision:*`) are decisions, not
+ * tickets, and are skipped by prefix rather than by parsing them.
+ */
+export async function loadPendingHitlTickets(env: Env): Promise<HitlDigestTicket[]> {
+  const kv = env.HITL_APPROVAL_KV;
+  if (!kv) return [];
+
+  const tickets: HitlDigestTicket[] = [];
+  const list = await kv.list();
+  for (const key of list.keys) {
+    if (key.name.startsWith("action_decision:")) continue;
+    const raw = await kv.get(key.name);
+    if (!raw) continue;
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // A malformed ticket used to disappear into an empty catch, so the digest
+      // silently under-reported the queue. Say so and keep going.
+      console.error(
+        JSON.stringify({ event: "hitl_ticket_unparseable", token: key.name }),
+      );
+      continue;
+    }
+    if (!parsed || parsed.status !== "pending") continue;
+    tickets.push({
+      token: key.name,
+      description:
+        typeof parsed.description === "string" ? parsed.description : undefined,
+    });
+  }
+  return tickets;
+}
+
+/**
+ * One ticket block for the briefing email, or "" if there is nothing to show.
+ *
+ * The email deliberately carries **no** one-click decision. `GET
+ * /api/v1/hitl/action` answers 405 for a `decision` query parameter, because mail
+ * scanners, link previewers and browser prefetch all fire GETs — a link that
+ * approves on fetch is an unauthenticated mutation. Both links here are read-only:
+ * the first opens the ticket, the second opens the cockpit, which POSTs a decision
+ * with an operator credential.
+ */
+export function renderHitlTicket(ticket: HitlDigestTicket, baseUrl: string): string {
+  const token = encodeURIComponent(ticket.token);
+  const reviewUrl = `${baseUrl}/api/v1/hitl/action?token=${token}`;
+  const cockpitUrl = `${COCKPIT_ACTIONS_URL}?ticket=${token}`;
+  const description = escapeHtml(ticket.description || "System Proposal");
+
+  return `
+                  <div style="border: 1px solid #334155; padding: 15px; margin-bottom: 10px; border-radius: 8px;">
+                    <p style="margin: 0 0 10px 0; font-size: 16px;"><strong>Action Required:</strong> ${description}</p>
+                    <a href="${escapeHtml(reviewUrl)}" style="background: #0f766e; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; margin-right: 10px;">View ticket</a>
+                    <a href="${escapeHtml(cockpitUrl)}" style="background: #3b82f6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block;">Decide in Cockpit</a>
+                  </div>`;
+}
+
+/** The "Pending Human-in-the-Loop Actions" section of the briefing email. */
+export function renderHitlDigestSection(
+  tickets: HitlDigestTicket[],
+  baseUrl: string,
+): string {
+  if (tickets.length === 0) return "<p>No pending actions at this time.</p>";
+  return tickets.map((ticket) => renderHitlTicket(ticket, baseUrl)).join("");
+}
+
 async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
   if (!env.ONYX_STATE) return;
   const listResult = await env.ONYX_STATE.list({
@@ -942,9 +1039,6 @@ const onyx_handler: any = {
     ctx: ExecutionContext,
   ): Promise<void> {
     try {
-      // Execute a low-overhead heartbeat sanity evaluation across active KV stores
-      console.error("error");
-
       if (controller.cron === "*/5 * * * *") {
         ctx?.waitUntil?.(drainIngestDlq(env, ctx));
       }
@@ -958,25 +1052,8 @@ const onyx_handler: any = {
           }
           const baseUrl = env.PUBLIC_BASE_URL.replace(/\/+$/, "");
 
-          const pendingList = await env.HITL_APPROVAL_KV.list();
-          let hitlHtml = "";
-          for (const key of pendingList.keys) {
-            const val = await env.HITL_APPROVAL_KV.get(key.name);
-            if (val) {
-              try {
-                const parsed = JSON.parse(val);
-                if (parsed.status === 'pending') {
-                  hitlHtml += `
-                  <div style="border: 1px solid #334155; padding: 15px; margin-bottom: 10px; border-radius: 8px;">
-                    <p style="margin: 0 0 10px 0; font-size: 16px;"><strong>Action Required:</strong> ${parsed.description || 'System Proposal'}</p>
-                    <a href="${baseUrl}/api/v1/hitl/action?token=${key.name}&decision=approve" style="background: #10b981; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; margin-right: 10px;">Approve Action</a>
-                    <a href="${baseUrl}/api/v1/hitl/action?token=${key.name}&decision=reject" style="background: #ef4444; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block; margin-right: 10px;">Reject Action</a>
-                    <a href="https://cockpit.axim.us.com/actions" style="background: #3b82f6; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; display: inline-block;">Review in Cockpit</a>
-                  </div>`;
-                }
-              } catch(e) {}
-            }
-          }
+          const tickets = await loadPendingHitlTickets(env);
+          const hitlHtml = renderHitlDigestSection(tickets, baseUrl);
 
           const emailHtml = `
           <div style="background-color: #0f172a; color: #f8fafc; padding: 30px; font-family: monospace;">
@@ -985,7 +1062,7 @@ const onyx_handler: any = {
             <p>All core systems operational.</p>
 
             <h2>Pending Human-in-the-Loop Actions</h2>
-            ${hitlHtml || '<p>No pending actions at this time.</p>'}
+            ${hitlHtml}
           </div>
           `;
 

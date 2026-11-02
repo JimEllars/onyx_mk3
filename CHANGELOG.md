@@ -3,7 +3,43 @@
 All notable changes to the Onyx Mk3 workspace. Newest first. Entries are
 prepended; dates are the date the branch was verified, in America/Chicago.
 
-## 2026-11-01 (latest) — Embedded HUD daemon (Web App Phase 4, PR #294)
+## 2026-11-02 — Daily briefing: dead HITL buttons and unescaped ticket text
+
+Branch `fix/onyx-hitl-digest-links`, base `69ee55e` (main, post-PR #294/#274/#285).
+
+### Fixed
+
+- **Every Approve/Reject button in the daily briefing was dead.** Phase B (#289) moved HITL
+  decisions from `GET /api/v1/hitl/action?decision=…` to an authenticated
+  `POST /api/v1/hitl/action`, but the digest email was never updated, so its primary call to
+  action answered **405** — and only after the operator had committed to the decision. The
+  email now carries no decision at all: each ticket links to the read-only ticket view and to
+  the cockpit, where the decision is POSTed with an operator credential. Re-adding a
+  one-click link would re-open the hole Phase B closed, because mail scanners, link
+  previewers and browser prefetch all fire GET.
+- **A ticket description could inject markup into the briefing.** `description` came from a
+  tool proposal and was interpolated into the email HTML unescaped, so it could carry links
+  and markup into a message that arrives from a trusted internal sender. Now escaped, along
+  with the token (`encodeURIComponent`) and both hrefs.
+- **A malformed ticket was silently dropped** by `catch (e) {}`, under-reporting the queue.
+  It now logs `hitl_ticket_unparseable` with the token and continues.
+- **`scheduled()` logged `console.error("error")` on every tick**, including the five-minute
+  one — a permanent error-rate signal for any alerting on the worker. Removed.
+
+### Verified
+
+`edge-bridge` 8 files / **93 tests** (13 new in `test/hitl-digest.test.ts`) ·
+`npm run build` (typegen + `tsc --noEmit`) clean, generated types byte-identical ·
+`wrangler deploy --dry-run` clean (117.44 KiB / 21.49 KiB gzip). Each dimension was reverted
+individually to prove the tests fail first: restoring the `?decision=` links fails 3 tests,
+restoring the unescaped interpolation fails 3 tests.
+
+### Not verified
+
+The email was not delivered — `fetch` to the email provider is stubbed and the assertion is
+on the request body. Rendering in a real mail client is unverified. Nothing was deployed.
+
+## 2026-11-01 — Embedded HUD daemon (Web App Phase 4, PR #294)
 
 ### Added
 - **Embedded HUD daemon (Web App Phase 4).** `onyx daemon` and `onyx --daemon` start an
