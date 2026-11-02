@@ -56,3 +56,58 @@ When adding cross-service telemetry and resilient fallback states, ensuring deep
     stricter form turns clippy 1.99's new `assert_is_empty` warnings in
     `crates/plugins/src/lib.rs` into errors that CI does not care about. Confirm the gate
     before editing Rust you cannot compile.
+
+13. **Test a cron branch against the cron strings that are actually deployed.** The
+    `scheduled()` handler compared `controller.cron === "0 12 * * *"` while
+    `wrangler.jsonc` deploys `0 0 * * *` and `*/5 * * * *`. Nothing throws when the literal
+    never matches — the work is simply skipped forever, and the cron string lives in a
+    different file from the code that reads it. Prefer a set/predicate (`isDailyCron`) over
+    exact equality, and read `wrangler.jsonc` before trusting any schedule comment.
+
+14. **Edge D1 columns do not share an epoch.** `onyx_telemetry_logs.created_at` is written
+    with `Date.now()` (milliseconds); `onyx_user_sessions.last_seen` and
+    `onyx_rate_limit_logs.blocked_at` are written as epoch seconds. One `thirtyDaysAgo`
+    variable was bound to both families, which made `created_at < cutoff` true for every row
+    and emptied the table on each run. Compute one cutoff per unit, never reuse the variable,
+    and assert the magnitude in a test (`> 1e12` for ms, `< 1e11` for s).
+
+15. **Where a statement sits in a handler is part of its behaviour.** The retention `batch()`
+    was placed after the closing brace of the daily branch, so it ran on the five-minute tick
+    too. Cadence bugs are invisible in the SQL and invisible in the cron config — they are
+    only visible in the nesting. Test the cadence, not just the statement.
+
+16. **`*/` inside a block comment ends the comment.** Writing a cron expression like
+    `*/5 * * * *` inside `/** ... */` produces `PARSE_ERROR` fifteen lines later and reads
+    like a lost brace. Same class of failure as the missing backtick in item 9: cheap parser
+    run over the changed files before believing a build error is real. Use line comments, or
+    quote the expression as a string.
+
+17. **A stacked PR gets almost no CI in this repo.** `web-ci.yml` and
+    `edge-bridge-sync.yml` declare `pull_request: branches: [main]`, so a PR whose base is
+    another feature branch runs only `Workers Builds` and GitGuardian. When stacking, the
+    suites that would exercise the change (including `npm test` in `edge-bridge`) run for the
+    first time only after the base merges and the PR is retargeted. Verify locally and say so
+    in the PR body; do not read "green checks" on a stacked PR as coverage of the change.
+
+## Embedded HUD daemon (2026-11-01)
+
+1. `vite.config.js` writes the HUD bundle to `rust/crates/onyx/static` and that directory is
+   tracked, so `rust-embed` can point at `#[folder = "static"]` with no `build.rs` staging and
+   no risk of a compile error in CI, where no JS toolchain runs before `cargo test`.
+2. Enable the `debug-embed` feature, otherwise `rust-embed` reads from the filesystem relative
+   to the *current working directory* in debug builds — unit tests then pass or fail depending
+   on where `cargo test` was invoked from.
+3. The workspace carries **axum 0.7 (`onyx`) and axum 0.8 (`api`) at the same time**. A
+   handler from `api::router` cannot be mounted on an `onyx` router; share behaviour through
+   plain statics (`DAILY_CRON_RUNS`, `EDGE_HEARTBEAT_INTERCEPTS`) instead of composing routers
+   across the version boundary. Aligning both crates on 0.8 is a follow-up.
+4. `tui/status_bar.rs` polls `/api/telemetry/summary` on the daemon port, a path only the edge
+   worker served. When adding a poller, assert in a test that *some* server in the same
+   topology answers the path, or the badge silently stays dark forever.
+5. This authoring sandbox has no C toolchain (`cc`/`gcc`/`clang`/`ld` all missing, no `sudo`),
+   so `libc`'s build script cannot link and `cargo clippy` / `cargo test` cannot run at all,
+   even for `cargo check`. A downloaded Zig 0.17.0 used as `CC`/linker hangs in this container.
+   `cargo fmt --check` and `cargo metadata` still work — use them as the local gate and let
+   `rust-ci.yml` be the compiler of record. Say so explicitly in `AGENTS_VERIFICATION.md`
+   instead of implying the Rust side compiled.
+
