@@ -3,6 +3,33 @@
 All notable changes to the Onyx Mk3 workspace. Newest first. Entries are
 prepended; dates are the date the branch was verified, in America/Chicago.
 
+## 2026-11-02 (later) — Grouped Dependabot updates
+
+Branch `chore/dependabot-grouped-updates`, base `1fdddef` (post-PR #295).
+
+### Added
+
+- **`.github/dependabot.yml`.** The repo had none, so Dependabot produced one PR per
+  advisory: #262, #263, #274 and #285 all landed against the root lockfile, three of them
+  patching the same tree, while ~29 advisories never produced a PR. Patch/minor updates are
+  now grouped weekly per ecosystem (root HUD, edge-bridge, rust) and grouped monthly for
+  GitHub Actions.
+- **Majors are never grouped**, and `tailwindcss` is excluded from the HUD group. #263 was a
+  Tailwind 3 → 4 migration wearing a dependency bump's clothes: it dropped the v3 plugin
+  chain from the lockfile and failed `Workers Builds`.
+
+### Verified
+
+YAML parses (PyYAML 6.0.3); 4 entries; every interval and commit prefix present; `time`
+quoted so it is not read as sexagesimal.
+
+### Not verified
+
+**No automated gate.** `.github/dependabot.yml` is in no workflow's `paths:` filter, so this
+PR runs GitGuardian and the worker build only, neither of which reads it. Schema acceptance
+is proven by Dependabot itself on the next Monday run; a bad key surfaces under
+Insights → Dependency graph → Dependabot.
+
 ## 2026-11-02 — Daily briefing: dead HITL buttons and unescaped ticket text
 
 Branch `fix/onyx-hitl-digest-links`, base `69ee55e` (main, post-PR #294/#274/#285).
