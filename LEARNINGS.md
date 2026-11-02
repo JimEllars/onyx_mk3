@@ -56,3 +56,35 @@ When adding cross-service telemetry and resilient fallback states, ensuring deep
     stricter form turns clippy 1.99's new `assert_is_empty` warnings in
     `crates/plugins/src/lib.rs` into errors that CI does not care about. Confirm the gate
     before editing Rust you cannot compile.
+
+13. **Test a cron branch against the cron strings that are actually deployed.** The
+    `scheduled()` handler compared `controller.cron === "0 12 * * *"` while
+    `wrangler.jsonc` deploys `0 0 * * *` and `*/5 * * * *`. Nothing throws when the literal
+    never matches — the work is simply skipped forever, and the cron string lives in a
+    different file from the code that reads it. Prefer a set/predicate (`isDailyCron`) over
+    exact equality, and read `wrangler.jsonc` before trusting any schedule comment.
+
+14. **Edge D1 columns do not share an epoch.** `onyx_telemetry_logs.created_at` is written
+    with `Date.now()` (milliseconds); `onyx_user_sessions.last_seen` and
+    `onyx_rate_limit_logs.blocked_at` are written as epoch seconds. One `thirtyDaysAgo`
+    variable was bound to both families, which made `created_at < cutoff` true for every row
+    and emptied the table on each run. Compute one cutoff per unit, never reuse the variable,
+    and assert the magnitude in a test (`> 1e12` for ms, `< 1e11` for s).
+
+15. **Where a statement sits in a handler is part of its behaviour.** The retention `batch()`
+    was placed after the closing brace of the daily branch, so it ran on the five-minute tick
+    too. Cadence bugs are invisible in the SQL and invisible in the cron config — they are
+    only visible in the nesting. Test the cadence, not just the statement.
+
+16. **`*/` inside a block comment ends the comment.** Writing a cron expression like
+    `*/5 * * * *` inside `/** ... */` produces `PARSE_ERROR` fifteen lines later and reads
+    like a lost brace. Same class of failure as the missing backtick in item 9: cheap parser
+    run over the changed files before believing a build error is real. Use line comments, or
+    quote the expression as a string.
+
+17. **A stacked PR gets almost no CI in this repo.** `web-ci.yml` and
+    `edge-bridge-sync.yml` declare `pull_request: branches: [main]`, so a PR whose base is
+    another feature branch runs only `Workers Builds` and GitGuardian. When stacking, the
+    suites that would exercise the change (including `npm test` in `edge-bridge`) run for the
+    first time only after the base merges and the PR is retargeted. Verify locally and say so
+    in the PR body; do not read "green checks" on a stacked PR as coverage of the change.
