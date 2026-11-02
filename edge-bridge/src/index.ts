@@ -424,18 +424,74 @@ async function hashPrompt(prompt: string): Promise<string> {
   return hashHex;
 }
 
-function promptFromSummonPayload(payload: unknown): string {
-  if (
+/**
+ * Persona allow-list for `domain_context` on the summon route.
+ *
+ * The cockpit sends an id only. The wording lives here so a browser cannot
+ * inject its own system prompt, and so the text can be tuned without shipping a
+ * new bundle. Keep in sync with `src/lib/domainContexts.js` in the HUD — both
+ * sides have a test asserting the exact id set.
+ */
+export const DOMAIN_CONTEXT_PREAMBLES: Record<string, { label: string; preamble: string }> = {
+  "axim-core": {
+    label: "AXiM Core",
+    preamble:
+      "You are Onyx in the AXiM Core context: ecosystem orchestration, edge worker health, DLQ depth, HMAC-signed relays and JWKS Passport auth. Answer with concrete operational steps and name the endpoint or worker you mean.",
+  },
+  "robotics-lab": {
+    label: "Robotics Lab",
+    preamble:
+      "You are Onyx in the Robotics Lab context: commissioning, telemetry and safety interlocks. Stay at the integration and safety-plan level; never reproduce CAD geometry, BOM cost breakdowns or vendor pricing.",
+  },
+  "speedreport-network": {
+    label: "SpeedReport Network",
+    preamble:
+      "You are Onyx in the SpeedReport Network context, a white-label client network. Never mention AXiM, Onyx or any internal platform name in customer-facing wording; speak as SpeedReport only.",
+  },
+  "axim-academy": {
+    label: "AXiM Academy",
+    preamble:
+      "You are Onyx in the AXiM Academy context: curriculum, operator onboarding and enablement. Teach in short checkable steps with an exercise at the end.",
+  },
+};
+
+export const DOMAIN_CONTEXT_IDS = Object.keys(DOMAIN_CONTEXT_PREAMBLES);
+
+/** The allow-listed context id carried by a summon payload, or null. */
+export function domainContextFromPayload(payload: unknown): string | null {
+  if (typeof payload !== "object" || payload === null || !("domain_context" in payload)) {
+    return null;
+  }
+  const raw = (payload as { domain_context?: unknown }).domain_context;
+  if (typeof raw !== "string") return null;
+  // hasOwnProperty, not `in`: `"toString" in {}` is true, and the payload is
+  // attacker-controlled.
+  return Object.prototype.hasOwnProperty.call(DOMAIN_CONTEXT_PREAMBLES, raw) ? raw : null;
+}
+
+/**
+ * The user message for the provider fallback path, prefixed by the persona
+ * preamble when the caller asked for one.
+ *
+ * Without this the persona switcher moved a dropdown and changed nothing: the
+ * fallback sent `payload.message` straight to DeepSeek/Anthropic, so every
+ * context answered identically.
+ */
+export function promptFromSummonPayload(payload: unknown): string {
+  const message =
     typeof payload === "object" &&
     payload !== null &&
     "message" in payload &&
     typeof payload.message === "string" &&
     payload.message.trim()
-  ) {
-    return payload.message;
-  }
+      ? payload.message
+      : "Hello";
 
-  return "Hello";
+  const context = domainContextFromPayload(payload);
+  if (!context) return message;
+
+  const persona = DOMAIN_CONTEXT_PREAMBLES[context];
+  return `[${persona.label}] ${persona.preamble}\n\n${message}`;
 }
 
 function textSsePayload(model: string, responseText: string): string {
