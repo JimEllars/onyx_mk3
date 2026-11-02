@@ -61,14 +61,14 @@ The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as 
   - [x] Persona preambles applied server-side in `edge-bridge/src/index.ts` (`DOMAIN_CONTEXT_PREAMBLES`, allow-listed) — the fallback provider path honours them.
   - [x] HITL review UI with Approve/Reject against the canonical `POST /api/v1/hitl/action`, distinguishing applied from recorded-but-unapplied.
 
-### Phase 4: Embedded Daemon (`--daemon`, port 3141, `rust-embed`) — DEFERRED, see below
+### Phase 4: Embedded Daemon (`--daemon`, port 3141, `rust-embed`) — DONE (PR #294)
 - **Objective**: Serve the built React bundle from the Rust binary.
 - **Current state**: `rust/crates/onyx/src/main.rs` already has `serve-headless` (axum 0.7, default port 4711) with `ServeDir::new("static")` as the fallback service, and `vite build` emits into `rust/crates/onyx/static`. So the serving path exists but depends on the process CWD and is not reachable as `--daemon` on 3141.
 - **Remaining work**:
-  - [ ] `--daemon` flag / `daemon` subcommand defaulting to port 3141 (`parse_args` around `serve-headless`, main.rs:1113).
-  - [ ] Replace `ServeDir` with `rust-embed` so the binary is self-contained (new dependency → `Cargo.lock` change).
-  - [ ] A unit test that the embedded index is served and a missing asset 404s.
-- **Why deferred**: the 2026-11-01 session had no Rust toolchain (no C compiler, no glibc headers), so this could not be compiled or tested. Shipping uncompiled Rust in a 11,000-line `main.rs` is not acceptable; it needs a session with `cargo`.
+  - [x] `--daemon` flag / `daemon` subcommand defaulting to port 3141 (`rust/crates/onyx/src/main.rs`, `CliAction::Daemon`).
+  - [x] `rust-embed` replaces `ServeDir` so the binary is self-contained (`debug-embed` on, so debug builds embed too).
+  - [x] Unit tests for the embedded index, the SPA fallback, the deny list and missing-asset 404 (`daemon.rs`, 15 tests).
+- **How it was proven**: the authoring sandbox has no C toolchain, so `rust-ci.yml` was the compiler of record — `cargo fmt`, `cargo clippy --workspace`, `cargo test --workspace` and `cargo test --test '*' --features integration` all green on the PR before merge.
 
 ### Phase 4b: Decentralized Billing & Web3 Integration Polish (Weeks 4-5) — NOT STARTED
 - **Objective**: Finalize the Web3 capabilities and fallback billing in the UI.
@@ -78,6 +78,16 @@ The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as 
   - [ ] Unified transaction ledger view in the `ActionConsole`.
 
 ## Standing defects
+
+### Fixed on 2026-11-02 (`fix/onyx-hitl-digest-links`)
+
+1. **The daily briefing's Approve/Reject buttons were dead.** Phase B moved HITL decisions to
+   an authenticated `POST`, and the email kept emitting `?decision=approve|reject` GET links,
+   which now answer 405. The email carries no decision at all: it links to the read-only
+   ticket view and the cockpit, where the decision is POSTed with an operator credential.
+   Pinned by `test/hitl-digest.test.ts` (link liveness asserted against the real handler).
+2. **A ticket description could inject markup into the briefing email.** Now escaped.
+3. **`scheduled()` logged `console.error("error")` on every tick.** Removed.
 
 ### Fixed on 2026-11-01 (`feat/onyx-fleet-health-rollup`)
 
@@ -100,5 +110,22 @@ The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as 
    will read zeros forever. Either add the writer or drop the table.
 3. **Digest send time.** The daily job now runs at 00:00 UTC because that is the deployed
    trigger. If midday was intended, change `edge-bridge/wrangler.jsonc:85` to `0 12 * * *`.
-4. **Duplicate PR #284** — already merged; not actionable. The open Dependabot queue (#263,
-   #262, #274, #285) needs a decision from the operator.
+4. **21 bare `console.error("error")` calls remain** in `edge-bridge/src/index.ts` (the 22nd,
+   the one in `scheduled()`, was removed on 2026-11-02). Each is an unlabelled error inside a
+   `catch`, so a log line names neither the subsystem nor the request. Replace with
+   `console.error(JSON.stringify({ event, trace_id }))` as each call site is touched.
+5. **The global HMAC gate still sits mid-chain** in `_fetch`. Roughly a dozen routes are
+   declared above it (`/functions/v1/telemetry-ingress`, `/api/v1/dlq-drain`,
+   `/api/v1/telemetry/dlq-status`, `/api/v1/telemetry/flush`, `/api/v1/onyx/emergency-direct`,
+   `/api/v1/onyx/summon`, `/api/v1/generate/*`, `/api/v1/billing/fallback-blockchain`, …), so
+   each relies on its own hand-written auth. Adding a route above the gate is a silent
+   fail-open. Needs a route-table refactor, or at minimum an invariant test that every route
+   declared above the gate is either explicitly public or self-authenticating.
+6. **Tailwind 4 migration.** PR #263 proposed jumping `tailwindcss` 3.4 → 4.3; it was closed
+   because Tailwind 4 drops the v3 config model this repo uses and the worker build failed on
+   it. Needs a dedicated PR with a visual check of the HUD.
+7. **~29 dependency advisories have no Dependabot PR**: `undici` and `sharp` in
+   `edge-bridge/package-lock.json`, and `rustls`, `rustls-webpki`, `quinn-proto`, `protobuf`,
+   `rand`, `lru` in `rust/Cargo.lock`. The node ones are transitive under
+   `wrangler`/`miniflare`. The Rust ones need `cargo update` in an environment with a C
+   toolchain, or a hand-edited `Cargo.lock` proven by `rust-ci.yml` on a PR.

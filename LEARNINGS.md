@@ -111,3 +111,31 @@ When adding cross-service telemetry and resilient fallback states, ensuring deep
    `rust-ci.yml` be the compiler of record. Say so explicitly in `AGENTS_VERIFICATION.md`
    instead of implying the Rust side compiled.
 
+## Chasing a route change to everything that links to it (2026-11-02)
+
+1. **Changing a route's contract is not done when the handler is updated.** Phase B removed
+   mutating GET from `/api/v1/hitl/action`, and the daily digest email kept emitting
+   `?decision=approve` links for weeks — every button in the operator's briefing answered 405,
+   discovered only after the click. Grep the repo for the *old URL shape*, including strings
+   built by interpolation in HTML and markdown templates, not just `fetch(` call sites.
+2. **A link in an email cannot be an authorisation.** Mail scanners, link previewers and
+   browser prefetch all issue GET against every href, so a one-click approve link is an
+   unauthenticated mutation that fires without the operator. Emails should deep-link to a
+   review surface; the decision goes out as an authenticated POST from that surface.
+3. **Escape anything interpolated into an email template.** A HITL ticket's `description`
+   originates as a tool-proposal field, so it is attacker-influenced input rendered into a
+   message from a trusted internal sender. `escapeHtml` on the text, `encodeURIComponent` on
+   the token, and escape the href as well.
+4. **Assert link liveness against the real handler.** The digest test builds the markup, pulls
+   every `href` out of it with a regex, and dispatches each one at `worker.fetch`. That is the
+   only assertion that would have caught the 405: a test that only compares the URL string to
+   an expected string passes happily while the route returns an error.
+5. **A bare `console.error("error")` in a `catch` costs nothing to add and makes the log
+   useless later.** One of them sat at the top of `scheduled()` and ran on every five-minute
+   tick, so the worker emitted an error line every five minutes forever and any error-rate
+   alert on that worker was noise. Log `{"event": ..., "trace_id": ...}` or nothing.
+6. **The append-only index file conflicts on every rebase — by design.** `AGENTS_VERIFICATION.md`
+   conflicted a fourth time on 2026-11-02. Resolve it by keeping *both* tables' rows, newest
+   last, and never by choosing a side; selecting a side silently drops another change's
+   verification record.
+
