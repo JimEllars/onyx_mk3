@@ -16,7 +16,7 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 axum = "0.7"
-tower-http = { version = "0.6", features = ["fs"] }
+tower-http = { version = "0.7", features = ["fs"] }
 # The HUD daemon embeds the compiled React bundle so `onyx daemon` is a single
 # self-contained binary. `debug-embed` keeps debug builds and tests behaving
 # exactly like release builds.
