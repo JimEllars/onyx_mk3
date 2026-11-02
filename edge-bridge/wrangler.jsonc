@@ -30,7 +30,8 @@
     "binding": "AI"
   },
   "vars": {
-    "CORE_INGEST_URL": "https://api.axim.us.com/v1/functions/telemetry-ingest",
+    "CORE_INGEST_URL": "https://api.axim.us.com/telemetry",
+    "CORE_HITL_URL": "https://pvbcdndqjguzqeafhwhw.supabase.co/functions/v1/resolve-hitl",
     "ALLOWED_ORIGIN": "tauri://localhost",
     "DEEPSEEK_MODEL": "deepseek-chat",
     "PASSPORT_JWT_ISSUER": "https://pvbcdndqjguzqeafhwhw.supabase.co/auth/v1",
@@ -65,6 +66,18 @@
     {
       "binding": "ONYX_KV",
       "id": "84ebf13dd7d04a308474784c50603a5f"
+    },
+    {
+      "binding": "ECOSYSTEM_METRICS_KV",
+      "id": "82793751d3924b32bdf654716258f552"
+    },
+    {
+      "binding": "EDGE_DLQ_KV",
+      "id": "893b9bc503874204a6f40450b1177af7"
+    },
+    {
+      "binding": "HITL_APPROVAL_KV",
+      "id": "c2946428a321491a9ffc2a152a017017"
     }
   ],
   "triggers": {

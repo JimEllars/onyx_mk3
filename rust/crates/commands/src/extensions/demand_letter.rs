@@ -102,6 +102,19 @@ impl MicroProgram for DemandLetterGenerator {
         };
 
         if status == "Generated" {
+            // Trigger Axim Core Relay for generated document
+            let relay_payload = json!({
+                "source_channel": payload.source_channel,
+                "intent": payload.intent,
+                "meta_data": {
+                    "status": "Generated",
+                    "document_url": document_url.clone().unwrap_or_default()
+                }
+            });
+            if let Err(e) = AximCoreRelayAction::execute(&relay_payload).await {
+                eprintln!("AximCoreRelay fallback failed: {e}");
+            }
+
             if let Some(ref url) = document_url {
                 let body = format!(
                     "Your demand letter has been generated. You can download it here: {url}"
@@ -134,6 +147,19 @@ impl MicroProgram for DemandLetterGenerator {
         };
 
         if status == "Generated" {
+            // Trigger Axim Core Relay for generated document
+            let relay_payload = json!({
+                "source_channel": payload.source_channel,
+                "intent": payload.intent,
+                "meta_data": {
+                    "status": "Generated",
+                    "document_url": document_url.clone().unwrap_or_default()
+                }
+            });
+            if let Err(e) = AximCoreRelayAction::execute(&relay_payload).await {
+                eprintln!("AximCoreRelay fallback failed: {e}");
+            }
+
             let payload_to_save = json!({
                 "type": "demand_letter",
                 "document_url": document_url,

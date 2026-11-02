@@ -1,14 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAximAuth } from '../../hooks/useAximAuth';
+import DomainContextSwitcher from './DomainContextSwitcher';
+import { buildSummonPayload, DEFAULT_DOMAIN_CONTEXT_ID } from '../../lib/domainContexts';
+import { nextRetryDelay } from '../../lib/backoff';
 
 export default function ChatInterface() {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [isStreaming, setIsStreaming] = useState(false);
     const [streamStatus, setStreamStatus] = useState('');
+    const [domainContext, setDomainContext] = useState(DEFAULT_DOMAIN_CONTEXT_ID);
     const messagesEndRef = useRef(null);
     const [hasError, setHasError] = useState(false);
     const { isAuthenticated, token, loginWithPassport, authError } = useAximAuth();
+
+    const summonUrl = `${(import.meta.env.VITE_ONYX_WORKER_URL || '').replace(/\/$/, '')}/api/v1/onyx/summon`;
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -19,38 +25,50 @@ export default function ChatInterface() {
     }, [messages]);
 
     const attemptFetch = async (userMessage, retryCount = 0) => {
+        // A classified failure (rate limit, auth, exhausted failover) must survive the
+        // catch block: replacing "Authentication Failure" with "Stream failed" told the
+        // operator to wait for a reconnect that could never succeed.
+        let classifiedStatus = null;
         try {
             setHasError(false);
-            const response = await fetch('/api/v1/onyx/summon', {
+            const response = await fetch(summonUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ message: userMessage })
+                body: JSON.stringify(buildSummonPayload(userMessage, domainContext))
             });
 
             if (!response.ok) {
                 if (response.status === 429) {
+                    classifiedStatus = 'Rate Limited (Asguard). Please slow down.';
                     setHasError(true);
-                    setStreamStatus('Rate Limited (Asguard). Please slow down.');
+                    setStreamStatus(classifiedStatus);
                     throw new Error(`Asguard rate limit exceeded.`);
                 }
                 if (response.status === 401 || response.status === 403) {
+                    classifiedStatus = 'Authentication Failure (Asguard). Unauthorized request.';
                     setHasError(true);
-                    setStreamStatus('Authentication Failure (Asguard). Unauthorized request.');
+                    setStreamStatus(classifiedStatus);
                     throw new Error(`Authentication failure.`);
                 }
                 if (response.status === 502 || response.status === 503) {
                     if (retryCount < 3) {
                          setStreamStatus(`Re-routing connection... (Attempt ${retryCount + 1})`);
-                         await new Promise(r => setTimeout(r, 2000));
+                         // 1s, 2s, 4s ... capped at BACKOFF_MAX_MS, with jitter so
+                         // a fleet of cockpits does not stampede Core on failover.
+                         await new Promise(r => setTimeout(r, nextRetryDelay(retryCount)));
                          return attemptFetch(userMessage, retryCount + 1);
                     }
+                    classifiedStatus = `Failover exhausted (HTTP ${response.status}). Core and both providers are down.`;
                     setHasError(true);
+                    setStreamStatus(classifiedStatus);
                     throw new Error(`Network error! status: ${response.status}`);
                 } else {
+                    classifiedStatus = `Request rejected (HTTP ${response.status}).`;
                     setHasError(true);
+                    setStreamStatus(classifiedStatus);
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
             } else {
@@ -112,7 +130,7 @@ export default function ChatInterface() {
             }
         } catch (error) {
             /* void 0; */
-            if (!hasError) {
+            if (!hasError && !classifiedStatus) {
                 setStreamStatus('Stream failed. Attempting reconnect without refresh...');
                 setHasError(true);
             }
@@ -162,6 +180,11 @@ export default function ChatInterface() {
 
     return (
         <div className="flex flex-col h-full bg-slate-900 rounded-lg shadow-xl overflow-hidden border border-slate-700">
+            <DomainContextSwitcher
+                value={domainContext}
+                onChange={setDomainContext}
+                disabled={isStreaming}
+            />
             <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
                 {messages.map((msg, index) => {
                     if (msg.role === 'system') {

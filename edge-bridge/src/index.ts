@@ -1,4 +1,11 @@
-import { verifyPassportJwt, isSuperAdmin, type PassportClaims } from "./passport";
+import {
+  adminRoleFrom,
+  isLegacyAdminRole,
+  isSuperAdmin,
+  SUPER_ADMIN_ROLE,
+  verifyPassportJwt,
+  type PassportClaims,
+} from "./passport";
 /**
  * Welcome to Cloudflare Workers!
  *
@@ -8,9 +15,6 @@ import { verifyPassportJwt, isSuperAdmin, type PassportClaims } from "./passport
 import { z } from "zod";
 
 export interface Env extends __BaseEnv_Env {
-  ECOSYSTEM_METRICS_KV?: KVNamespace;
-  EDGE_DLQ_KV?: KVNamespace;
-  HITL_APPROVAL_KV?: KVNamespace;
   AXIM_SERVICE_KEY?: string;
   AXIM_ONYX_SECRET?: string;
   DEEPSEEK_API_KEY?: string;
@@ -21,66 +25,333 @@ export interface Env extends __BaseEnv_Env {
   EMAILIT_API_KEY?: string;
   ONYX_CLIENT_SECRET?: string;
   ONYX_EMERGENCY_SECRET?: string;
+  // CORE_HITL_URL is declared in wrangler.jsonc, so it arrives through
+  // __BaseEnv_Env; re-declaring it here breaks `wrangler types` (the generated
+  // type is the literal URL, not string | undefined).
+  /** Core Supabase origin, used to derive CORE_HITL_URL when it is not set */
+  CORE_SUPABASE_URL?: string;
+  /** Service-role key for the Core project; required to apply a decision */
+  CORE_SERVICE_ROLE_KEY?: string;
   CHAT_MODEL?: string;
   CRON_SECRET_KEY?: string;
+  /** ISO date after which the body-only (legacy) signature form is refused. */
+  SIGNATURE_LEGACY_SUNSET?: string;
   PUBLIC_BASE_URL?: string;
   THREADS_FEED_URL?: string;
   THREADS_FEED_TOKEN?: string;
 }
-function parsePassportSession(request: Request): { role: string; [key: string]: any } {
-  try {
-    const cookieHeader = request.headers.get("Cookie") || "";
-    const match = cookieHeader.match(/(?:^|;\s*)axim_passport_session=([^;]*)/);
-    if (match && match[1]) {
-      const decoded = decodeURIComponent(match[1]);
-      return JSON.parse(decoded);
-    }
-  } catch (e) {
-    console.warn("Failed to parse axim_passport_session", e);
-  }
-  return { role: "guest" };
+/**
+ * Versioned request signing with a date-keyed dual-accept window.
+ *
+ * Signatures over the raw body alone are replayable forever. The replacement
+ * signs `<timestamp>.<body>` and carries the timestamp in a header, so a
+ * receiver can reject stale requests.
+ *
+ *   v2     : X-Axim-Signature-Version: 2
+ *            X-Axim-Timestamp: <unix seconds>      (required)
+ *            X-Axim-Signature: sha256=<hex HMAC(secret, "<ts>.<body>")>
+ *   legacy : X-Axim-Signature: sha256=<hex HMAC(secret, body)>
+ *
+ * Both are accepted until SIGNATURE_LEGACY_SUNSET (default 2026-12-31) so the
+ * two repositories can be deployed asynchronously; after that date the legacy
+ * form is refused and the window closes by date rather than by coordination.
+ */
+export const SIGNATURE_V2 = "2";
+export const SIGNATURE_MAX_SKEW_SECONDS = 300;
+export const DEFAULT_LEGACY_SUNSET = "2026-12-31T00:00:00Z";
+
+export interface SignatureVerdict {
+  ok: boolean;
+  mode: "v2" | "legacy" | "none";
+  reason?: string;
 }
 
+export async function verifyRequestSignature(
+  request: Request,
+  rawBody: string,
+  secret: string | undefined,
+  options: { nowMs?: number; legacySunset?: string } = {},
+): Promise<SignatureVerdict> {
+  try {
+    if (!secret) return { ok: false, mode: "none", reason: "no signing secret configured" };
 
+    const nowMs = options.nowMs ?? Date.now();
+    const sunsetMs = Date.parse(options.legacySunset ?? DEFAULT_LEGACY_SUNSET);
+
+    const signatureHeader = request.headers.get("X-Axim-Signature");
+    if (!signatureHeader) return { ok: false, mode: "none", reason: "missing signature" };
+
+    const cleanSig = signatureHeader.replace(/^sha256=/i, "").trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(cleanSig)) {
+      return { ok: false, mode: "none", reason: "malformed signature" };
+    }
+
+    const rawTimestamp = request.headers.get("X-Axim-Timestamp");
+    const version = request.headers.get("X-Axim-Signature-Version")?.trim();
+
+    const verifyOver = async (message: string): Promise<boolean> => {
+      const encoder = new TextEncoder();
+      const sigBytes = new Uint8Array(
+        cleanSig.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)),
+      );
+      const key = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(secret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["verify"],
+      );
+      return crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(message));
+    };
+
+    if (version === SIGNATURE_V2) {
+      if (!rawTimestamp) {
+        return { ok: false, mode: "v2", reason: "v2 signature requires X-Axim-Timestamp" };
+      }
+      const timestamp = Number.parseInt(rawTimestamp, 10);
+      if (!Number.isFinite(timestamp)) {
+        return { ok: false, mode: "v2", reason: "invalid timestamp" };
+      }
+      if (Math.abs(nowMs / 1000 - timestamp) > SIGNATURE_MAX_SKEW_SECONDS) {
+        return { ok: false, mode: "v2", reason: "timestamp outside the 5 minute window" };
+      }
+      return (await verifyOver(`${timestamp}.${rawBody}`))
+        ? { ok: true, mode: "v2" }
+        : { ok: false, mode: "v2", reason: "signature mismatch" };
+    }
+
+    if (Number.isFinite(sunsetMs) && nowMs > sunsetMs) {
+      return {
+        ok: false,
+        mode: "legacy",
+        reason: `legacy signature form is retired (sunset ${new Date(sunsetMs).toISOString()})`,
+      };
+    }
+
+    if (rawTimestamp) {
+      const timestamp = Number.parseInt(rawTimestamp, 10);
+      if (
+        Number.isFinite(timestamp) &&
+        Math.abs(nowMs / 1000 - timestamp) > SIGNATURE_MAX_SKEW_SECONDS
+      ) {
+        return { ok: false, mode: "legacy", reason: "timestamp outside the 5 minute window" };
+      }
+    }
+
+    return (await verifyOver(rawBody))
+      ? { ok: true, mode: "legacy" }
+      : { ok: false, mode: "legacy", reason: "signature mismatch" };
+  } catch (err) {
+    return { ok: false, mode: "none", reason: err instanceof Error ? err.message : "error" };
+  }
+}
+
+/** Boolean wrapper kept for existing call sites. */
 export async function verifyHmacSignature(
   request: Request,
   rawBody: string,
-  secret: string | undefined
+  secret: string | undefined,
+  legacySunset?: string,
 ): Promise<boolean> {
-  try {
-    if (!secret) return false;
-    const signatureHeader = request.headers.get("X-Axim-Signature");
-    if (!signatureHeader) return false;
+  const verdict = await verifyRequestSignature(request, rawBody, secret, { legacySunset });
+  return verdict.ok;
+}
 
-    const cleanSig = signatureHeader.replace(/^sha256=/, "").trim();
-    if (cleanSig.length !== 64 || !/^[0-9a-fA-F]{64}$/.test(cleanSig)) {
-      return false;
-    }
+type HitlStatus = "Approved" | "Rejected";
 
-    const sigBytes = new Uint8Array(
-      cleanSig.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
-    );
+interface HitlApplyResult {
+  recorded: boolean;
+  applied: boolean;
+  core_status: number;
+  reason?: string;
+}
 
-    const encoder = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      "raw",
-      encoder.encode(secret),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"]
-    );
-
-    return await crypto.subtle.verify(
-      "HMAC",
-      key,
-      sigBytes,
-      encoder.encode(rawBody)
-    );
-  } catch (err) {
-    return false;
+/**
+ * Map every decision spelling the cockpit or an email link might send onto the
+ * two values Core's `resolve-hitl` accepts. Returns null for anything else so
+ * the caller can reject rather than record a meaningless status.
+ */
+function normalizeHitlDecision(raw: unknown): HitlStatus | null {
+  if (typeof raw !== "string") return null;
+  switch (raw.trim().toLowerCase()) {
+    case "approve":
+    case "approved":
+      return "Approved";
+    case "reject":
+    case "rejected":
+    case "deny":
+    case "denied":
+      return "Rejected";
+    default:
+      return null;
   }
 }
 
+function resolveHitlUrl(env: Env): string | null {
+  if (env.CORE_HITL_URL) return env.CORE_HITL_URL;
+  if (env.CORE_SUPABASE_URL) {
+    return `${env.CORE_SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/resolve-hitl`;
+  }
+  return null;
+}
+
+/**
+ * Apply a HITL decision.
+ *
+ * A decision is only "applied" when Core's `resolve-hitl` function accepts it.
+ * Recording it in KV and reporting success without relaying was the previous
+ * behaviour: the cockpit showed APPROVED, the ticket vanished, and nothing
+ * resumed. Callers must use `applied`, never a bare 200, to decide whether the
+ * approval took effect.
+ */
+async function applyHitlDecision(
+  env: Env,
+  actionId: string,
+  status: HitlStatus,
+  operatorNotes: string | undefined,
+  actor: string,
+): Promise<HitlApplyResult> {
+  const decidedAt = new Date().toISOString();
+
+  // 1. Durable local record (best effort; KV is not the source of truth).
+  if (env.HITL_APPROVAL_KV) {
+    const record = { action_id: actionId, status, operator_notes: operatorNotes ?? null, actor, decided_at: decidedAt };
+    await env.HITL_APPROVAL_KV.put(`action_decision:${actionId}`, JSON.stringify(record), { expirationTtl: 86400 });
+  }
+  if (env.EDGE_DLQ_KV) {
+    await env.EDGE_DLQ_KV.put(
+      `mcp_resolution:${actionId}:${Date.now()}`,
+      JSON.stringify({ action_id: actionId, status, operator_notes: operatorNotes ?? null, actor, decided_at: decidedAt }),
+      { expirationTtl: 86400 * 7 },
+    );
+  }
+
+  // 2. Relay to Core — the only step that actually applies anything.
+  const url = resolveHitlUrl(env);
+  if (!url) {
+    return { recorded: true, applied: false, core_status: 0, reason: "CORE_HITL_URL is not configured" };
+  }
+  if (!env.CORE_SERVICE_ROLE_KEY) {
+    return { recorded: true, applied: false, core_status: 0, reason: "CORE_SERVICE_ROLE_KEY is not configured" };
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.CORE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ log_id: actionId, status, action_payload: null }),
+    });
+    if (!res.ok) {
+      return { recorded: true, applied: false, core_status: res.status, reason: `core responded ${res.status}` };
+    }
+    return { recorded: true, applied: true, core_status: res.status };
+  } catch (err) {
+    return {
+      recorded: true,
+      applied: false,
+      core_status: 0,
+      reason: `relay failed: ${err instanceof Error ? err.message : "unknown error"}`,
+    };
+  }
+}
+
+/**
+ * Perimeter guard for CGI argument injection, path traversal and PHP probes.
+ *
+ * The previous implementation matched substrings of `url.search` / `url.pathname`
+ * from `new URL()`, which is normalised but NOT percent-decoded, so
+ * `/?%61uto_prepend_file=x` and `/%252e%252e/` both passed. Its traversal clauses
+ * were also dead for single-encoded input, because the URL parser resolves
+ * `%2e%2e` segments before the check runs. Decode twice (to defeat double
+ * encoding) and match the decoded form.
+ */
+function cgiGuard(request: Request): Response | null {
+  const url = new URL(request.url);
+
+  let path = url.pathname;
+  let query = url.search;
+  for (let i = 0; i < 2; i += 1) {
+    try {
+      path = decodeURIComponent(path);
+      query = decodeURIComponent(query);
+    } catch {
+      // Malformed percent-encoding; evaluate what we already have.
+      break;
+    }
+  }
+  const pathLower = path.toLowerCase();
+  const queryLower = query.toLowerCase();
+
+  const cgiHit = /([?&]-d\b|auto_prepend_file|auto_append_file|allow_url_include|disable_functions|safe_mode)/.test(queryLower);
+  const traversal = /(^|[\/\\])(\.|%2e){1,2}([\/\\]|$)/.test(pathLower);
+  const phpProbe = /\.php([\/]|$)|\/wp-admin|\/wp-login\.php|xmlrpc\.php/.test(pathLower);
+
+  if (cgiHit || traversal || phpProbe) {
+    const reason = cgiHit ? "CGI argument injection" : traversal ? "path traversal" : "PHP probe";
+    return new Response(JSON.stringify({ error: `Forbidden: ${reason} detected` }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  return null;
+}
+
+/**
+ * Resolve the Core telemetry ingest URL.
+ *
+ * CORE_INGEST_URL may be configured either as a bare origin
+ * ("https://api.axim.us.com") or as a fully-qualified ingest path
+ * ("https://api.axim.us.com/telemetry"). The previous code unconditionally
+ * appended "/functions/v1/telemetry-ingress", which produced a duplicated,
+ * non-existent path against any configured value.
+ */
+function resolveIngestUrl(base: string): string {
+  const trimmed = base.replace(/\/+$/, "");
+  if (/\/(telemetry-ingress|telemetry-ingest|telemetry)$/.test(trimmed)) {
+    return trimmed;
+  }
+  return `${trimmed}/telemetry`;
+}
+
+/**
+ * Fail loudly when a KV binding the handler depends on is absent.
+ *
+ * HITL_APPROVAL_KV, EDGE_DLQ_KV and ECOSYSTEM_METRICS_KV are declared optional
+ * in the Env interface but are not declared in wrangler.jsonc. The handlers used
+ * to skip their writes and still answer 200/202, which made a non-functional
+ * feature look functional. A missing binding is a deployment fault and must
+ * surface as 503, not as success.
+ */
+function missingBinding(
+  request: Request,
+  env: Env,
+  binding: string,
+  feature: string,
+): Response {
+  console.error(
+    `[onyx-edge] required KV binding ${binding} is not configured; ${feature} is unavailable`,
+  );
+  return new Response(
+    JSON.stringify({
+      type: "about:blank",
+      title: "Service Unavailable",
+      status: 503,
+      detail: `${feature} is unavailable: binding ${binding} is not configured on this deployment.`,
+      instance: new URL(request.url).pathname,
+    }),
+    {
+      status: 503,
+      headers: {
+        ...getCorsHeaders(request, env),
+        "Content-Type": "application/problem+json",
+      },
+    },
+  );
+}
 
 const ALLOWED_ORIGINS = [
   "https://axim.us.com",
@@ -153,18 +424,74 @@ async function hashPrompt(prompt: string): Promise<string> {
   return hashHex;
 }
 
-function promptFromSummonPayload(payload: unknown): string {
-  if (
+/**
+ * Persona allow-list for `domain_context` on the summon route.
+ *
+ * The cockpit sends an id only. The wording lives here so a browser cannot
+ * inject its own system prompt, and so the text can be tuned without shipping a
+ * new bundle. Keep in sync with `src/lib/domainContexts.js` in the HUD — both
+ * sides have a test asserting the exact id set.
+ */
+export const DOMAIN_CONTEXT_PREAMBLES: Record<string, { label: string; preamble: string }> = {
+  "axim-core": {
+    label: "AXiM Core",
+    preamble:
+      "You are Onyx in the AXiM Core context: ecosystem orchestration, edge worker health, DLQ depth, HMAC-signed relays and JWKS Passport auth. Answer with concrete operational steps and name the endpoint or worker you mean.",
+  },
+  "robotics-lab": {
+    label: "Robotics Lab",
+    preamble:
+      "You are Onyx in the Robotics Lab context: commissioning, telemetry and safety interlocks. Stay at the integration and safety-plan level; never reproduce CAD geometry, BOM cost breakdowns or vendor pricing.",
+  },
+  "speedreport-network": {
+    label: "SpeedReport Network",
+    preamble:
+      "You are Onyx in the SpeedReport Network context, a white-label client network. Never mention AXiM, Onyx or any internal platform name in customer-facing wording; speak as SpeedReport only.",
+  },
+  "axim-academy": {
+    label: "AXiM Academy",
+    preamble:
+      "You are Onyx in the AXiM Academy context: curriculum, operator onboarding and enablement. Teach in short checkable steps with an exercise at the end.",
+  },
+};
+
+export const DOMAIN_CONTEXT_IDS = Object.keys(DOMAIN_CONTEXT_PREAMBLES);
+
+/** The allow-listed context id carried by a summon payload, or null. */
+export function domainContextFromPayload(payload: unknown): string | null {
+  if (typeof payload !== "object" || payload === null || !("domain_context" in payload)) {
+    return null;
+  }
+  const raw = (payload as { domain_context?: unknown }).domain_context;
+  if (typeof raw !== "string") return null;
+  // hasOwnProperty, not `in`: `"toString" in {}` is true, and the payload is
+  // attacker-controlled.
+  return Object.prototype.hasOwnProperty.call(DOMAIN_CONTEXT_PREAMBLES, raw) ? raw : null;
+}
+
+/**
+ * The user message for the provider fallback path, prefixed by the persona
+ * preamble when the caller asked for one.
+ *
+ * Without this the persona switcher moved a dropdown and changed nothing: the
+ * fallback sent `payload.message` straight to DeepSeek/Anthropic, so every
+ * context answered identically.
+ */
+export function promptFromSummonPayload(payload: unknown): string {
+  const message =
     typeof payload === "object" &&
     payload !== null &&
     "message" in payload &&
     typeof payload.message === "string" &&
     payload.message.trim()
-  ) {
-    return payload.message;
-  }
+      ? payload.message
+      : "Hello";
 
-  return "Hello";
+  const context = domainContextFromPayload(payload);
+  if (!context) return message;
+
+  const persona = DOMAIN_CONTEXT_PREAMBLES[context];
+  return `[${persona.label}] ${persona.preamble}\n\n${message}`;
 }
 
 function textSsePayload(model: string, responseText: string): string {
@@ -501,6 +828,30 @@ async function checkAuth(req: Request, env: Env, requireSuperUser: boolean = fal
     });
   }
 
+  if (passportClaims) {
+    // Canonical role is super_admin. Anything else that still grants admin is a
+    // legacy spelling: accept it during the migration window, but make the usage
+    // visible so it can be tracked and eventually removed.
+    const role = adminRoleFrom(passportClaims);
+    if (isLegacyAdminRole(role)) {
+      const warning = {
+        event: "legacy_admin_role",
+        role,
+        canonical: SUPER_ADMIN_ROLE,
+        path: new URL(req.url).pathname,
+        timestamp: new Date().toISOString(),
+      };
+      console.warn(JSON.stringify(warning));
+      // Surface it in the edge metrics dataset when bound, so the count is
+      // queryable rather than buried in logs.
+      env.ONYX_EDGE_METRICS?.writeDataPoint?.({
+        blobs: ["legacy_admin_role", String(role), warning.path],
+        doubles: [1],
+        indexes: ["legacy_admin_role"],
+      });
+    }
+  }
+
   if (requireSuperUser) {
     const isSuperUser = isInternalService || (passportClaims !== null && isSuperAdmin(passportClaims));
     if (!isSuperUser) {
@@ -523,51 +874,26 @@ async function checkAuth(req: Request, env: Env, requireSuperUser: boolean = fal
   return null;
 }
 
-async function verifyAximSignature(
-  request: Request,
-  env: Env,
-  bodyText: string,
-): Promise<Response | null> {
-  const signature = request.headers.get("x-axim-signature");
-  if (!signature) {
-    return new Response("Missing x-axim-signature header", { status: 401 });
-  }
-  if (!env.AXIM_INTERNAL_KEY) {
-    return new Response("AXIM_INTERNAL_KEY not configured", { status: 500 });
-  }
-
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(env.AXIM_INTERNAL_KEY),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign", "verify"],
-  );
-
-  const signatureBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(bodyText),
-  );
-
-  const signatureArray = Array.from(new Uint8Array(signatureBuffer));
-  const signatureHex = signatureArray
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  // Support either direct hex or sha256= prefix format
-  const expectedSignature = `sha256=${signatureHex}`;
-  if (signature !== signatureHex && signature !== expectedSignature) {
-    return new Response("Invalid HMAC signature", { status: 403 });
-  }
-
-  return null;
-}
-
 async function bootstrapDatabase(env: Env): Promise<void> {
   void env;
 }
+
+/**
+ * Cron expressions that mean "the daily run".
+ *
+ * The deployed triggers are "0 0 * * *" plus a five-minute schedule (see
+ * wrangler.jsonc), but this handler used to test for "0 12 * * *" exactly, so the
+ * daily digest never ran. Matching a set rather than one literal means the
+ * schedule can move without silently disabling the job again.
+ */
+export const DAILY_CRONS = ["0 0 * * *", "0 12 * * *"];
+
+export function isDailyCron(cron: string | undefined): boolean {
+  return typeof cron === "string" && DAILY_CRONS.includes(cron);
+}
+
+/** Retention window for edge-owned D1 rows. */
+export const RETENTION_WINDOW_DAYS = 30;
 
 async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
   if (!env.ONYX_STATE) return;
@@ -623,7 +949,7 @@ const onyx_handler: any = {
         ctx?.waitUntil?.(drainIngestDlq(env, ctx));
       }
 
-      if (controller.cron === "0 12 * * *") {
+      if (isDailyCron(controller.cron)) {
         ctx?.waitUntil?.((async () => {
           if (!env.EMAILIT_API_KEY || !env.HITL_APPROVAL_KV) return;
           if (!env.PUBLIC_BASE_URL) {
@@ -677,23 +1003,38 @@ const onyx_handler: any = {
             }),
           });
         })());
-      }
 
-      const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
-      if (env.ONYX_DB) {
-        ctx?.waitUntil?.(
-          env.ONYX_DB.batch([
-            env.ONYX_DB.prepare(
-              "DELETE FROM onyx_telemetry_logs WHERE created_at < ?",
-            ).bind(thirtyDaysAgo),
-            env.ONYX_DB.prepare(
-              "DELETE FROM onyx_command_audit_logs WHERE created_at < ?",
-            ).bind(thirtyDaysAgo),
-            env.ONYX_DB.prepare(
-              "DELETE FROM onyx_rate_limit_logs WHERE blocked_at < ?",
-            ).bind(thirtyDaysAgo),
-          ]),
-        );
+        // Retention belongs to the daily run. It used to sit outside this branch,
+        // so a 30-day DELETE batch was issued on every five-minute tick — and
+        // because the telemetry cutoff was expressed in seconds against a column
+        // that stores milliseconds, every row matched and the table was emptied
+        // every five minutes. That is the table the DLQ drain replays from.
+        const nowMs = Date.now();
+        const retentionMs = RETENTION_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+        // onyx_telemetry_logs.created_at is written with Date.now() (milliseconds);
+        // onyx_rate_limit_logs.blocked_at is written as epoch seconds. Bind each
+        // cutoff in the unit its own column uses — do not share one value.
+        const telemetryCutoffMs = nowMs - retentionMs;
+        const secondsCutoff = Math.floor(nowMs / 1000) - retentionMs / 1000;
+
+        if (env.ONYX_DB) {
+          ctx?.waitUntil?.(
+            env.ONYX_DB.batch([
+              env.ONYX_DB.prepare(
+                "DELETE FROM onyx_telemetry_logs WHERE created_at < ?",
+              ).bind(telemetryCutoffMs),
+              // Nothing writes onyx_command_audit_logs today, so this statement
+              // is a no-op; seconds is the unit its sibling tables use until a
+              // writer lands and settles it.
+              env.ONYX_DB.prepare(
+                "DELETE FROM onyx_command_audit_logs WHERE created_at < ?",
+              ).bind(secondsCutoff),
+              env.ONYX_DB.prepare(
+                "DELETE FROM onyx_rate_limit_logs WHERE blocked_at < ?",
+              ).bind(secondsCutoff),
+            ]),
+          );
+        }
       }
       if (env.ONYX_PROMPT_CACHE) {
         await env.ONYX_PROMPT_CACHE.put(
@@ -898,16 +1239,8 @@ const onyx_handler: any = {
 
     const url = new URL(request.url);
 
-    const searchParams = url.search.toLowerCase();
-    const pathname = url.pathname.toLowerCase();
-
-    if (searchParams.includes("?-d") || searchParams.includes("auto_prepend_file") || searchParams.includes("auto_append_file") || searchParams.includes("allow_url_include") || searchParams.includes("disable_functions") || searchParams.includes("safe_mode")) {
-      return new Response(JSON.stringify({ error: "Forbidden: CGI argument injection detected" }), { status: 403, headers: { "Content-Type": "application/json" } });
-    }
-
-    if (pathname.includes("..") || pathname.includes("%2e%2e") || pathname.endsWith(".php") || pathname.includes("/wp-admin") || pathname.includes("/wp-login.php") || pathname.includes("xmlrpc.php")) {
-      return new Response("Forbidden", { status: 403 });
-    }
+    const guardResponse = cgiGuard(request);
+    if (guardResponse) return guardResponse;
 
     if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/v1/health")) {
       return new Response(JSON.stringify({ status: "healthy", upstream: "operational", active_sessions: "unknown", memory_usage: "unknown", service: "onyx-edge-bridge", version: "mk3-2.2", timestamp: new Date().toISOString() }), { status: 200, headers: { "Content-Type": "application/json", ...getCorsHeaders(request, env) } });
@@ -989,7 +1322,35 @@ const onyx_handler: any = {
     ) {
       ctx?.waitUntil?.(bootstrapDatabase(env));
       try {
-        const payload = (await request.clone().json()) as {
+        const rawBody = await request.clone().text();
+
+        // SECURITY: this route is reachable before the global HMAC gate, so it must
+        // authenticate itself. Accept a valid HMAC over the raw body (satellite
+        // style) or a service/bearer credential (AXIM_ONYX_SECRET / AXIM_SERVICE_KEY
+        // or a Passport JWT). Anonymous callers are rejected.
+        const hmacOk = await verifyHmacSignature(request, rawBody, env.AXIM_INTERNAL_KEY);
+        if (!hmacOk) {
+          const authError = await checkAuth(request, env);
+          if (authError) {
+            return new Response(
+              JSON.stringify({ error: "Unauthorized" }),
+              {
+                status: 401,
+                headers: addOnyxHeaders(
+                  {
+                    ...getCorsHeaders(request, env),
+                    "Content-Type": "application/json",
+                  },
+                  edgeStatus,
+                  cacheStatus,
+                  traceId,
+                ),
+              },
+            );
+          }
+        }
+
+        const payload = JSON.parse(rawBody || "{}") as {
           session_id?: string;
           status?: string;
         };
@@ -1033,8 +1394,7 @@ const onyx_handler: any = {
           );
         }
         const ingestUrl =
-          env.CORE_INGEST_URL.replace(/\/$/, "") +
-          "/functions/v1/telemetry-ingress";
+          resolveIngestUrl(env.CORE_INGEST_URL);
         ctx?.waitUntil?.(
           fetchWithRetry(ingestUrl, {
             method: "POST",
@@ -1139,6 +1499,10 @@ const onyx_handler: any = {
       const authError = await checkAuth(request, env);
       if (authError) return authError;
 
+      if (!env.EDGE_DLQ_KV) {
+        return missingBinding(request, env, "EDGE_DLQ_KV", "DLQ status");
+      }
+
       let unsynced_relays_depth = 0;
       let unsynced_receipts_depth = 0;
       let upstream_core_ok = true;
@@ -1196,6 +1560,12 @@ const onyx_handler: any = {
       url.pathname === "/api/v1/telemetry/flush"
     ) {
       ctx?.waitUntil?.(bootstrapDatabase(env));
+
+      // SECURITY: previously unauthenticated. Anyone could force an outbound replay
+      // of up to 100 stored rows per call and have them marked synced.
+      const flushAuthError = await checkAuth(request, env, true);
+      if (flushAuthError) return flushAuthError;
+
       if (!env.CORE_INGEST_URL) {
         return new Response(
           JSON.stringify({
@@ -1223,8 +1593,7 @@ const onyx_handler: any = {
           const rows = result.results;
           if (rows && rows.length > 0) {
             const ingestUrl =
-              env.CORE_INGEST_URL.replace(/\/$/, "") +
-              "/functions/v1/telemetry-ingress";
+              resolveIngestUrl(env.CORE_INGEST_URL);
             for (const row of rows) {
 
               // Generate HMAC signature for telemetry
@@ -1326,10 +1695,13 @@ const onyx_handler: any = {
       const expectedToken = "Bearer " + env.ONYX_EMERGENCY_SECRET;
       // Validate bearer token or HMAC header against env.ONYX_EMERGENCY_SECRET.
       if (!authHeader || authHeader !== expectedToken) {
+        // SECURITY: never reflect a server secret back to the caller. This branch
+        // previously returned AXIM_ONYX_SECRET in the Authorization header, which
+        // escalated a holder of ONYX_EMERGENCY_SECRET to the master Onyx secret.
         return new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401,
           headers: addOnyxHeaders(
-              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
+              { "Content-Type": "application/json" },
             edgeStatus, cacheStatus, traceId
           )
         });
@@ -1347,7 +1719,7 @@ const onyx_handler: any = {
         return new Response(JSON.stringify({ error: "Forbidden: Unrecognized executive identity." }), {
           status: 403,
           headers: addOnyxHeaders(
-              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
+              { "Content-Type": "application/json" },
             edgeStatus, cacheStatus, traceId
           )
         });
@@ -1369,7 +1741,7 @@ const onyx_handler: any = {
       return new Response(JSON.stringify({ status: "success", reply, timestamp: new Date().toISOString() }), {
         status: 200,
         headers: addOnyxHeaders(
-              { "Content-Type": "application/json", "Authorization": `Bearer ${env.AXIM_ONYX_SECRET}` },
+              { "Content-Type": "application/json" },
           edgeStatus, cacheStatus, traceId
         )
       });
@@ -1378,24 +1750,22 @@ const onyx_handler: any = {
       url.pathname === "/api/v1/onyx/summon"
     ) {
       const rawBody = await request.clone().text();
-      const isValidHmac = await verifyHmacSignature(request, rawBody, env.ONYX_CLIENT_SECRET);
-      if (!isValidHmac) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
-      }
 
-      const authHeader = request.headers.get("Authorization");
-      const cookieHeader = request.headers.get("Cookie");
-      let hasValidCookie = false;
-      if (cookieHeader) {
-        const match = cookieHeader.match(/(?:^|;\s*)axim_session=([^;]*)/);
-        if (match && match[1]) hasValidCookie = true;
-      }
-      const expectedToken = `Bearer ${env.ONYX_CLIENT_SECRET}`;
-      if ((!authHeader || authHeader !== expectedToken) && !hasValidCookie) {
-        const origin = request.headers.get("Origin") || "unknown";
-        const ip = request.headers.get("cf-connecting-ip") || "unknown";
-        console.error("error");
-        return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Unauthorized Access", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
+      // Machine callers sign with ONYX_CLIENT_SECRET. Operators authenticate with
+      // a Passport JWT, which is what the cockpit actually sends. Previously this
+      // route required the HMAC *and* a bearer of the same shared secret, so the
+      // browser could never satisfy it and every message 401'd. The unvalidated
+      // `axim_session` cookie check is gone: a cookie whose value is never
+      // verified is not a credential.
+      const hasValidHmac = await verifyHmacSignature(
+        request,
+        rawBody,
+        env.ONYX_CLIENT_SECRET,
+      );
+      if (!hasValidHmac) {
+        const authError = await checkAuth(request, env);
+        if (authError) {
+          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Unauthorized Access", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
           status: 401,
           headers: addOnyxHeaders(
             {
@@ -1406,7 +1776,8 @@ const onyx_handler: any = {
             cacheStatus,
             traceId,
           ),
-        });
+          });
+        }
       }
 
       // We pass the request directly to the core ingest since we authenticated successfully.
@@ -1710,9 +2081,24 @@ const onyx_handler: any = {
         // Strict HMAC Validation for payload-mutating requests
         // Exclude /api/v1/webhooks which uses specific partner logic
         if (url.pathname !== "/api/v1/webhooks") {
-          const sigError = await verifyAximSignature(request, env, rawBodyText);
-          if (sigError) {
-            return sigError;
+          // Constant-time verification (crypto.subtle.verify) over the raw body.
+          // verifyAximSignature compared hex strings with !==, which short-circuits
+          // on the first differing byte and leaks the expected digest by timing.
+          const sigOk = await verifyHmacSignature(
+            request,
+            rawBodyText,
+            env.AXIM_INTERNAL_KEY,
+          );
+          if (!sigOk) {
+            return new Response(
+              request.headers.get("x-axim-signature")
+                ? "Invalid HMAC signature"
+                : "Missing x-axim-signature header",
+              {
+                status: request.headers.get("x-axim-signature") ? 403 : 401,
+                headers: getCorsHeaders(request, env),
+              },
+            );
           }
         }
         if (rawBodyText) {
@@ -1853,97 +2239,6 @@ const onyx_handler: any = {
           );
         }
 } else if (
-        request.method === "POST" &&
-        url.pathname === "/api/v1/passport/verify"
-      ) {
-        // Task 1: AXiM Passport Edge Handoff Endpoint
-        const payload = parsedBody || {};
-        const { token } = payload as { token?: string };
-
-        if (!token) {
-          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Missing token", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
-            status: 400,
-            headers: addOnyxHeaders({
-              ...getCorsHeaders(request, env),
-              "Content-Type": "application/json"
-            }, edgeStatus, cacheStatus, traceId)
-          });
-        }
-
-        // Validate token signature or exchange it with Supabase Auth
-        let userProfile: any = null;
-        let isAuthorized = false;
-
-        try {
-          if (!env.CORE_INGEST_URL) {
-            throw new Error("CORE_INGEST_URL not configured for Supabase validation");
-          }
-
-          // In a real scenario, we'd ping Supabase or verify JWT here.
-          // We will mock the validation logic based on instructions:
-          // Enforce strict Google OIDC whitelist checking and Web3 SIWE.
-          // For sandbox purposes, we assume 'token' can be decoded or mapped.
-
-          // Basic mock validation for instructions:
-          const decodedToken = atob(token);
-          const tokenData = JSON.parse(decodedToken);
-          const email = tokenData.email || '';
-          const wallet = tokenData.wallet || '';
-
-          const whitelistedEmails = ['jrellars@gmail.com', 'jamesellars@jkrenewables.com'];
-          const isWhitelistedEmail = whitelistedEmails.includes(email.toLowerCase());
-          const isWhitelistedWallet = !!wallet; // basic check for SIWE
-
-          if (isWhitelistedEmail || isWhitelistedWallet) {
-            isAuthorized = true;
-            userProfile = { email, wallet };
-          }
-        } catch (err) {
-          console.error("error");
-          // If token isn't our mock base64, check if it equals some static keys for dev
-          if (token === "test_jrellars") {
-            isAuthorized = true;
-            userProfile = { email: 'jrellars@gmail.com' };
-          } else if (token === "test_jamesellars") {
-            isAuthorized = true;
-            userProfile = { email: 'jamesellars@jkrenewables.com' };
-          } else if (token === "test_wallet") {
-             isAuthorized = true;
-             userProfile = { wallet: "0x123...abc" };
-          }
-        }
-
-        if (!isAuthorized) {
-          return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Unauthorized user or invalid token", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
-            status: 403,
-            headers: addOnyxHeaders({
-              ...getCorsHeaders(request, env),
-              "Content-Type": "application/json"
-            }, edgeStatus, cacheStatus, traceId)
-          });
-        }
-
-        // Return a signed master Supabase JWT session object (mocking for Edge Worker return)
-        const mockSupabaseSession = {
-          access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock_supabase_access_token",
-          token_type: "bearer",
-          expires_in: 3600,
-          refresh_token: "mock_supabase_refresh_token",
-          user: userProfile
-        };
-
-        return new Response(JSON.stringify({
-          status: "success",
-          session: mockSupabaseSession
-        }), {
-          status: 200,
-          headers: addOnyxHeaders({
-            ...getCorsHeaders(request, env),
-            "Content-Type": "application/json"
-          }, edgeStatus, cacheStatus, traceId)
-        });
-
-      } else if (
         request.method === "GET" &&
         url.pathname === "/api/v1/rate-limit/metrics"
       ) {
@@ -2457,53 +2752,118 @@ const onyx_handler: any = {
           });
         }
       } else if (
-        request.method === "GET" &&
+        request.method === "POST" &&
         url.pathname === "/api/v1/hitl/action"
       ) {
-        const token = url.searchParams.get("token");
-        const decision = url.searchParams.get("decision");
+        // A decision is an action, so it is a POST with an authenticated actor.
+        // This used to be a GET with the decision in the query string, which
+        // mail scanners, link previewers and browser prefetch all fire.
+        const authError = await checkAuth(request, env, true);
+        if (authError) return authError;
 
-        if (!token || !decision) {
-          return new Response("Missing token or decision", { status: 400 });
-        }
-
-        if (!env.HITL_APPROVAL_KV) {
-          return new Response("HITL KV missing", { status: 500 });
-        }
-
-        const actionStr = await env.HITL_APPROVAL_KV.get(token);
-        if (!actionStr) {
-          return new Response("Invalid or expired token", { status: 400 });
-        }
-
+        let body: { action_id?: string; decision?: unknown; operator_notes?: string };
         try {
-          const action = JSON.parse(actionStr);
-          if (action.status !== 'pending') {
-            return new Response("Decision already applied", { status: 400 });
-          }
+          body = await request.json();
+        } catch {
+          return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
 
-          action.status = decision;
-          await env.HITL_APPROVAL_KV.put(token, JSON.stringify(action), { expirationTtl: 3600 }); // keep for an hour
+        const actionId = body.action_id;
+        if (!actionId || typeof actionId !== "string") {
+          return new Response(JSON.stringify({ error: "Missing action_id" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
 
-          // Ideally route this back to Rust runtime, here just update KV to reflect processed state
+        const status = normalizeHitlDecision(body.decision);
+        if (!status) {
+          return new Response(
+            JSON.stringify({ error: "decision must be approve or reject" }),
+            { status: 400, headers: { "Content-Type": "application/json" } },
+          );
+        }
 
-          const html = `<html><head><style>body { font-family: monospace; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }</style></head><body><h1>Action ${decision === 'approve' ? 'Approved' : 'Rejected'} Successfully</h1></body></html>`;
+        const actor =
+          request.headers.get("cf-access-authenticated-user-email") ||
+          request.headers.get("x-axim-operator") ||
+          "operator";
 
-          return new Response(html, {
-            status: 200,
+        const result = await applyHitlDecision(
+          env,
+          actionId,
+          status,
+          body.operator_notes,
+          actor,
+        );
+
+        // 200 only when Core accepted the decision. Anything else is a failure the
+        // operator must see, even though the decision was recorded locally.
+        const httpStatus = result.applied ? 200 : result.core_status === 0 ? 503 : 502;
+
+        return new Response(
+          JSON.stringify({
+            success: result.applied,
+            applied: result.applied,
+            recorded: result.recorded,
+            action_id: actionId,
+            status,
+            core_status: result.core_status,
+            ...(result.reason ? { reason: result.reason } : {}),
+            decided_at: new Date().toISOString(),
+          }),
+          {
+            status: httpStatus,
             headers: addOnyxHeaders(
               {
                 ...getCorsHeaders(request, env),
-                "Content-Type": "text/html",
+                "Content-Type": "application/json",
               },
               edgeStatus,
               cacheStatus,
               traceId,
             ),
+          },
+        );
+      } else if (
+        request.method === "GET" &&
+        url.pathname === "/api/v1/hitl/action"
+      ) {
+        // Read-only view of a ticket. Mutating on GET was the defect; the endpoint
+        // stays for the "here is what you are approving" page only.
+        const token = url.searchParams.get("token");
+        if (!token) {
+          return new Response(JSON.stringify({ error: "Missing token" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
           });
-        } catch(e) {
-          return new Response("Error processing token", { status: 500 });
         }
+        if (url.searchParams.has("decision")) {
+          return new Response(
+            JSON.stringify({
+              error:
+                "Decisions are no longer accepted on GET. POST /api/v1/hitl/action with { action_id, decision } and an operator credential.",
+            }),
+            { status: 405, headers: { "Content-Type": "application/json", Allow: "POST" } },
+          );
+        }
+        if (!env.HITL_APPROVAL_KV) {
+          return missingBinding(request, env, "HITL_APPROVAL_KV", "HITL ticket lookup");
+        }
+        const record = await env.HITL_APPROVAL_KV.get(token);
+        if (!record) {
+          return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(record, {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
 
       } else if (
         request.method === "POST" &&
@@ -2519,24 +2879,36 @@ const onyx_handler: any = {
             return new Response("Missing action_id or decision", { status: 400, headers: getCorsHeaders(request, env) });
           }
 
-          if (env.HITL_APPROVAL_KV) {
-             const key = `action_decision:${action_id}`;
-             const record = { action_id, decision, operator_notes, timestamp: new Date().toISOString() };
-             await env.HITL_APPROVAL_KV.put(key, JSON.stringify(record), { expirationTtl: 86400 }); // 24 hours
+          const status = normalizeHitlDecision(decision);
+          if (!status) {
+            return new Response(JSON.stringify({ error: "decision must be approve or reject" }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
           }
 
-          if (env.EDGE_DLQ_KV) {
-             const dlqKey = `mcp_resolution:${action_id}:${Date.now()}`;
-             await env.EDGE_DLQ_KV.put(dlqKey, JSON.stringify({ action_id, decision, operator_notes, resolved_at: new Date().toISOString() }), { expirationTtl: 86400 * 7 });
-          }
+          // Same path as POST /api/v1/hitl/action. Previously this wrote a KV key
+          // nothing reads and answered success:true, so the cockpit showed an
+          // approval that never resumed anything.
+          const result = await applyHitlDecision(
+            env,
+            action_id,
+            status,
+            operator_notes,
+            request.headers.get("cf-access-authenticated-user-email") || "operator",
+          );
 
           return new Response(JSON.stringify({
-             success: true,
+             success: result.applied,
+             applied: result.applied,
+             recorded: result.recorded,
              action_id,
-             decision,
+             status,
+             core_status: result.core_status,
+             ...(result.reason ? { reason: result.reason } : {}),
              resolved_at: new Date().toISOString()
           }), {
-            status: 200,
+            status: result.applied ? 200 : result.core_status === 0 ? 503 : 502,
             headers: addOnyxHeaders(
               {
                 ...getCorsHeaders(request, env),
@@ -2616,6 +2988,9 @@ const onyx_handler: any = {
         request.method === "GET" &&
         url.pathname === "/api/v1/onyx/swarm-state"
       ) {
+        const swarmAuthError = await checkAuth(request, env);
+        if (swarmAuthError) return swarmAuthError;
+
         let locks = [];
         if (env.ONYX_DISPATCH_LOCKS) {
            const list = await env.ONYX_DISPATCH_LOCKS.list();
@@ -2645,18 +3020,24 @@ const onyx_handler: any = {
         url.pathname === "/api/v1/ecosystem/event"
       ) {
         // Step 1: Ecosystem Event Ingress
+        //
+        // The global gate above already verified X-Axim-Signature over these exact
+        // bytes with AXIM_INTERNAL_KEY. This route previously re-verified the same
+        // header against AXIM_ONYX_SECRET, so a caller had to produce one signature
+        // that was simultaneously valid under two different keys — unreachable for
+        // every client, including Core's onyx-bridge relay. Authentication here is
+        // the gate's responsibility; this handler only parses.
         const rawBody = await request.clone().text();
-        const isValid = await verifyHmacSignature(request, rawBody, env.AXIM_ONYX_SECRET);
-        if (!isValid) {
-          return new Response("Unauthorized", { status: 401 });
-        }
 
         try {
           const payload = JSON.parse(rawBody);
           const eventId = crypto.randomUUID();
           const kvKey = `metric_${payload.source_app || "unknown"}_${Date.now()}_${eventId}`;
 
-          if (env.ECOSYSTEM_METRICS_KV) {
+          if (!env.ECOSYSTEM_METRICS_KV) {
+            return missingBinding(request, env, "ECOSYSTEM_METRICS_KV", "Ecosystem event ingestion");
+          }
+          {
             ctx?.waitUntil?.(
               env.ECOSYSTEM_METRICS_KV.put(
                 kvKey,
@@ -3029,43 +3410,7 @@ const onyx_handler: any = {
           cacheStatus,
           traceId,
         );
-            } else if (request.method === "POST" && url.pathname === "/api/v1/onyx/summon") {
-        const authHeader = request.headers.get("Authorization");
-        const token = authHeader?.split(" ")[1];
-        if (token !== env.AXIM_ONYX_SECRET) {
-          return new Response("Unauthorized", { status: 401, headers: getCorsHeaders(request, env) });
-        }
-
-        try {
-          const body: any = await request.json();
-          const { action, server_name, transport, command, args } = body;
-
-          if (action !== "connect_mcp" || !server_name || !transport) {
-            return new Response(JSON.stringify({ error: "Invalid MCP summon payload: 'server_name' and 'transport' are required." }), { status: 400, headers: { "Content-Type": "application/json", ...getCorsHeaders(request, env) } });
-          }
-
-          // Normally we'd forward to CORE_INGEST_URL, but here we can just queue it to DLQ or emulate success.
-          // Since core ingestion is an internal detail, let's buffer it to DLQ so the Rust backend can pull it,
-          // or just return success as requested by spec.
-          if (env.EDGE_DLQ_KV) {
-             const key = `mcp_summon:${server_name}:${Date.now()}`;
-             await env.EDGE_DLQ_KV.put(key, JSON.stringify(body), { expirationTtl: 86400 });
-          }
-
-          return new Response(JSON.stringify({
-            status: "success",
-            action: "connect_mcp",
-            server_name,
-            message: "MCP connection request queued for Onyx daemon."
-          }), {
-            status: 200,
-            headers: { "Content-Type": "application/json", ...getCorsHeaders(request, env) }
-          });
-        } catch(e) {
-          return new Response("Invalid JSON payload", { status: 400, headers: getCorsHeaders(request, env) });
-        }
-
-      } else if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/v1/health")) {
+            } else if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/v1/health")) {
         return new Response(JSON.stringify({
           status: 'healthy',
           upstream: 'operational',
@@ -3171,16 +3516,8 @@ export default {
     let response;
     const url = new URL(request.url);
 
-    const searchParams = url.search.toLowerCase();
-    const pathname = url.pathname.toLowerCase();
-
-    if (searchParams.includes("?-d") || searchParams.includes("auto_prepend_file") || searchParams.includes("auto_append_file") || searchParams.includes("allow_url_include") || searchParams.includes("disable_functions") || searchParams.includes("safe_mode")) {
-      return new Response(JSON.stringify({ error: "Forbidden: CGI argument injection detected" }), { status: 403, headers: { "Content-Type": "application/json" } });
-    }
-
-    if (pathname.includes("..") || pathname.includes("%2e%2e") || pathname.endsWith(".php") || pathname.includes("/wp-admin") || pathname.includes("/wp-login.php") || pathname.includes("xmlrpc.php")) {
-      return new Response("Forbidden", { status: 403 });
-    }
+    const guardResponse = cgiGuard(request);
+    if (guardResponse) return guardResponse;
 
 
     const isChatEndpoint = url.pathname === "/api/v1/chat" && request.method === "POST";
@@ -3290,18 +3627,7 @@ export default {
     if (response.status === 429) {
       if (env.ONYX_DB) {
         const ip = request.headers.get("cf-connecting-ip") || "unknown";
-        const url = new URL(request.url);
 
-    const searchParams = url.search.toLowerCase();
-    const pathname = url.pathname.toLowerCase();
-
-    if (searchParams.includes("?-d") || searchParams.includes("auto_prepend_file") || searchParams.includes("auto_append_file") || searchParams.includes("allow_url_include") || searchParams.includes("disable_functions") || searchParams.includes("safe_mode")) {
-      return new Response(JSON.stringify({ error: "Forbidden: CGI argument injection detected" }), { status: 403, headers: { "Content-Type": "application/json" } });
-    }
-
-    if (pathname.includes("..") || pathname.includes("%2e%2e") || pathname.endsWith(".php") || pathname.includes("/wp-admin") || pathname.includes("/wp-login.php") || pathname.includes("xmlrpc.php")) {
-      return new Response("Forbidden", { status: 403 });
-    }
 
         ctx?.waitUntil?.(
           env.ONYX_DB.prepare(

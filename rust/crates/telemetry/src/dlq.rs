@@ -232,14 +232,26 @@ async fn process_relays_dlq(relay_dlq_path: &std::path::PathBuf, client: &Client
                             continue;
                         };
 
+                        // Re-sign at drain time with the v2 form: the timestamp
+                        // reflects when the retry is sent, so a long-spooled entry
+                        // is not rejected as stale.
+                        let timestamp = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs()
+                            .to_string();
+                        let signed_payload = format!("{timestamp}.{payload_str}");
+
                         let key =
                             ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret_key.as_bytes());
-                        let signature = ring::hmac::sign(&key, payload_str.as_bytes());
+                        let signature = ring::hmac::sign(&key, signed_payload.as_bytes());
                         let signature_hex = hex::encode(signature.as_ref());
 
                         let res = client
                             .post(endpoint)
                             .header("Content-Type", "application/json")
+                            .header("X-Axim-Timestamp", timestamp.as_str())
+                            .header("X-Axim-Signature-Version", "2")
                             .header("X-Axim-Signature", format!("sha256={signature_hex}"))
                             .body(payload_str)
                             .send()

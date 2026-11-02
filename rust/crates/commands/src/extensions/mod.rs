@@ -15,4 +15,5 @@ pub struct WarningMetadata {
     pub missing_fields: Vec<String>,
 }
 pub mod autonomous_orchestrator;
+pub mod greta_router;
 pub mod transcription;
