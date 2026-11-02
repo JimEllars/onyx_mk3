@@ -1,0 +1,101 @@
+# Dependabot configuration.
+#
+# Why this file exists: without it, the repo's 37 open advisories arrive as one PR
+# per advisory — four overlapping PRs (#262, #263, #274, #285) were queued on the
+# root lockfile alone, three of them patching the same tree, and several advisories
+# (undici, sharp, rustls, quinn-proto) never produced a PR at all.
+#
+# Rules of the road here:
+#  - Patch/minor updates are grouped so a week's worth of bumps is one reviewable PR.
+#  - **Major** updates are never grouped. A grouped major (Tailwind 3 -> 4, which is
+#    what #263 actually was) hides a migration inside a dependency bump and fails
+#    the worker build. Majors come one at a time, on their own PR.
+#  - Security updates are enabled separately in repo settings and are NOT grouped,
+#    so an advisory fix is never delayed behind a batch.
+version: 2
+updates:
+  # HUD: vite, react, zustand, tailwind/postcss.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Chicago
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    labels:
+      - dependencies
+    groups:
+      hud-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+        # Tailwind is migrating v3 -> v4 (config model change). Keep it out of the
+        # batch so the migration gets its own PR and its own visual check.
+        exclude-patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+
+  # Edge worker: wrangler, miniflare, vitest, typescript, and the transitive
+  # undici/sharp pins that carry most of the open advisories.
+  - package-ecosystem: npm
+    directory: "/edge-bridge"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Chicago
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(edge-bridge)"
+      include: scope
+    labels:
+      - dependencies
+    groups:
+      edge-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # Rust workspace: rustls, rustls-webpki, quinn-proto, protobuf, rand, lru.
+  # Patch-only grouping because `cargo` advisories here are patch releases; a minor
+  # bump in this workspace has previously moved axum and needs a human.
+  - package-ecosystem: cargo
+    directory: "/rust"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Chicago
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(rust)"
+      include: scope
+    labels:
+      - dependencies
+    groups:
+      cargo-patch:
+        applies-to: version-updates
+        update-types:
+          - patch
+
+  # Actions used by the four workflows.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+    groups:
+      actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
