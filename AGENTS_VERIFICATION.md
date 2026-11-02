@@ -463,4 +463,5 @@ One file per change, to stop every rebase conflicting on this file (see
 | 2026-11-01 | Daily cron restored, retention cutoffs un-mixed (`feat/onyx-fleet-health-rollup`) | [`AGENTS_VERIFICATION.d/2026-11-01-cron-retention-units.md`](AGENTS_VERIFICATION.d/2026-11-01-cron-retention-units.md) |
 | 2026-11-01 | Embedded HUD daemon (Web App Phase 4) (`feat/onyx-daemon-embedded-hud`) | [`AGENTS_VERIFICATION.d/2026-11-01-embedded-daemon.md`](AGENTS_VERIFICATION.d/2026-11-01-embedded-daemon.md) |
 | 2026-11-02 | Daily briefing: dead HITL decision links, unescaped ticket text (`fix/onyx-hitl-digest-links`) | [`AGENTS_VERIFICATION.d/2026-11-02-hitl-digest-links.md`](AGENTS_VERIFICATION.d/2026-11-02-hitl-digest-links.md) |
+| 2026-11-02 | Grouped Dependabot updates, majors kept separate (`chore/dependabot-grouped-updates`) | [`AGENTS_VERIFICATION.d/2026-11-02-dependabot-grouping.md`](AGENTS_VERIFICATION.d/2026-11-02-dependabot-grouping.md) |
 
