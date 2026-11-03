@@ -14,6 +14,8 @@ import {
 
 import { z } from "zod";
 
+import { logError, logRequest } from "./logging";
+
 export interface Env extends __BaseEnv_Env {
   AXIM_SERVICE_KEY?: string;
   AXIM_ONYX_SECRET?: string;
@@ -332,9 +334,7 @@ function missingBinding(
   binding: string,
   feature: string,
 ): Response {
-  console.error(
-    `[onyx-edge] required KV binding ${binding} is not configured; ${feature} is unavailable`,
-  );
+  logError("edge.config.binding_missing", undefined, { binding, feature });
   return new Response(
     JSON.stringify({
       type: "about:blank",
@@ -378,13 +378,13 @@ async function kvWriteWithTimeout<T>(
     );
     const result = await Promise.race([promise, timeout]);
     if (result === TIMEOUT_SYMBOL) {
-      console.error("error");
+      logError("edge.kv.write_timeout", undefined, { timeout_ms: timeoutMs });
       if (status) status.degraded = true;
       return null;
     }
     return result as T;
   } catch (e) {
-    console.error("error");
+    logError("edge.kv.write_error", e);
     if (status) status.degraded = true;
     return null;
   }
@@ -401,13 +401,13 @@ async function kvReadWithTimeout<T>(
     );
     const result = await Promise.race([promise, timeout]);
     if (result === TIMEOUT_SYMBOL) {
-      console.error("error");
+      logError("edge.kv.read_timeout", undefined, { timeout_ms: timeoutMs });
       status.degraded = true;
       return null;
     }
     return result as T;
   } catch (e) {
-    console.error("error");
+    logError("edge.kv.read_error", e);
     status.degraded = true;
     return null;
   }
@@ -520,7 +520,7 @@ async function invokeDeepSeek(
       }),
     });
     if (!response.ok) {
-      console.error("DeepSeek fallback request failed", response.status);
+      logError("edge.llm.deepseek_http_error", undefined, { status: response.status, model });
       return null;
     }
 
@@ -529,13 +529,13 @@ async function invokeDeepSeek(
     };
     const text = body.choices?.[0]?.message?.content;
     if (typeof text !== "string" || !text.trim()) {
-      console.error("DeepSeek fallback returned no text content");
+      logError("edge.llm.deepseek_empty_completion", undefined, { model });
       return null;
     }
 
     return { model, text };
   } catch (error) {
-    console.error("DeepSeek fallback request errored", error);
+    logError("edge.llm.deepseek_failed", error, { model });
     return null;
   }
 }
@@ -564,7 +564,7 @@ async function invokeAnthropic(
       }),
     });
     if (!response.ok) {
-      console.error("Anthropic fallback request failed", response.status);
+      logError("edge.llm.anthropic_http_error", undefined, { status: response.status, model });
       return null;
     }
 
@@ -573,13 +573,13 @@ async function invokeAnthropic(
     };
     const text = body.content?.[0]?.text;
     if (typeof text !== "string" || !text.trim()) {
-      console.error("Anthropic fallback returned no text content");
+      logError("edge.llm.anthropic_empty_completion", undefined, { model });
       return null;
     }
 
     return { model, text };
   } catch (error) {
-    console.error("Anthropic fallback request errored", error);
+    logError("edge.llm.anthropic_failed", error, { model });
     return null;
   }
 }
@@ -594,6 +594,53 @@ function equalSecrets(left: string, right: string): boolean {
     mismatch |= left.charCodeAt(i) ^ right.charCodeAt(i);
   }
   return mismatch === 0;
+}
+
+/**
+ * Verify a hex HMAC supplied in a header, in constant time.
+ *
+ * GitHub sends `sha256=<hex>`; WordPress sends a bare `<hex>`, and some of its
+ * plugins send the prefixed form, so the prefix is optional on both.
+ *
+ * Both webhook handlers previously computed their own HMAC and compared hex
+ * strings with `!==`, which short-circuits on the first differing character and
+ * leaks the expected digest through timing. `crypto.subtle.verify` compares
+ * inside the WebCrypto implementation and only ever returns a boolean.
+ *
+ * Fails closed: no secret, no header, a non-hex body or a malformed signature is
+ * `false`, never an exception.
+ */
+export async function verifyHexHmacSignature(
+  secret: string | undefined,
+  body: string,
+  header: string | null | undefined,
+): Promise<boolean> {
+  if (!secret || !header) return false;
+
+  const candidate = header.trim().replace(/^sha256=/i, "").toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(candidate)) return false;
+
+  try {
+    const encoder = new TextEncoder();
+    const sigBytes = new Uint8Array(
+      candidate.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)),
+    );
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    return await crypto.subtle.verify(
+      "HMAC",
+      key,
+      sigBytes,
+      encoder.encode(body),
+    );
+  } catch {
+    return false;
+  }
 }
 
 function getCorsHeaders(request: Request, env?: Env) {
@@ -665,7 +712,7 @@ async function checkReadiness(
         timeout,
       ]);
     } catch (error) {
-      console.error(`Readiness probe failed for ${key}`, error);
+      logError("edge.readiness.probe_failed", error, { binding: key });
       return "unavailable" as const;
     }
   };
@@ -717,7 +764,7 @@ async function dispatchToCore(
     );
   } catch (error) {
     clearTimeout(timeoutId);
-    console.error("error");
+    logError("edge.ingest.outbound_failed", error, { trace_id: traceId });
     if (env.ONYX_STATE) {
       const dlqKey = `dlq:ingest:${Date.now()}:${crypto.randomUUID()}`;
       ctx?.waitUntil?.(env.ONYX_STATE.put(dlqKey, payloadStr));
@@ -794,7 +841,7 @@ async function enforceAsguardRateLimit(request: Request, env: Env, url: URL): Pr
     await env.ONYX_STATE.put(rateLimitKey, (currentCount + 1).toString(), { expirationTtl: 60 });
     return null;
   } catch (err) {
-    console.error("error");
+    logError("edge.ratelimit.kv_error", err);
     return null; // fail open if KV errors
   }
 }
@@ -944,9 +991,7 @@ export async function loadPendingHitlTickets(env: Env): Promise<HitlDigestTicket
     } catch {
       // A malformed ticket used to disappear into an empty catch, so the digest
       // silently under-reported the queue. Say so and keep going.
-      console.error(
-        JSON.stringify({ event: "hitl_ticket_unparseable", token: key.name }),
-      );
+      logError("edge.hitl.ticket_unparseable", undefined, { ticket_key: key.name });
       continue;
     }
     if (!parsed || parsed.status !== "pending") continue;
@@ -1027,7 +1072,7 @@ async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
 
       await sleep(50);
     } catch (e) {
-      console.error("error");
+      logError("edge.dlq_drain.ingest_replay_failed", e, { dlq_key: key });
     }
   }
 }
@@ -1047,7 +1092,7 @@ const onyx_handler: any = {
         ctx?.waitUntil?.((async () => {
           if (!env.EMAILIT_API_KEY || !env.HITL_APPROVAL_KV) return;
           if (!env.PUBLIC_BASE_URL) {
-            console.error("PUBLIC_BASE_URL is not set; skipping HITL digest email");
+            logError("edge.cron.hitl_digest_skipped", undefined, { reason: "PUBLIC_BASE_URL is not set" });
             return;
           }
           const baseUrl = env.PUBLIC_BASE_URL.replace(/\/+$/, "");
@@ -1210,7 +1255,7 @@ const onyx_handler: any = {
           .catch((e) => void 0),
       );
     } catch (e) {
-      console.error("error");
+      logError("edge.cron.content_engine_sync_failed", e);
     }
   },
   async fetch(
@@ -1237,7 +1282,16 @@ const onyx_handler: any = {
         request.headers.get("X-Request-ID") ||
         request.headers.get("cf-ray") ||
         "unknown";
-      console.error("error");
+      // A bare console.error used to sit here, on the success path: every request
+      // that returned normally logged an error line, which is how a real failure
+      // gets missed. This is the request-completion record instead.
+      logRequest("edge.request.completed", {
+        method: request.method,
+        path: new URL(request.url).pathname,
+        status: response.status,
+        duration_ms: Number(duration.toFixed(2)),
+        trace_id: traceId,
+      });
       return response;
     } catch (error) {
       const duration = performance.now() - startTime;
@@ -1245,7 +1299,7 @@ const onyx_handler: any = {
         request.headers.get("X-Request-ID") ||
         request.headers.get("cf-ray") ||
         "unknown";
-      console.error("error");
+      logError("edge.request.unhandled", error, { trace_id: traceId, method: request.method });
       throw error;
     }
   },
@@ -1271,7 +1325,7 @@ const onyx_handler: any = {
       request.method !== "DELETE" &&
       request.method !== "OPTIONS"
     ) {
-      console.error("error");
+      logRequest("edge.request.method_not_allowed", { method: request.method, path: new URL(request.url).pathname });
       return new Response("Method Not Allowed", {
         status: 405,
         headers: addOnyxHeaders(
@@ -1556,7 +1610,7 @@ const onyx_handler: any = {
               replayed++;
             }
           } catch (e) {
-            console.error("error");
+            logError("edge.dlq_drain.route_replay_failed", e, { dlq_key: key.name });
           }
         }
       }
@@ -1608,7 +1662,7 @@ const onyx_handler: any = {
            }
         }
       } catch (e) {
-         console.error("dlq-status fetch error");
+         logError("edge.telemetry.dlq_status_failed", e);
       }
 
       return new Response(
@@ -1771,7 +1825,9 @@ const onyx_handler: any = {
 
       const expectedToken = "Bearer " + env.ONYX_EMERGENCY_SECRET;
       // Validate bearer token or HMAC header against env.ONYX_EMERGENCY_SECRET.
-      if (!authHeader || authHeader !== expectedToken) {
+      // Compared in constant time: `!==` on a secret short-circuits at the first
+      // differing byte and gives a caller a byte-by-byte oracle.
+      if (!authHeader || !equalSecrets(authHeader, expectedToken)) {
         // SECURITY: never reflect a server secret back to the caller. This branch
         // previously returned AXIM_ONYX_SECRET in the Authorization header, which
         // escalated a holder of ONYX_EMERGENCY_SECRET to the master Onyx secret.
@@ -1887,7 +1943,7 @@ const onyx_handler: any = {
           payload = JSON.parse(rawBodyText);
         }
       } catch (e) {
-        console.error("error");
+        logError("edge.summon.body_unparsable", e);
       }
 
       try {
@@ -1917,7 +1973,7 @@ const onyx_handler: any = {
           throw new Error("Providers down or 503");
         }
       } catch (error) {
-        console.error("AXiM Core summon request failed", error);
+        logError("edge.summon.core_unreachable", error);
         const fallback = await invokeDeepSeek(env, payload) ||
           await invokeAnthropic(env, payload);
         if (fallback) {
@@ -2118,7 +2174,7 @@ const onyx_handler: any = {
             edgeStatus,
           );
           if (existingLock) {
-            console.error("error");
+            logRequest("edge.request.idempotent_replay", { path: url.pathname });
             return new Response(
               JSON.stringify({
                 status: "processing",
@@ -2360,7 +2416,7 @@ const onyx_handler: any = {
             },
           );
         } catch (e) {
-          console.error("error");
+          logError("edge.ratelimit.metrics_query_failed", e, { trace_id: traceId });
           return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Internal error", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
             status: 500,
             headers: addOnyxHeaders(
@@ -2740,7 +2796,7 @@ const onyx_handler: any = {
                 backendSuccess = true;
               }
             } catch (backendError) {
-              console.error("error");
+              logError("edge.session.heartbeat_forward_failed", backendError);
             }
           }
 
@@ -2814,7 +2870,7 @@ const onyx_handler: any = {
             },
           );
         } catch (e: any) {
-          console.error("error");
+          logError("edge.session.heartbeat_failed", e, { trace_id: traceId });
           return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Internal error", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
             status: 500,
             headers: addOnyxHeaders(
@@ -3217,7 +3273,7 @@ const onyx_handler: any = {
                 bodyStr
               );
             } catch (dlqErr) {
-              console.error("error");
+              logError("edge.email.dlq_write_failed", dlqErr);
             }
           }
 
@@ -3328,28 +3384,13 @@ const onyx_handler: any = {
             });
           }
 
-          const encoder = new TextEncoder();
-          const key = await crypto.subtle.importKey(
-            "raw",
-            encoder.encode(env.GITHUB_WEBHOOK_SECRET),
-            { name: "HMAC", hash: "SHA-256" },
-            false,
-            ["sign", "verify"],
-          );
-
-          const signatureBuffer = await crypto.subtle.sign(
-            "HMAC",
-            key,
-            encoder.encode(rawBody),
-          );
-
-          const signatureArray = Array.from(new Uint8Array(signatureBuffer));
-          const signatureHex = signatureArray
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("");
-          const expectedSignature = `sha256=${signatureHex}`;
-
-          if (githubSignature !== expectedSignature) {
+          if (
+            !(await verifyHexHmacSignature(
+              env.GITHUB_WEBHOOK_SECRET,
+              rawBody,
+              githubSignature,
+            ))
+          ) {
             return new Response("Invalid GitHub signature", {
               status: 401,
               headers: addOnyxHeaders(
@@ -3374,29 +3415,12 @@ const onyx_handler: any = {
             });
           }
 
-          const encoder = new TextEncoder();
-          const key = await crypto.subtle.importKey(
-            "raw",
-            encoder.encode(env.WP_WEBHOOK_SECRET),
-            { name: "HMAC", hash: "SHA-256" },
-            false,
-            ["sign", "verify"],
-          );
-
-          const signatureBuffer = await crypto.subtle.sign(
-            "HMAC",
-            key,
-            encoder.encode(rawBody),
-          );
-
-          const signatureArray = Array.from(new Uint8Array(signatureBuffer));
-          const signatureHex = signatureArray
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("");
-
           if (
-            wpSignature !== signatureHex &&
-            wpSignature !== `sha256=${signatureHex}`
+            !(await verifyHexHmacSignature(
+              env.WP_WEBHOOK_SECRET,
+              rawBody,
+              wpSignature,
+            ))
           ) {
             return new Response("Invalid WP signature", {
               status: 401,
@@ -3544,7 +3568,7 @@ const onyx_handler: any = {
               return assetResponse;
             }
           } catch (e) {
-            console.error("error");
+            logError("edge.assets.fetch_failed", e);
           }
         return new Response("Not Found", {
           status: 404,
@@ -3566,7 +3590,7 @@ const onyx_handler: any = {
         ),
       });
     } catch (error) {
-      console.error("error");
+      logError("edge.request.unhandled", error, { trace_id: request.headers.get("x-request-id") || "unknown" });
       return new Response(JSON.stringify({ error: { code: "EDGE_ERROR", message: "Internal Server Error", provider: "cloudflare", trace_id: request.headers.get("x-request-id") || "unknown" } }), {
         status: 500,
         headers: addOnyxHeaders(
@@ -3614,7 +3638,7 @@ export default {
          throw new Error("Primary provider failed, triggering fallback");
       }
     } catch (e) {
-      console.error("error");
+      logError("edge.llm.fallback_triggered", e);
 
       if (isChatEndpoint && env.AI && originalRequestBody) {
         isFallbackToAi = true;
@@ -3753,7 +3777,7 @@ export default {
               indexes: [logEntry.statusCode >= 400 ? "error" : "success"],
             });
           } catch (e) {
-            console.error("Telemetry write failed", e);
+            logError("edge.telemetry.write_failed", e);
           }
           resolve();
         })

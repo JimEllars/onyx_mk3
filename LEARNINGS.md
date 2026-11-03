@@ -139,3 +139,50 @@ When adding cross-service telemetry and resilient fallback states, ensuring deep
    last, and never by choosing a side; selecting a side silently drops another change's
    verification record.
 
+## Additions — 2026-11-03 session (pre-gate routes, logging, timing-safe compares)
+
+7. **A `console.error` on the success path is worse than a missing log line.** `fetch()` in
+   `edge-bridge/src/index.ts` logged an error and *then* returned the successful response, so
+   every request that worked produced an error record. Anything watching error rate had a
+   permanent floor and no signal. When converting unlabelled logs, check the control flow
+   around each one: 2 of the 34 sites were not errors at all (the 405 branch and the
+   idempotent-replay branch) and belonged at info level.
+
+8. **A "checklist with teeth" is how you guard a positional guarantee.** The global HMAC gate
+   in `_fetch` only protects routes declared *below* it, so its safety depends on file order —
+   which nothing enforces. The fix that fits: register each pre-gate route with its auth mode
+   *and* the literal auth call that must remain in its handler, then have a test parse
+   `src/index.ts`, find every route literal above a named marker, and fail on any path that is
+   not registered. Two rules make it trustworthy:
+   - the extraction must **over-capture** (any `"/path"` literal on a line mentioning
+     `pathname`), so an unrecognised declaration fails the test rather than slipping past;
+   - add a **count floor** (`>= 17`) plus spot-checks, or a broken regex makes the test pass
+     by finding nothing.
+   Prove both directions before believing it: inject an unregistered route, and delete a real
+   `checkAuth` call. Both must fail with a message that names the path.
+
+9. **`crypto.subtle.verify` is the constant-time primitive you already have.** Three call
+   sites still signed the body themselves and compared hex with `!==`, which short-circuits at
+   the first differing byte. `verifyRequestSignature` had used `crypto.subtle.verify` for
+   weeks; the stragglers were in older hand-rolled branches. When you harden one comparison,
+   grep for the *shape* (`!== expectedSignature`, `!== expectedToken`) across the whole file,
+   not just the family you were already looking at.
+
+10. **A source-scanning test needs whitespace-insensitivity, or prettier breaks it.** Evidence
+    needles like `verifyHexHmacSignature(env.GITHUB_WEBHOOK_SECRET` stopped matching the
+    moment the call was wrapped across four lines. Compare with all whitespace stripped from
+    both sides (`text.replace(/\s+/g, '')`) — line breaks are formatting, not part of the claim.
+
+11. **Tracked build output drifts silently.** `rust/crates/onyx/static/` is committed and
+    embedded by `rust-embed`, but `web-ci.yml` builds the HUD and discards the result, so the
+    bundle in `main` was one React bump behind `src/` and `onyx daemon` served the old
+    runtime. If an artifact is tracked *and* generated, either regenerate it in CI or fail the
+    build when regeneration produces a different hash. Check the version strings inside a
+    bundle before assuming two hashes mean the same content: `grep -o '19\.[0-9]*\.[0-9]*'`.
+
+12. **This sandbox exports `NODE_ENV=production`, and `npm ci` believes it.** A plain `npm ci`
+    installs 4 packages instead of 182 — no `vitest`, no `jsdom` — and the failure surfaces
+    later as `ERR_MODULE_NOT_FOUND` from a vitest worker, or as `npx` silently fetching a
+    *different* vitest from its cache. Always `NODE_ENV=development npm ci --include=dev`
+    here, and invoke `./node_modules/.bin/vitest` rather than `npx vitest` so the run cannot
+    pick up the npx cache copy.
