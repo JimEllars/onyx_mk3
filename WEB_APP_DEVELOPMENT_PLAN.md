@@ -1,7 +1,7 @@
 # AXiM Onyx Mk3 Web App - Continued Development Plan
 
-Status as of 2026-11-02 (post-merge). Each item records where it stands and which file
-proves it, because "planned" and "shipped" kept being confused.
+Status as of 2026-11-03 (post-merge of #295-#303). Each item records where it stands and
+which file proves it, because "planned" and "shipped" kept being confused.
 
 **Merged to `main` this cycle (PRs #288-#294).**
 
@@ -79,6 +79,35 @@ The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as 
 
 ## Standing defects
 
+### Fixed on 2026-11-03 (`fix/onyx-pregate-route-invariant`)
+
+1. **The pre-gate route surface is now enumerated and guarded.** `edge-bridge/src/preGateRoutes.ts`
+   lists all 17 route literals declared above the global HMAC gate plus the one gate
+   exemption (`/api/v1/webhooks`), each with the mechanism that authenticates it, the
+   evidence that mechanism leaves in its handler, and why. `test/pre-gate-routes.test.ts`
+   parses `index.ts` and fails when a route above the gate is unregistered, when a registry
+   entry no longer exists, or when a declared auth call has been removed from its handler.
+   Both failure modes were demonstrated against a deliberately broken tree. The route-table
+   refactor itself is still open — see "Still open" 4.
+2. **Error logging is labelled and uniform.** All 34 `console.error` call sites in
+   `edge-bridge/src/index.ts` now go through `logError(event, error, context)`
+   (`src/logging.ts`), with an `edge.<subsystem>.<what_happened>` vocabulary and a
+   `trace_id` wherever one is in scope. Two of them were not errors at all — the 405 branch
+   and the idempotent-replay branch — and are now info-level. `console.error` no longer
+   appears in the file; `test/logging.test.ts` asserts that.
+3. **`fetch()` logged an error on every successful request.** The `console.error("error")`
+   at the end of the happy path meant normal traffic filled the error stream, which is
+   exactly how a real failure gets overlooked. It is now an `edge.request.completed` info
+   record carrying method, path, status, duration and trace id.
+4. **Three secret comparisons were not constant time.** The GitHub and WordPress webhook
+   handlers signed the body themselves and compared hex with `!==`; the emergency-direct
+   bearer did the same. All three now verify in constant time
+   (`verifyHexHmacSignature()` via `crypto.subtle.verify`, and `equalSecrets()` for the
+   bearer), pinned by `test/webhook-signature.test.ts`.
+5. **The embedded HUD bundle was stale.** `rust/crates/onyx/static/assets/index-2CSI7Ry0.js`
+   still carried `react-dom` 19.2.8 after #298 bumped the HUD to 19.3.1, so `onyx daemon`
+   served the pre-bump runtime from the binary. Regenerated and committed.
+
 ### Fixed on 2026-11-02 (`fix/onyx-hitl-digest-links`)
 
 1. **The daily briefing's Approve/Reject buttons were dead.** Phase B moved HITL decisions to
@@ -110,17 +139,20 @@ The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as 
    will read zeros forever. Either add the writer or drop the table.
 3. **Digest send time.** The daily job now runs at 00:00 UTC because that is the deployed
    trigger. If midday was intended, change `edge-bridge/wrangler.jsonc:85` to `0 12 * * *`.
-4. **21 bare `console.error("error")` calls remain** in `edge-bridge/src/index.ts` (the 22nd,
-   the one in `scheduled()`, was removed on 2026-11-02). Each is an unlabelled error inside a
-   `catch`, so a log line names neither the subsystem nor the request. Replace with
-   `console.error(JSON.stringify({ event, trace_id }))` as each call site is touched.
-5. **The global HMAC gate still sits mid-chain** in `_fetch`. Roughly a dozen routes are
-   declared above it (`/functions/v1/telemetry-ingress`, `/api/v1/dlq-drain`,
-   `/api/v1/telemetry/dlq-status`, `/api/v1/telemetry/flush`, `/api/v1/onyx/emergency-direct`,
-   `/api/v1/onyx/summon`, `/api/v1/generate/*`, `/api/v1/billing/fallback-blockchain`, …), so
-   each relies on its own hand-written auth. Adding a route above the gate is a silent
-   fail-open. Needs a route-table refactor, or at minimum an invariant test that every route
-   declared above the gate is either explicitly public or self-authenticating.
+4. **The global HMAC gate still sits mid-chain** in `_fetch`. The routes above it are now
+   registered and guarded (fixed 2026-11-03), so a fourteenth cannot land silently, but the
+   positional ordering that makes the guard necessary is unchanged: each pre-gate route
+   still relies on its own hand-written auth. The seam for the real fix is
+   `classifyPreGateRoute(method, pathname)` in `src/preGateRoutes.ts` — the gate should
+   consult it instead of the declaration order. That is a router change, not a checklist
+   change, and it needs its own PR and a full edge-bridge run.
+5. **Nothing regenerates `rust/crates/onyx/static` in CI.** `web-ci.yml` runs `vite build`
+   and throws the output away, and `rust-ci.yml` embeds whatever is committed, so the
+   bundled HUD can drift from `src/` until someone notices (it did, by one React bump —
+   fixed 2026-11-03). Either commit the build output as part of every HUD change (a check
+   that fails when `vite build` produces a different hash would do it) or build the bundle
+   before `cargo build` in `rust-ci.yml`. Until then, treat `onyx daemon`'s HUD as a
+   snapshot, not as the current UI.
 6. **Tailwind 4 migration.** PR #263 proposed jumping `tailwindcss` 3.4 → 4.3; it was closed
    because Tailwind 4 drops the v3 config model this repo uses and the worker build failed on
    it. Needs a dedicated PR with a visual check of the HUD.
@@ -129,3 +161,9 @@ The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as 
    `rand`, `lru` in `rust/Cargo.lock`. The node ones are transitive under
    `wrangler`/`miniflare`. The Rust ones need `cargo update` in an environment with a C
    toolchain, or a hand-edited `Cargo.lock` proven by `rust-ci.yml` on a PR.
+8. **Tailwind/`@tailwindcss/postcss` version skew** (new, noticed 2026-11-03): root
+   `package.json` pins `tailwindcss` ^3.4.19 (the v3 build `postcss.config.js` drives) while
+   also depending on `@tailwindcss/postcss` ^4.3.3, which is the v4 plugin this repo does not
+   use. The build is green because only the v3 path is wired up, but the v4 plugin is a
+   migration half-installed. Resolve together with item 6 — either migrate to 4 and delete
+   the v3 config, or drop `@tailwindcss/postcss`.

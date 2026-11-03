@@ -3,6 +3,63 @@
 All notable changes to the Onyx Mk3 workspace. Newest first. Entries are
 prepended; dates are the date the branch was verified, in America/Chicago.
 
+## 2026-11-03 — Pre-gate route registry, structured error logs, constant-time secret checks
+
+Branch `fix/onyx-pregate-route-invariant`, base `0ce4e8e` (main, post-PR #303).
+
+### Added
+
+- **`edge-bridge/src/preGateRoutes.ts`.** Every route the worker answers before the global
+  HMAC gate is now listed with its auth mode, the evidence that auth leaves in its handler,
+  and why it is safe: 17 routes plus the one gate exemption (`/api/v1/webhooks`). Also adds
+  `classifyPreGateRoute(method, pathname)` — longest-prefix, method-aware — as the seam for
+  the router refactor that would remove the positional-ordering hazard entirely.
+- **`edge-bridge/test/pre-gate-routes.test.ts` (13 tests).** Parses `src/index.ts` and fails
+  when a route above the gate is unregistered, when a registered route no longer exists, or
+  when a declared auth call (`checkAuth`, `verifyHmacSignature`, …) has been removed from
+  its handler. Both failure modes were demonstrated before being trusted.
+- **`edge-bridge/src/logging.ts`.** `logError(event, error, context)` and
+  `logRequest(event, context)`: one JSON line per record, `edge.<subsystem>.<what_happened>`
+  event names, `Error` normalised to `{message, error_name}`, and a non-throwing fallback for
+  context that cannot serialise.
+- **`edge-bridge/test/logging.test.ts` (11 tests)** and
+  **`edge-bridge/test/webhook-signature.test.ts` (16 tests)**.
+
+### Fixed
+
+- **`fetch()` logged an error on every successful request.** The bare `console.error("error")`
+  at the end of the happy path meant normal traffic filled the error stream. It is now an
+  `edge.request.completed` info record with method, path, status, duration and trace id.
+  (`edge-bridge/src/index.ts:1285`)
+- **All 34 `console.error` call sites are labelled.** 21 were bare `console.error("error")`;
+  the other 13 carried ad-hoc messages. `console.error` no longer appears in `index.ts` at
+  all — everything goes through `logError` with a trace id where one is in scope. Two sites
+  were not errors at all (the 405 branch and idempotent replay) and are now info-level.
+  Closes standing defect 4.
+- **Three secret comparisons were not constant time.** The GitHub and WordPress webhook
+  handlers computed their own HMAC and compared hex with `!==` (42 lines each path), and the
+  emergency-direct bearer did the same. Now `verifyHexHmacSignature()` (`crypto.subtle.verify`,
+  optional `sha256=` prefix, hex validated, fails closed without throwing) and
+  `equalSecrets()` for the bearer.
+- **The embedded HUD bundle was stale.** `rust/crates/onyx/static/assets/index-2CSI7Ry0.js`
+  still carried `react-dom` 19.2.8 after #298 moved the HUD to 19.3.1, so `onyx daemon`
+  served the pre-bump runtime from the binary. Regenerated (`index-CllMSb_c.js`).
+
+### Verified
+
+`cd edge-bridge && npx tsc --noEmit` → exit 0; `npx vitest run` → 11 files, **132 tests**
+passed (was 8 / 93); `wrangler deploy --dry-run` → exit 0. Root HUD suite unchanged: 7 files,
+49 tests. Two negative controls (an unregistered pre-gate route; a deleted `checkAuth` on
+`/api/v1/telemetry/flush`) both fail the new test with the reason spelled out.
+
+### Not verified
+
+No Rust was compiled here (`cargo` is unavailable in this sandbox; see `LEARNINGS.md` §11).
+No Rust *source* changed, but `rust/crates/onyx/static` did and `daemon.rs` asserts
+`index.html` is embedded, so `rust-ci.yml` is the compiler of record for this branch. The
+constant-time claim is structural: the tests pin that a right secret passes and a wrong one
+is refused, not that a timing side channel is gone.
+
 ## 2026-11-02 (later) — Grouped Dependabot updates
 
 Branch `chore/dependabot-grouped-updates`, base `1fdddef` (post-PR #295).
