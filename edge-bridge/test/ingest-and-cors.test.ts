@@ -26,7 +26,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { readFile } from 'node:fs/promises';
-import worker, { DEFAULT_CORE_INGEST_URL, resolveCronUrl } from '../src/index';
+import worker, { DEFAULT_CORE_INGEST_URL } from '../src/index';
 
 const INGEST_FN = '/functions/v1/telemetry-ingress';
 const PROJECT = 'pvbcdndqjguzqeafhwhw';
@@ -181,10 +181,9 @@ describe('telemetry signer emits v2', () => {
     });
 });
 
-describe('resolveCronUrl still re-roots onto the new host', () => {
-    it('derives the cron path from the telemetry-ingress URL', () => {
-        expect(resolveCronUrl(DEFAULT_CORE_INGEST_URL)).toBe(
-            `https://${PROJECT}.supabase.co/api/v1/internal/cron/daily-run`,
-        );
+describe('the removed cron dispatch leaves no trace on the ingest default', () => {
+    it('DEFAULT_CORE_INGEST_URL is not a cron endpoint', () => {
+        expect(DEFAULT_CORE_INGEST_URL).not.toContain('daily-run');
+        expect(DEFAULT_CORE_INGEST_URL).toContain(INGEST_FN);
     });
 });
