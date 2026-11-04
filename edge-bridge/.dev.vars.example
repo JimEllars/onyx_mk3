@@ -4,9 +4,15 @@ ANTHROPIC_API_KEY=your_anthropic_key_here
 GITHUB_WEBHOOK_SECRET=your_github_webhook_secret_here
 WP_WEBHOOK_SECRET=your_wp_webhook_secret_here
 AXIM_INTERNAL_KEY=your_axim_internal_key_here
-CORE_INGEST_URL=https://api.axim.us.com/v1/functions/telemetry-ingest
+# Must match the AXIM_INTERNAL_KEY secret bound on the Supabase project, because
+# telemetry-ingress verifies either `Bearer ${AXIM_INTERNAL_KEY}` or an
+# X-Axim-Signature HMAC keyed with the same value. A mismatch presents as a 401.
+CORE_INGEST_URL=https://pvbcdndqjguzqeafhwhw.supabase.co/functions/v1/telemetry-ingress
 CHAT_MODEL=claude-3-5-sonnet-20241022
 ONYX_CLIENT_SECRET=your_onyx_client_secret_here
+
+# Comma-separated list of permitted browser origins.
+ALLOWED_ORIGIN=tauri://localhost,http://localhost:5173,https://axim.us.com
 
 PUBLIC_BASE_URL=
 THREADS_FEED_URL=

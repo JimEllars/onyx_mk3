@@ -3,6 +3,83 @@
 All notable changes to the Onyx Mk3 workspace. Newest first. Entries are
 prepended; dates are the date the branch was verified, in America/Chicago.
 
+## 2026-11-04 — Telemetry reaches a host that exists; CORS admits what the dashboard sends; signatures move to v2
+
+Branch `fix/core-ingest-url-and-cors`, base `22591e2` (main).
+
+Three defects, all found by auditing production rather than reading the code.
+
+### 1. `CORE_INGEST_URL` pointed at a host that 302s to a 404 page
+
+Defined three different ways and wrong three different times:
+
+| Source | Said |
+|---|---|
+| `wrangler.jsonc` | `https://api.axim.us.com/telemetry` |
+| `.dev.vars.example` | `https://api.axim.us.com/v1/functions/telemetry-ingest` |
+| in-code fallback | `https://api.axim.us.com/v1/functions/telemetry-ingest` |
+
+Every path on `api.axim.us.com` returns `302 -> /404.html`, so `drainIngestDlq`
+re-queued forever. That is the mechanical reason the edge DLQ never empties and
+why "submit before idle" has never happened.
+
+The target is now the `telemetry-ingress` Supabase Edge Function, which is the
+counterpart of `resolve-hitl` that `CORE_HITL_URL` already names. It verifies the
+same signature contract this worker emits, accepts `Bearer ${AXIM_INTERNAL_KEY}`,
+already lists `onyx_edge_worker` in `ALLOWED_APPS`, returns `202`, and defers
+persistence to `EdgeRuntime.waitUntil` — non-blocking by design. All three
+declarations now agree, and a new `DEFAULT_CORE_INGEST_URL` is the single source.
+
+### 2. CORS rejected the dashboard's own GET requests
+
+`Access-Control-Allow-Methods` was `"POST, OPTIONS"` while the HUD polls
+`GET /health` and `GET /api/telemetry/summary` every 15 seconds. The browser
+refused both at preflight, so the status bar could only ever render
+`OFFLINE / RECONNECTING` regardless of actual worker health.
+
+- `GET` (and `PUT`, `DELETE`) added to allowed methods.
+- `X-Axim-Signature`, `X-Axim-Signature-Version`, `X-Axim-Timestamp`,
+  `X-AXiM-Trace-ID` and `Idempotency-Key` added to allowed headers. Without them
+  preflight strips the headers before the request is made, so a browser-side
+  signed call was impossible.
+- `Access-Control-Max-Age: 86400` and `Vary: Origin` added. The absent `Vary`
+  meant a shared cache could serve one origin's response to another.
+- `ALLOWED_ORIGIN` is now parsed as a comma-separated list. It was compared with
+  strict equality against a single value, so every entry after the first was dead
+  configuration and adding an origin meant editing code.
+
+### 3. The telemetry signer emitted the legacy v1 signature
+
+`telemetry-ingress` verifies v2 — `HMAC(secret, "<timestamp>.<body>")` with the
+timestamp required and skew-checked at 300s — and retires the body-only form on
+**2026-12-31** via `DEFAULT_LEGACY_SUNSET`. The worker was signing v1, so it would
+have worked until that date and then failed silently.
+
+The signer now emits `X-Axim-Signature-Version: 2`, `X-Axim-Timestamp`, and an
+HMAC over `"<ts>.<body>"`. Two related changes:
+
+- Removed the `"default_internal_key_fallback"` literal. An unconfigured deploy
+  was signing with a public string; a missing secret now fails closed and logs
+  `edge.telemetry.ingest_unsigned`.
+- `resolveCronUrl` learned the Supabase path shape. It stripped
+  `/v1/functions/telemetry-ingest` but not `/functions/v1/telemetry-ingress`, so
+  after the URL move it produced `/functions/v1/api/v1/internal/cron/daily-run`.
+  Caught by a test written before the change was trusted.
+
+### Added
+
+`test/ingest-and-cors.test.ts` (19 tests): the ingest default is asserted against
+all three declarations, CORS is exercised through real preflight requests
+(including a comma-separated list and a hostile origin), and the v2 signing shape
+is pinned by source assertion so a revert to body-only signing fails here.
+
+### Verified
+
+`npx tsc --noEmit` → exit 0; `npx vitest run` → 13 files, **163 tests**. Not
+verified: a live ingest round trip — `telemetry-ingress` is not deployed yet
+(axim-core-v1.2#498 deploys it). The pairing that must match at runtime is
+`AXIM_INTERNAL_KEY` on both sides; a mismatch presents as `401`.
+
 ## 2026-11-04 — Daily-run failures can no longer be silent; deploys are gated on `/health` being JSON
 
 Branch `fix/cron-error-visibility-and-deploy-gate`, base `7f229c1` (main).
