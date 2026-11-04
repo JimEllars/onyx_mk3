@@ -320,6 +320,32 @@ function resolveIngestUrl(base: string): string {
 }
 
 /**
+ * Resolve the Core daily-run cron endpoint from the same base that supplies the
+ * ingest URL.
+ *
+ * The previous code called `.replace("/v1/functions/telemetry-ingest", ...)` on
+ * the configured value. When `CORE_INGEST_URL` did not contain that exact
+ * substring — a bare origin, or the `/telemetry` suffix wrangler.jsonc actually
+ * deploys — the replace was a silent no-op and the cron POST went to the ingest
+ * path instead of the cron path. Nobody noticed because the caller discarded the
+ * response.
+ */
+export function resolveCronUrl(base: string | undefined): string {
+  const cronPath = "/api/v1/internal/cron/daily-run";
+  if (!base) return `http://localhost:3000${cronPath}`;
+
+  const trimmed = base.replace(/\/+$/, "");
+
+  // Strip a known terminal API path so we can re-root on the origin.
+  const origin = trimmed.replace(
+    /\/(v1\/functions\/)?(telemetry-ingress|telemetry-ingest|telemetry)$/,
+    "",
+  );
+
+  return `${origin}${cronPath}`;
+}
+
+/**
  * Fail loudly when a KV binding the handler depends on is absent.
  *
  * HITL_APPROVAL_KV, EDGE_DLQ_KV and ECOSYSTEM_METRICS_KV are declared optional
@@ -1174,14 +1200,21 @@ const onyx_handler: any = {
       }
 
       // Execute the Rust backend daily cron endpoint
-      const backendCronUrl = env.CORE_INGEST_URL
-        ? env.CORE_INGEST_URL.replace(
-            "/v1/functions/telemetry-ingest",
-            "/api/v1/internal/cron/daily-run",
-          )
-        : "http://localhost:3000/api/v1/internal/cron/daily-run";
+      const backendCronUrl = resolveCronUrl(env.CORE_INGEST_URL);
       const cronSecret = env.CRON_SECRET_KEY;
 
+      if (!cronSecret) {
+        logError("edge.cron.daily_run_unauthenticated", undefined, {
+          reason: "CRON_SECRET_KEY is not bound; the backend will reject this call",
+          url: backendCronUrl,
+        });
+      }
+
+      // This dispatch used to end in `.then(() => void 0).catch(() => void 0)`,
+      // which discarded the status and swallowed the throw. A 302 to a 404 page
+      // is a *successful* fetch, so a dead CORE_INGEST_URL produced no log, no
+      // DLQ entry and no signal of any kind: the daily run simply never
+      // happened and nothing said so. Surface both outcomes.
       ctx?.waitUntil?.(
         fetch(backendCronUrl, {
           method: "POST",
@@ -1190,8 +1223,22 @@ const onyx_handler: any = {
             Authorization: `Bearer ${cronSecret}`,
           },
         })
-          .then((res) => void 0)
-          .catch((e) => void 0),
+          .then((res) => {
+            if (!res.ok) {
+              logError("edge.cron.daily_run_failed", undefined, {
+                status: res.status,
+                url: backendCronUrl,
+              });
+            } else {
+              logRequest("edge.cron.daily_run_completed", {
+                status: res.status,
+                url: backendCronUrl,
+              });
+            }
+          })
+          .catch((e) =>
+            logError("edge.cron.daily_run_threw", e, { url: backendCronUrl }),
+          ),
       );
 
       // Pulse Sync: Fetch external social data and forward to Rust backend
