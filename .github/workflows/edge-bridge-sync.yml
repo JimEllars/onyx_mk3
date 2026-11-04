@@ -50,3 +50,115 @@ jobs:
       - name: Validate Worker configuration
         working-directory: edge-bridge
         run: npm run deploy:dry-run
+
+  # ---------------------------------------------------------------------------
+  # DEPLOY (main only, after the guardrail above is green)
+  #
+  # This workflow previously stopped at `deploy:dry-run` and never deployed, so
+  # production was a hand-pushed build of unknown vintage. On 2026-11-04 the
+  # live worker was serving bundle `index-Cz7yW5cY.js` while `main` shipped
+  # `index-CllMSb_c.js`, and every API route — including `/health` — answered
+  # with the SPA's index.html. Nothing in CI could have caught that, because CI
+  # never looked at what was actually running.
+  #
+  # The verify step at the end is the point of this job: a deploy that leaves the
+  # worker answering HTML instead of JSON fails the build.
+  # ---------------------------------------------------------------------------
+  # GitHub does not expose the `secrets` context to a job-level `if`, so the
+  # presence of deploy credentials is resolved in its own job and published as
+  # an output. Without this, merging the deploy job would turn `main` red for a
+  # reason that is not a code problem: `wrangler deploy` with an empty
+  # CLOUDFLARE_API_TOKEN fails authentication. With it, an unprovisioned repo
+  # reports the deploy as `skipped` — honest, and visibly not a deploy — and the
+  # job activates by itself the moment the secrets exist.
+  deploy-preflight:
+    needs: deploy-and-verify
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # Same environment as the deploy so environment-scoped secrets count too.
+    environment: production
+    outputs:
+      has_credentials: ${{ steps.check.outputs.has_credentials }}
+    steps:
+      - name: Check for Cloudflare deploy credentials
+        id: check
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "has_credentials=true" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare credentials present — the deploy job will run."
+          else
+            echo "has_credentials=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Edge bridge not deployed::CLOUDFLARE_API_TOKEN and/or CLOUDFLARE_ACCOUNT_ID are not provisioned, so the production deploy is skipped. Add both as repository or \`production\` environment secrets to activate it. Until then production stays on whatever was last pushed by hand."
+          fi
+
+  deploy:
+    needs: [deploy-and-verify, deploy-preflight]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.deploy-preflight.outputs.has_credentials == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: edge-bridge-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: 'edge-bridge/package-lock.json'
+
+      - name: Install Dependencies
+        working-directory: edge-bridge
+        run: npm ci --legacy-peer-deps
+
+      - name: Deploy to Cloudflare Workers
+        working-directory: edge-bridge
+        run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Verify the deploy serves JSON, not HTML
+        run: |
+          set -euo pipefail
+          BASE="https://onyx-edge.axim.us.com"
+
+          # Cloudflare propagates a new Worker version within seconds, but give
+          # the old one time to drain rather than racing it.
+          for attempt in 1 2 3 4 5 6; do
+            headers=$(curl -sS -D- -o /dev/null "$BASE/health" || true)
+            ctype=$(printf '%s' "$headers" | grep -i '^content-type:' | tr -d '\r' || true)
+            if printf '%s' "$ctype" | grep -qi 'application/json'; then
+              echo "attempt $attempt: $ctype"
+              break
+            fi
+            echo "attempt $attempt: still not JSON ($ctype) — retrying in 5s"
+            sleep 5
+          done
+
+          body=$(curl -sS "$BASE/health")
+          echo "body: $body"
+
+          # The failure this gate exists for: an SPA index.html answering an API
+          # route. Assert on the body as well as the header, because a 200 with
+          # the wrong content type is exactly the drift that hid here.
+          if printf '%s' "$body" | grep -qi '<!DOCTYPE html>'; then
+            echo "::error::/health returned HTML — the Worker router is being shadowed by the asset binding."
+            echo "Check assets.run_worker_first in edge-bridge/wrangler.jsonc and any _redirects catch-all."
+            exit 1
+          fi
+
+          if ! printf '%s' "$body" | grep -q '"status"'; then
+            echo "::error::/health did not return the expected JSON payload."
+            exit 1
+          fi
+
+          echo "Edge bridge deployed and verified: /health is JSON."

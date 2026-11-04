@@ -3,6 +3,68 @@
 All notable changes to the Onyx Mk3 workspace. Newest first. Entries are
 prepended; dates are the date the branch was verified, in America/Chicago.
 
+## 2026-11-04 — Daily-run failures can no longer be silent; deploys are gated on `/health` being JSON
+
+Branch `fix/cron-error-visibility-and-deploy-gate`, base `7f229c1` (main).
+
+This branch came out of a live audit of production. Two findings drove it, and
+neither was visible from the code alone.
+
+### The audit, in short
+
+- `onyx-edge.axim.us.com` was serving bundle `index-Cz7yW5cY.js` while `main`
+  shipped `index-CllMSb_c.js`. Every API route — `/health`, `/api/v1/health`,
+  `/api/v1/health/edge`, `/api/v1/telemetry/summary` — answered with the SPA's
+  `index.html`. POST routes answered bare `405`. The router was correct in
+  source (`src/index.ts:1376`); production was simply an older build.
+- `CORE_INGEST_URL` is defined three different ways in this repo
+  (`wrangler.jsonc` → `/telemetry`, `.dev.vars.example` →
+  `/v1/functions/telemetry-ingest`, and the in-code fallback → the same), and all
+  three point at a host that returns `302 → /404.html` on every path.
+
+### Fixed
+
+- **The daily run discarded its own result.** The dispatch ended in
+  `.then((res) => void 0).catch((e) => void 0)`. A `302` to a 404 page is a
+  *successful* fetch, so a dead `CORE_INGEST_URL` produced no log, no DLQ entry
+  and no signal. The dispatch could fail every night indefinitely with nothing
+  anywhere saying so. It now logs `edge.cron.daily_run_failed` with the status
+  and URL, `edge.cron.daily_run_threw` with the error, and
+  `edge.cron.daily_run_completed` on success.
+- **The cron URL was derived by string replacement that silently no-opped.**
+  `CORE_INGEST_URL.replace("/v1/functions/telemetry-ingest", "/api/v1/internal/cron/daily-run")`
+  only works if the configured value contains that exact substring. Against a
+  bare origin, or the `/telemetry` suffix `wrangler.jsonc` actually deploys, the
+  replace did nothing and the cron POST went to the *ingest* path. Newly
+  exported `resolveCronUrl()` re-roots on the origin after stripping any known terminal
+  API path.
+- **An unbound `CRON_SECRET_KEY` sent `Bearer undefined`.** `CRON_SECRET_KEY` is
+  in neither `wrangler.jsonc` `vars` nor `.dev.vars.example`, so the header was
+  almost certainly the literal string. It now logs
+  `edge.cron.daily_run_unauthenticated` before dispatching.
+
+### Added
+
+- **`test/cron-dispatch-visibility.test.ts` (12 tests).** Seven exercise
+  `resolveCronUrl` across every configuration shape seen in the repo. Five are
+  source assertions that fail if the swallow or the fragile replace returns —
+  what regressed here was the *shape* of a promise chain, which behaviour tests
+  do not reliably catch.
+- **A gated deploy job in `.github/workflows/edge-bridge-sync.yml`.** The
+  workflow ran `typecheck`, `test` and `deploy:dry-run` and **never deployed**,
+  which is the structural reason production could drift for as long as it did.
+  The job is `main`-only, `push`-only, concurrency-limited to
+  `edge-bridge-production`, and its last step asserts that `/health` returns
+  `application/json` and not `<!DOCTYPE html>`. A deploy that leaves the router
+  shadowed now fails the build.
+
+### Verified
+
+`npx tsc --noEmit` → exit 0; `npx vitest run` → 12 files, **144 tests**.
+Not verified: the Worker was not deployed from this branch — no Cloudflare
+credentials were available to the audit process. The deploy job is the mechanism
+by which it should go out, and the `/health` assertion is what will prove it.
+
 ## 2026-11-03 — Pre-gate route registry, structured error logs, constant-time secret checks
 
 Branch `fix/onyx-pregate-route-invariant`, base `0ce4e8e` (main, post-PR #303).
