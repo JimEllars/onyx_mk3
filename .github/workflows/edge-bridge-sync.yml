@@ -64,9 +64,40 @@ jobs:
   # The verify step at the end is the point of this job: a deploy that leaves the
   # worker answering HTML instead of JSON fails the build.
   # ---------------------------------------------------------------------------
-  deploy:
+  # GitHub does not expose the `secrets` context to a job-level `if`, so the
+  # presence of deploy credentials is resolved in its own job and published as
+  # an output. Without this, merging the deploy job would turn `main` red for a
+  # reason that is not a code problem: `wrangler deploy` with an empty
+  # CLOUDFLARE_API_TOKEN fails authentication. With it, an unprovisioned repo
+  # reports the deploy as `skipped` — honest, and visibly not a deploy — and the
+  # job activates by itself the moment the secrets exist.
+  deploy-preflight:
     needs: deploy-and-verify
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # Same environment as the deploy so environment-scoped secrets count too.
+    environment: production
+    outputs:
+      has_credentials: ${{ steps.check.outputs.has_credentials }}
+    steps:
+      - name: Check for Cloudflare deploy credentials
+        id: check
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "has_credentials=true" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare credentials present — the deploy job will run."
+          else
+            echo "has_credentials=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Edge bridge not deployed::CLOUDFLARE_API_TOKEN and/or CLOUDFLARE_ACCOUNT_ID are not provisioned, so the production deploy is skipped. Add both as repository or \`production\` environment secrets to activate it. Until then production stays on whatever was last pushed by hand."
+          fi
+
+  deploy:
+    needs: [deploy-and-verify, deploy-preflight]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.deploy-preflight.outputs.has_credentials == 'true'
     runs-on: ubuntu-latest
     environment: production
     concurrency:
