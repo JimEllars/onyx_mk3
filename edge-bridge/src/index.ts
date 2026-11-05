@@ -303,6 +303,26 @@ function cgiGuard(request: Request): Response | null {
 }
 
 /**
+ * The single source of truth for where edge telemetry is delivered.
+ *
+ * This used to be defined three different ways: `wrangler.jsonc` said
+ * `https://api.axim.us.com/telemetry`, `.dev.vars.example` said
+ * `https://api.axim.us.com/v1/functions/telemetry-ingest`, and this fallback
+ * agreed with the latter. All three pointed at `api.axim.us.com`, which returns
+ * `302 -> /404.html` on every path, so the DLQ drain re-queued forever and the
+ * loop never closed.
+ *
+ * The real target is the `telemetry-ingress` Supabase Edge Function. It is the
+ * counterpart of `resolve-hitl` (which `CORE_HITL_URL` already names), it
+ * verifies the same `X-Axim-Signature` v2 contract this worker emits, it accepts
+ * `Bearer ${AXIM_INTERNAL_KEY}`, and its `ALLOWED_APPS` list already contains
+ * `onyx_edge_worker`. It returns 202 and defers persistence to
+ * `EdgeRuntime.waitUntil`, so it is non-blocking by design.
+ */
+export const DEFAULT_CORE_INGEST_URL =
+  "https://pvbcdndqjguzqeafhwhw.supabase.co/functions/v1/telemetry-ingress";
+
+/**
  * Resolve the Core telemetry ingest URL.
  *
  * CORE_INGEST_URL may be configured either as a bare origin
@@ -336,9 +356,18 @@ export function resolveCronUrl(base: string | undefined): string {
 
   const trimmed = base.replace(/\/+$/, "");
 
-  // Strip a known terminal API path so we can re-root on the origin.
+  // Strip a known terminal API path so we can re-root.
+  //
+  // Two shapes have to be handled, and only the first was, which is why this
+  // produced `/functions/v1/api/v1/...` after the ingest URL moved to a Supabase
+  // Edge Function:
+  //   https://host/v1/functions/telemetry-ingest  -> https://host
+  //   https://host/functions/v1/telemetry-ingress -> https://host
+  //   https://host/telemetry-ingress              -> https://host
+  //   https://host/telemetry                      -> https://host
+  //   https://host                                -> https://host
   const origin = trimmed.replace(
-    /\/(v1\/functions\/)?(telemetry-ingress|telemetry-ingest|telemetry)$/,
+    /\/(?:(?:v1\/functions|functions\/v1)\/(?:telemetry-ingress|telemetry-ingest)|(?:telemetry-ingress|telemetry-ingest)|telemetry)$/,
     "",
   );
 
@@ -671,15 +700,35 @@ export async function verifyHexHmacSignature(
 
 function getCorsHeaders(request: Request, env?: Env) {
   const origin = request.headers.get("Origin") || "";
+
+  // ALLOWED_ORIGIN may be a single origin (the historical form) or a
+  // comma-separated list. The previous comparison was strict equality against
+  // one value, so a list could never match and adding an origin meant editing
+  // code rather than configuration.
+  const configured = (env?.ALLOWED_ORIGIN || "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   const isAllowed =
-    ALLOWED_ORIGINS.includes(origin) ||
-    origin === env?.ALLOWED_ORIGIN;
+    ALLOWED_ORIGINS.includes(origin) || configured.includes(origin);
 
   return {
     "Access-Control-Allow-Origin": isAllowed ? origin : "null",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Onyx-Session-Id, X-Onyx-Trace-Id, X-Correlation-ID, X-Request-ID",
+    // GET was absent here while the HUD polls GET /health and
+    // GET /api/telemetry/summary, so the browser rejected both at preflight and
+    // the status bar could only ever report OFFLINE.
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    // The X-Axim-* and Idempotency-Key headers were missing from this list,
+    // which meant a browser-side caller could not send a signed request at all:
+    // preflight strips any header not named here before the request is made.
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, X-Onyx-Session-Id, X-Onyx-Trace-Id, " +
+      "X-Correlation-ID, X-Request-ID, X-Axim-Signature, X-Axim-Signature-Version, " +
+      "X-Axim-Timestamp, X-AXiM-Trace-ID, Idempotency-Key",
     "Access-Control-Expose-Headers": "CF-Ray, X-Correlation-ID, X-Onyx-Session-Id, X-Onyx-Trace-Id, X-Onyx-Edge-Latency, X-Onyx-Edge-Health",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
   };
 }
 
@@ -1072,8 +1121,7 @@ async function drainIngestDlq(env: Env, ctx: ExecutionContext): Promise<void> {
   if (!listResult.keys || listResult.keys.length === 0) return;
 
   const coreUrl =
-    env.CORE_INGEST_URL ||
-    "https://api.axim.us.com/v1/functions/telemetry-ingest";
+    env.CORE_INGEST_URL || DEFAULT_CORE_INGEST_URL;
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -1774,10 +1822,29 @@ const onyx_handler: any = {
               resolveIngestUrl(env.CORE_INGEST_URL);
             for (const row of rows) {
 
-              // Generate HMAC signature for telemetry
+              // Generate HMAC signature for telemetry.
+              //
+              // Emitted as the v2 form: HMAC(secret, "<timestamp>.<body>") with the
+              // timestamp carried in X-Axim-Timestamp and the scheme named in
+              // X-Axim-Signature-Version. The legacy body-only form still verifies
+              // today, but telemetry-ingress retires it on 2026-12-31 (see
+              // DEFAULT_LEGACY_SUNSET in _shared/edgeAuth.ts) — signing v1 here
+              // would work until that date and then fail silently.
+              //
+              // The key must be AXIM_INTERNAL_KEY, the same value bound on the
+              // Supabase project.
+              if (!env.AXIM_INTERNAL_KEY) {
+                logError("edge.telemetry.ingest_unsigned", undefined, {
+                  reason: "AXIM_INTERNAL_KEY is not bound; the ingest will be rejected with 401",
+                  url: ingestUrl,
+                });
+              }
               const textEncoder = new TextEncoder();
-              const keyData = textEncoder.encode(env.AXIM_INTERNAL_KEY || "default_internal_key_fallback");
-              const messageData = textEncoder.encode(String(row.payload));
+              const keyData = textEncoder.encode(env.AXIM_INTERNAL_KEY || "");
+              const signatureTimestamp = Math.floor(Date.now() / 1000);
+              const messageData = textEncoder.encode(
+                `${signatureTimestamp}.${String(row.payload)}`,
+              );
               const cryptoKey = await crypto.subtle.importKey(
                 "raw",
                 keyData,
@@ -1794,7 +1861,9 @@ const onyx_handler: any = {
                 headers: addOnyxHeaders(
                   {
                     "Content-Type": "application/json",
-                    "X-Axim-Signature": signatureHex
+                    "X-Axim-Signature": signatureHex,
+                    "X-Axim-Signature-Version": "2",
+                    "X-Axim-Timestamp": String(signatureTimestamp),
                   },
                   edgeStatus,
                   cacheStatus,
@@ -2111,9 +2180,9 @@ const onyx_handler: any = {
       }
 
       // Simulate fetching from AXiM Core API
-      const coreUrl = env.CORE_INGEST_URL
-        ? new URL(env.CORE_INGEST_URL).origin
-        : "https://api.axim.us.com";
+      const coreUrl = new URL(
+        env.CORE_INGEST_URL || DEFAULT_CORE_INGEST_URL,
+      ).origin;
       try {
         const res = await fetch(`${coreUrl}${url.pathname}`, { headers: { "X-Onyx-Trace-Id": traceId || "unknown" } });
         if (res.ok) {
@@ -2347,9 +2416,9 @@ const onyx_handler: any = {
       }
       if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/api/v1/health")) {
         try {
-          const supabaseUrl = env.CORE_INGEST_URL
-            ? new URL(env.CORE_INGEST_URL).origin
-            : "https://api.axim.us.com";
+          const supabaseUrl = new URL(
+            env.CORE_INGEST_URL || DEFAULT_CORE_INGEST_URL,
+          ).origin;
           const pingRes = await fetch(`${supabaseUrl}/rest/v1/`, {
             method: "GET",
           }).catch(() => null);
