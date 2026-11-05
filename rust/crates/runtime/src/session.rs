@@ -1240,7 +1240,11 @@ mod tests {
             restored.messages[0],
             ConversationMessage::user_text("legacy")
         );
-        assert!(!restored.session_id.is_empty());
+        assert!(
+            !restored.session_id.is_empty(),
+            "{:?} should not be empty",
+            restored.session_id
+        );
     }
 
     #[test]

@@ -3,6 +3,56 @@
 All notable changes to the Onyx Mk3 workspace. Newest first. Entries are
 prepended; dates are the date the branch was verified, in America/Chicago.
 
+## 2026-11-04 — `cargo clippy -D warnings` is clean, and CI enforces it
+
+Branch `fix/onyx-clippy-strict-gate`, base `22591e2` (main, post-PR #306).
+
+The runbook's baseline gate is `cargo clippy --workspace --all-targets -- -D warnings`.
+It had not passed for some time, and nothing noticed: `rust-ci.yml` ran
+`cargo clippy --workspace` with no `-D warnings`, so findings were printed into the log
+and the job exited 0. Seventy-four had accumulated on `main`.
+
+### Fixed
+
+- **Three findings were in the provider retry path, not in test code.** Both `jitter_for_base`
+  helpers (`api/src/providers/anthropic.rs`, `api/src/providers/openai_compat.rs`) called
+  `Result::map(..).unwrap_or(0)` on every jittered retry; `MessageStop` usage recording in
+  `anthropic.rs` nested an `if !self.usage_recorded` inside the match arm.
+- **Clippy 1.99 renamed a lint out from under eight `#[allow]` attributes.**
+  `unused_async` split into `unused_async` + `unused_async_trait_impl`, so the six
+  `commands` action stubs and two `gemini` stubs went back to warning. Both names are now
+  allowed, with a comment tying each to the stub it belongs to.
+- **42 bare emptiness assertions now print the value on failure.**
+  `assert!(x.is_empty())` → `assert!(x.is_empty(), "{x:?} should be empty")`. A boolean
+  assertion tells you only that the check failed, which is the expensive half of debugging
+  a CI-only failure.
+- **6 `Duration`s in a smaller unit than they needed** (`from_secs(60 * 60)` →
+  `from_hours(1)`), 10 `map(..).unwrap_or(..)`/`.ok().is_some_and(..)` collapses,
+  3 `assert!(a == b)` → `assert_eq!(a, b)`, plus one each of `manual_let_else`,
+  `assigning_clones`, `useless_format` and two trailing commas.
+
+### Changed
+
+- **`rust-ci.yml` clippy job is now a gate, not a log.**
+  `cargo clippy --workspace` → `cargo clippy --workspace --all-targets -- -D warnings`.
+  `--all-targets` matters: most of the assertion hits were in `#[cfg(test)]` blocks and
+  test files, which the old invocation never linted.
+
+### Verified
+
+`cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings`
+exit 0 (and `cargo clippy --workspace -- -D warnings`, the shape CI now runs, likewise);
+edge-bridge `npm test` 144 passed, `npm run typecheck` clean; HUD `npm test` 49 passed.
+`cargo test --workspace` is proved by `rust-ci.yml` on the PR — see the verification log for
+why the sandbox could not link the `onyx` binary.
+
+### Found while doing this, not fixed here
+
+- **The embedded HUD bundle does not match `src/`.** A fresh `npx vite build` on this base
+  emits `rust/crates/onyx/static/assets/index-Cz7yW5cY.js` (263 KB); the committed bundle is
+  `index-CllMSb_c.js` (481 KB). Open item 5 of `WEB_APP_DEVELOPMENT_PLAN.md` is therefore
+  live drift, not a theoretical risk.
+
 ## 2026-11-04 — Daily-run failures can no longer be silent; deploys are gated on `/health` being JSON
 
 Branch `fix/cron-error-visibility-and-deploy-gate`, base `7f229c1` (main).

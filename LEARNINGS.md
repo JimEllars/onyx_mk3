@@ -186,3 +186,42 @@ When adding cross-service telemetry and resilient fallback states, ensuring deep
     *different* vitest from its cache. Always `NODE_ENV=development npm ci --include=dev`
     here, and invoke `./node_modules/.bin/vitest` rather than `npx vitest` so the run cannot
     pick up the npx cache copy.
+
+## Additions — 2026-11-04 session (clippy gate, local Rust toolchain)
+
+13. **A linter in CI that is not a gate is decoration.** `rust-ci.yml` ran
+    `cargo clippy --workspace` — no `-D warnings` — so 74 findings accumulated on `main`
+    while every run reported success. Two of them were in the provider retry path. If the
+    runbook says a check must pass, the workflow has to fail on it; otherwise the check
+    exists only in the reviewer's head. Add `--all-targets` too, or `#[cfg(test)]` code is
+    never linted at all: 42 of those 74 hits were test assertions.
+
+14. **A renamed lint silently un-allows an existing `#[allow]`.** Clippy 1.99 split
+    `unused_async` into `unused_async` + `unused_async_trait_impl`. Six action stubs and two
+    `gemini` stubs already carried `#[allow(clippy::unused_async)]`, which stopped matching
+    without a word. After a toolchain bump, re-run the strict gate before assuming the
+    suppressions still hold; if you must keep one, allow both names and say why.
+
+15. **`assert!(x.is_empty())` is a bad CI assertion, and clippy is right about it.**
+    `assert!(x.is_empty(), "{x:?} should be empty")` says what was actually in `x`. Note the
+    inline-format form only works for plain identifiers — `result.summary` needs
+    `"{:?} should be empty", result.summary` — and clippy's own `assert_eq!(x, [] as [T; 0])`
+    suggestion does not compile for `String` fields, which is why the message form was the
+    consistent choice here.
+
+16. **The Rust workspace *can* be built in this sandbox, with three env vars.** There is no
+    system C toolchain, but `/workspace/.toolchain/zig-*/zig` is a full clang. Map `cc` onto
+    `zig cc` (stripping cc-rs's `--target=x86_64-unknown-linux-gnu`, which zig rejects as an
+    unknown OS, and its `-Wp,-U_FORTIFY_SOURCE`, which zig's preprocessor rejects), map `ar`
+    onto `zig ar`, and extract `libssl-dev`'s headers into a prefix for `openssl-sys` — the
+    arch-specific headers live under `include/x86_64-linux-gnu/openssl/` and must be copied
+    up, or header expansion fails. `OPENSSL_STATIC=1` avoids needing the `libssl.so.3`
+    symlink target. `cargo fmt` and `cargo clippy --workspace --all-targets` then run to
+    completion; `cargo test` links the `onyx` binary (ratatui + onig + sqlite + static
+    OpenSSL) and aborts, so CI remains the compiler of record for the test suite.
+
+17. **20 GB is not enough for this workspace plus the other checkouts.** A full
+    `cargo test` build reaches ~4 GB of `target/`; the other project checkouts hold ~13 GB.
+    Freeing the toolchain's `share/doc` (926 MB) and stale duplicate `build/` dirs buys a
+    clippy run but not a link. Budget for it: run `cargo clippy` with
+    `CARGO_INCREMENTAL=0` so a re-run does not double the disk.

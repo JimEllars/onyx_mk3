@@ -751,7 +751,11 @@ mod tests {
 
         // then
         assert!(result.is_ok());
-        assert!(result.warnings.is_empty());
+        assert!(
+            result.warnings.is_empty(),
+            "{:?} should be empty",
+            result.warnings
+        );
     }
 
     #[test]

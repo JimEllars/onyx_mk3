@@ -185,10 +185,8 @@ mod tests {
         let first = b"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hel";
         let second = b"lo\"}}\n\n";
 
-        assert!(parser
-            .push(first)
-            .expect("first chunk should buffer")
-            .is_empty());
+        let buffered = parser.push(first).expect("first chunk should buffer");
+        assert!(buffered.is_empty(), "{buffered:?} should be empty");
         let events = parser.push(second).expect("second chunk should parse");
 
         assert_eq!(

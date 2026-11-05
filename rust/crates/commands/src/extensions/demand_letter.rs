@@ -222,7 +222,11 @@ mod tests {
         let res: DemandLetterResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Generated");
-        assert!(res.warnings.missing_fields.is_empty());
+        assert!(
+            res.warnings.missing_fields.is_empty(),
+            "{:?} should be empty",
+            res.warnings.missing_fields
+        );
         assert!(res.document_url.unwrap().contains("temp_"));
     }
 

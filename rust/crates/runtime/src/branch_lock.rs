@@ -139,6 +139,6 @@ mod tests {
             },
         ]);
 
-        assert!(collisions.is_empty());
+        assert!(collisions.is_empty(), "{collisions:?} should be empty");
     }
 }

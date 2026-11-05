@@ -182,7 +182,11 @@ impl SupportTriage {
     /// Architectural Note: This module must remain fully self-contained.
     /// It must query the central `AXiM` Core API (or an approved local vector index)
     /// rather than attempting to spin up unauthorized external database connections.
-    #[allow(clippy::unused_async)]
+    // Stub: the real call is commented out below. The async signature is kept so
+    // the call sites do not have to change when it is wired up. `unused_async`
+    // covered this until clippy 1.99 started reporting it as
+    // `unused_async_trait_impl`; both names are allowed for toolchain spread.
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
     async fn query_vector_kb(&self, error_signature: &str) -> Result<(f64, String), String> {
         // TODO: Implement actual AXiM Core API pgvector connection
         // For now, mock the similarity score and retrieved historical fix

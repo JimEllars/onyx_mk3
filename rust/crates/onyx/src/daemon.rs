@@ -94,7 +94,7 @@ pub(crate) fn parse_daemon_options(args: &[String]) -> Result<(String, u16), Str
                 let value = args
                     .get(index + 1)
                     .ok_or_else(|| "missing value for --host".to_string())?;
-                host = value.clone();
+                host.clone_from(value);
                 index += 2;
             }
             flag if flag.starts_with("--host=") => {
@@ -518,9 +518,8 @@ mod tests {
 
     #[test]
     fn html_entrypoint_is_not_cached() {
-        let response = match asset_response("index.html") {
-            Some(response) => response,
-            None => panic!("index.html must be embedded in the test build"),
+        let Some(response) = asset_response("index.html") else {
+            panic!("index.html must be embedded in the test build");
         };
         assert_eq!(
             response

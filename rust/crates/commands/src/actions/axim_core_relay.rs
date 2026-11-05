@@ -125,7 +125,11 @@ impl AximCoreRelayAction {
         Ok(())
     }
 
-    #[allow(clippy::unused_async)]
+    // Stub: the real call is commented out below. The async signature is kept so
+    // the call sites do not have to change when it is wired up. `unused_async`
+    // covered this until clippy 1.99 started reporting it as
+    // `unused_async_trait_impl`; both names are allowed for toolchain spread.
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
     pub async fn write_to_dlq(payload: &Value, endpoint: &str, reason: &str) {
         let dlq_path = std::path::PathBuf::from(".claw/unsynced_relays.jsonl");
         if let Some(parent) = dlq_path.parent() {

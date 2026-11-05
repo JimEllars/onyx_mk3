@@ -316,9 +316,13 @@ mod tests {
             return;
         }
         let manifest = extract_manifest(&paths).expect("manifest should load");
-        assert!(!manifest.commands.entries().is_empty());
-        assert!(!manifest.tools.entries().is_empty());
-        assert!(!manifest.bootstrap.phases().is_empty());
+        // `assert_ne!` against an empty value, not `assert!(!x.is_empty())`:
+        // a failing boolean assertion reports only that the check failed, while
+        // this one prints what the extractor actually produced. (clippy
+        // `assert_is_empty`.)
+        assert_ne!(manifest.commands.entries(), [] as [CommandManifestEntry; 0]);
+        assert_ne!(manifest.tools.entries(), [] as [ToolManifestEntry; 0]);
+        assert_ne!(manifest.bootstrap.phases(), [] as [BootstrapPhase; 0]);
     }
 
     #[test]

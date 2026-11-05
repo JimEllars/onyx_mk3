@@ -36,7 +36,7 @@ pub fn triage_support_orchestration(
     let remediation_blueprint =
         format!(
         "Remediation Blueprint:\n- App ID: {}\n- Recommended Action: {}\n- Stack Trace Snippet: {}",
-        context.app_id, historical_patch, &context.stack_trace.chars().take(100).collect::<String>()
+        context.app_id, historical_patch, context.stack_trace.chars().take(100).collect::<String>()
     );
 
     // This payload is returned to populate AutoDraftWhisper.jsx and support_tickets

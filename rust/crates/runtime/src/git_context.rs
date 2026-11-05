@@ -211,7 +211,11 @@ mod tests {
         assert_eq!(context.recent_commits.len(), 2);
         assert_eq!(context.recent_commits[0].subject, "second commit");
         assert_eq!(context.recent_commits[1].subject, "first commit");
-        assert!(context.staged_files.is_empty());
+        assert!(
+            context.staged_files.is_empty(),
+            "{:?} should be empty",
+            context.staged_files
+        );
         fs::remove_dir_all(root).expect("cleanup");
     }
 

@@ -3,7 +3,11 @@ use serde_json::Value;
 pub struct GoogleSheetsAction;
 
 impl GoogleSheetsAction {
-    #[allow(clippy::unused_async)]
+    // Stub: the real call is commented out below. The async signature is kept so
+    // the call sites do not have to change when it is wired up. `unused_async`
+    // covered this until clippy 1.99 started reporting it as
+    // `unused_async_trait_impl`; both names are allowed for toolchain spread.
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
     pub async fn log_record(payload: &Value) -> Result<(), String> {
         let _client = reqwest::Client::new();
         let _endpoint = std::env::var("GOOGLE_SHEETS_ENDPOINT")

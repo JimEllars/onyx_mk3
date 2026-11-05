@@ -130,10 +130,12 @@ The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as 
 
 ### Still open
 
-1. **`clippy::assert_is_empty` (5 hits) in `rust/crates/plugins/src/lib.rs:2519,2520,2538,2540,2541.**
-   New in clippy 1.99. CI runs `cargo clippy --workspace` without `-D warnings`, so CI stays
-   green, but the stricter `-D warnings` gate in our runbook fails. Needs a compiled
-   environment; clippy's suggestion is `assert_eq!(manifest.tools, [] as [PluginToolManifest; 0])`.
+1. ~~**`clippy::assert_is_empty` (5 hits) in `rust/crates/plugins/src/lib.rs`.**~~ **Fixed
+   2026-11-04** (`fix/onyx-clippy-strict-gate`), together with 69 other hits across the
+   workspace — 42 `assert_is_empty`, 8 `unused_async_trait_impl`, 6 `duration_suboptimal_units`,
+   10 `map_unwrap_or`, 3 `manual_assert_eq`, 5 one-offs. `rust-ci.yml` now runs
+   `cargo clippy --workspace --all-targets -- -D warnings`, so a new hit fails the build
+   instead of accumulating in the log. See `AGENTS_VERIFICATION.d/2026-11-04-clippy-strict-gate.md`.
 2. **`onyx_command_audit_logs` has no writer.** One reference exists in the whole worker — the
    `DELETE` in the retention batch. Do not build a fleet-health or audit panel over it: it
    will read zeros forever. Either add the writer or drop the table.
@@ -153,6 +155,13 @@ The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as 
    that fails when `vite build` produces a different hash would do it) or build the bundle
    before `cargo build` in `rust-ci.yml`. Until then, treat `onyx daemon`'s HUD as a
    snapshot, not as the current UI.
+
+   **Confirmed live drift on 2026-11-04:** a fresh `npx vite build` on `22591e2` emits
+   `assets/index-Cz7yW5cY.js` (263 KB) while the committed bundle is
+   `assets/index-CllMSb_c.js` (481 KB) — different content, not just a different hash. So
+   the daemon currently serves something other than what `src/` builds, and the CSS
+   (`index-BKVYMyrj.css`) *is* reproducible, which makes the JS the odd one out. The check
+   is worth building only together with the regeneration, otherwise it fails on day one.
 6. **Tailwind 4 migration.** PR #263 proposed jumping `tailwindcss` 3.4 → 4.3; it was closed
    because Tailwind 4 drops the v3 config model this repo uses and the worker build failed on
    it. Needs a dedicated PR with a visual check of the HUD.

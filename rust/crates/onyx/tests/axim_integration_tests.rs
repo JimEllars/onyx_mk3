@@ -37,7 +37,7 @@ async fn test_vault_credential_fetch() {
 
     match result {
         Ok(key) => {
-            assert!(!key.is_empty());
+            assert!(!key.is_empty(), "{key:?} should not be empty");
             assert!(key.len() > 10); // Sanity check
         }
         Err(e) => {
