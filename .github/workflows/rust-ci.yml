@@ -110,8 +110,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust -> target
+      # `-D warnings` is the point of the job. Without it clippy prints findings
+      # into the log and exits 0, so the ones that mattered (three unawaited
+      # `Duration`s, a `map(..).unwrap_or(..)` on every jittered retry, thirty-five
+      # bare `assert!(x.is_empty())`) accumulated on `main` while CI stayed green.
+      # The workspace is clean under this flag as of 2026-11-04.
       - name: Run workspace clippy
-        run: cargo clippy --workspace
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
   test-integration:
     name: cargo test --test '*' --features integration

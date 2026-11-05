@@ -547,8 +547,16 @@ mod tests {
         let result = compact_session(&session, CompactionConfig::default());
         assert_eq!(result.removed_message_count, 0);
         assert_eq!(result.compacted_session, session);
-        assert!(result.summary.is_empty());
-        assert!(result.formatted_summary.is_empty());
+        assert!(
+            result.summary.is_empty(),
+            "{:?} should be empty",
+            result.summary
+        );
+        assert!(
+            result.formatted_summary.is_empty(),
+            "{:?} should be empty",
+            result.formatted_summary
+        );
     }
 
     #[test]

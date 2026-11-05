@@ -465,7 +465,10 @@ mod tests {
                     healthy_servers,
                     vec!["alpha".to_string(), "beta".to_string()]
                 );
-                assert!(failed_servers.is_empty());
+                assert!(
+                    failed_servers.is_empty(),
+                    "{failed_servers:?} should be empty"
+                );
             }
             other => panic!("expected degraded state, got {other:?}"),
         }

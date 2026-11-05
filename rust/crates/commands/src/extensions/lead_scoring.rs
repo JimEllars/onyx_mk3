@@ -194,7 +194,11 @@ mod tests {
         let res: LeadScoringResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Enriched");
-        assert!(res.warnings.missing_fields.is_empty());
+        assert!(
+            res.warnings.missing_fields.is_empty(),
+            "{:?} should be empty",
+            res.warnings.missing_fields
+        );
         // Since LLM will fail or return default we test for 50
         assert_eq!(res.score, 50);
         assert!((res.confidence - 0.5).abs() < f32::EPSILON);
@@ -260,7 +264,11 @@ mod tests {
         let res: LeadScoringResponse = serde_json::from_value(result).unwrap();
 
         assert_eq!(res.status, "Enriched");
-        assert!(res.warnings.missing_fields.is_empty());
+        assert!(
+            res.warnings.missing_fields.is_empty(),
+            "{:?} should be empty",
+            res.warnings.missing_fields
+        );
         assert_eq!(res.score, 50);
     }
 }

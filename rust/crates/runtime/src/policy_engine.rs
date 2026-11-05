@@ -2,7 +2,7 @@ use std::time::Duration;
 
 pub type GreenLevel = u8;
 
-const STALE_BRANCH_THRESHOLD: Duration = Duration::from_secs(60 * 60);
+const STALE_BRANCH_THRESHOLD: Duration = Duration::from_hours(1);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PolicyRule {
@@ -570,7 +570,7 @@ mod tests {
         );
 
         let actions = engine.evaluate(&context);
-        assert!(actions.is_empty());
+        assert!(actions.is_empty(), "actions: {actions:?}");
     }
 
     #[test]

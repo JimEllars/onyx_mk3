@@ -212,7 +212,10 @@ impl GeminiClient {
         })
     }
 
-    #[allow(clippy::unused_async)]
+    // Stub stream: no `.await` yet. The signature follows the provider surface,
+    // so the async-ness is kept and both lint names are allowed (clippy 1.99
+    // reports this as `unused_async_trait_impl`).
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
     pub async fn stream_message(
         &self,
         _request: &MessageRequest,
@@ -359,7 +362,10 @@ impl MessageStream {
         self.request_id.as_deref()
     }
 
-    #[allow(clippy::unused_async)]
+    // Stub stream: no `.await` yet. The signature follows the provider surface,
+    // so the async-ness is kept and both lint names are allowed (clippy 1.99
+    // reports this as `unused_async_trait_impl`).
+    #[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
     pub async fn next_event(&mut self) -> Result<Option<StreamEvent>, ApiError> {
         if let Some(event) = self.pending.pop_front() {
             return Ok(Some(event));

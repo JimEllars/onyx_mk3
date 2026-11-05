@@ -1,3 +1,17 @@
+# Verification Log — 2026-11-04: `cargo clippy -D warnings` clean, gate enforced in CI
+
+Branch `fix/onyx-clippy-strict-gate`. Full write-up:
+[`AGENTS_VERIFICATION.d/2026-11-04-clippy-strict-gate.md`](AGENTS_VERIFICATION.d/2026-11-04-clippy-strict-gate.md).
+
+74 clippy hits fixed across 39 Rust files (42 `assert_is_empty`, 8
+`unused_async_trait_impl`, 6 `duration_suboptimal_units`, 10 `map_unwrap_or`/`is_ok_and`,
+3 `manual_assert_eq`, and 5 one-offs) and `rust-ci.yml` now runs
+`cargo clippy --workspace --all-targets -- -D warnings`. Local proof: `cargo fmt --check`
+clean, `cargo clippy --workspace --all-targets -- -D warnings` exit 0, edge-bridge 144
+tests, HUD 49 tests.
+
+---
+
 # Verification Log - Sprint 8.1
 
 ### Step 1 & 2: HMAC Signatures & DLQ Replay
