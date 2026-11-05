@@ -113,7 +113,7 @@ mod tests {
         let first = parser.push_chunk("event: message\ndata: hel");
 
         // then
-        assert!(first.is_empty());
+        assert!(first.is_empty(), "{first:?} should be empty");
 
         let second = parser.push_chunk("lo\n\nid: 1\ndata: world\n\n");
         assert_eq!(

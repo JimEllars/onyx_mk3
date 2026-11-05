@@ -2247,7 +2247,11 @@ mod tests {
             assert_eq!(tools[0].raw_name, "echo");
             assert_eq!(tools[0].qualified_name, mcp_tool_name("alpha", "echo"));
             assert_eq!(tools[0].tool.name, "echo");
-            assert!(manager.unsupported_servers().is_empty());
+            assert!(
+                manager.unsupported_servers().is_empty(),
+                "{:?} should be empty",
+                manager.unsupported_servers()
+            );
 
             manager.shutdown().await.expect("shutdown");
             cleanup_script(&script_path);
@@ -2646,7 +2650,11 @@ mod tests {
                 degraded.available_tools,
                 vec![mcp_tool_name("alpha", "echo")]
             );
-            assert!(degraded.missing_tools.is_empty());
+            assert!(
+                degraded.missing_tools.is_empty(),
+                "{:?} should be empty",
+                degraded.missing_tools
+            );
 
             let response = manager
                 .call_tool(&mcp_tool_name("alpha", "echo"), Some(json!({"text": "ok"})))

@@ -71,7 +71,11 @@ fn resumed_binary_accepts_slash_commands_with_arguments() {
         std::env::set_current_dir(previous_cwd).unwrap();
         res
     };
-    assert!(restored.messages.is_empty());
+    assert!(
+        restored.messages.is_empty(),
+        "{:?} should be empty",
+        restored.messages
+    );
 
     let backup_path = stdout
         .lines()

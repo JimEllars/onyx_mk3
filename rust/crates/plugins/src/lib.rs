@@ -2516,8 +2516,8 @@ mod tests {
 
         let manifest = load_plugin_from_directory(&root).expect("packaged manifest should load");
         assert_eq!(manifest.name, "packaged-demo");
-        assert!(manifest.tools.is_empty());
-        assert!(manifest.commands.is_empty());
+        assert_eq!(manifest.tools, Vec::new());
+        assert_eq!(manifest.commands, Vec::new());
 
         let _ = fs::remove_dir_all(root);
     }
@@ -2535,10 +2535,10 @@ mod tests {
         );
 
         let manifest = load_plugin_from_directory(&root).expect("minimal manifest should load");
-        assert!(manifest.permissions.is_empty());
+        assert_eq!(manifest.permissions, Vec::new());
         assert!(manifest.hooks.is_empty());
-        assert!(manifest.tools.is_empty());
-        assert!(manifest.commands.is_empty());
+        assert_eq!(manifest.tools, Vec::new());
+        assert_eq!(manifest.commands, Vec::new());
 
         let _ = fs::remove_dir_all(root);
     }

@@ -223,8 +223,8 @@ fn clean_env_cli_reaches_mock_anthropic_service_across_scripted_parity_scenarios
                     serde_json::from_str(&contents).expect("state file should be valid JSON");
 
                 // Verify state machine progression
-                assert!(value["is_ready"].as_bool() == Some(true));
-                assert!(value["trust_gate_cleared"].as_bool() == Some(true));
+                assert_eq!(value["is_ready"].as_bool(), Some(true));
+                assert_eq!(value["trust_gate_cleared"].as_bool(), Some(true));
 
                 // Verify last_event structure
                 let last_event = &value["last_event"];

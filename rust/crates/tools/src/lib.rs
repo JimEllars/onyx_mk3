@@ -2746,8 +2746,7 @@ fn git_ref_exists(reference: &str) -> bool {
     Command::new("git")
         .args(["rev-parse", "--verify", "--quiet", reference])
         .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|output| output.status.success())
 }
 
 fn git_stdout(args: &[&str]) -> Option<String> {
@@ -6120,8 +6119,7 @@ fn command_exists(command: &str) -> bool {
         .arg("-lc")
         .arg(format!("command -v {command} >/dev/null 2>&1"))
         .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+        .is_ok_and(|status| status.success())
 }
 
 #[allow(clippy::too_many_lines)]
@@ -7931,7 +7929,11 @@ mod tests {
         assert_eq!(manifest.name, "ship-audit");
         assert_eq!(manifest.subagent_type.as_deref(), Some("Explore"));
         assert_eq!(manifest.status, "running");
-        assert!(!manifest.created_at.is_empty());
+        assert!(
+            !manifest.created_at.is_empty(),
+            "{:?} should not be empty",
+            manifest.created_at
+        );
         assert!(manifest.started_at.is_some());
         assert!(manifest.completed_at.is_none());
         let contents = std::fs::read_to_string(&manifest.output_file).expect("agent file exists");
@@ -8664,7 +8666,7 @@ mod tests {
 
         let read_error = execute_tool("read_file", &json!({ "path": "missing.txt" }))
             .expect_err("missing file should fail");
-        assert!(!read_error.is_empty());
+        assert!(!read_error.is_empty(), "{read_error:?} should not be empty");
 
         let edit_once = execute_tool(
             "edit_file",
@@ -8746,7 +8748,7 @@ mod tests {
 
         let glob_error = execute_tool("glob_search", &json!({ "pattern": "[" }))
             .expect_err("invalid glob should fail");
-        assert!(!glob_error.is_empty());
+        assert!(!glob_error.is_empty(), "{glob_error:?} should not be empty");
 
         let grep_content = execute_tool(
             "grep_search",
@@ -8784,7 +8786,7 @@ mod tests {
             &json!({ "pattern": "(alpha", "path": "nested" }),
         )
         .expect_err("invalid regex should fail");
-        assert!(!grep_error.is_empty());
+        assert!(!grep_error.is_empty(), "{grep_error:?} should not be empty");
 
         std::env::set_current_dir(&original_dir).expect("restore cwd");
         let _ = fs::remove_dir_all(root);
@@ -9157,7 +9159,11 @@ printf 'pwsh:%s' "$1"
 
         let output: serde_json::Value = serde_json::from_str(&result).expect("json");
         assert_eq!(output["stdout"], "pwsh:Write-Output hello");
-        assert!(output["stderr"].as_str().expect("stderr").is_empty());
+        assert!(
+            output["stderr"].as_str().expect("stderr").is_empty(),
+            "{:?} should be empty",
+            output["stderr"].as_str().expect("stderr")
+        );
 
         let background_output: serde_json::Value = serde_json::from_str(&background).expect("json");
         assert!(background_output["backgroundTaskId"].as_str().is_some());

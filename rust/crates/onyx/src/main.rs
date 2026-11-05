@@ -1390,7 +1390,7 @@ pub(crate) fn omc_compatibility_note_for_unknown_slash_command(name: &str) -> Op
 }
 
 pub(crate) fn render_suggestion_line(label: &str, suggestions: &[String]) -> Option<String> {
-    (!suggestions.is_empty()).then(|| format!("  {label:<16} {}", suggestions.join(", "),))
+    (!suggestions.is_empty()).then(|| format!("  {label:<16} {}", suggestions.join(", ")))
 }
 
 pub(crate) fn suggest_slash_commands(input: &str) -> Vec<String> {
@@ -2626,12 +2626,9 @@ pub(crate) fn run_mcp_serve() -> Result<(), Box<dyn std::error::Error>> {
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn check_auth_health() -> DiagnosticCheck {
-    let api_key_present = env::var("ANTHROPIC_API_KEY")
-        .ok()
-        .is_some_and(|value| !value.trim().is_empty());
-    let auth_token_present = env::var("ANTHROPIC_AUTH_TOKEN")
-        .ok()
-        .is_some_and(|value| !value.trim().is_empty());
+    let api_key_present = env::var("ANTHROPIC_API_KEY").is_ok_and(|value| !value.trim().is_empty());
+    let auth_token_present =
+        env::var("ANTHROPIC_AUTH_TOKEN").is_ok_and(|value| !value.trim().is_empty());
 
     match load_oauth_credentials() {
         Ok(Some(token_set)) => {
@@ -5345,7 +5342,7 @@ pub(crate) fn render_memory_report() -> Result<String, Box<dyn std::error::Error
             } else {
                 preview
             };
-            lines.push(format!("  {}. {}", index + 1, file.path.display(),));
+            lines.push(format!("  {}. {}", index + 1, file.path.display()));
             lines.push(format!(
                 "     lines={} preview={}",
                 file.content.lines().count(),
@@ -5629,8 +5626,7 @@ pub(crate) fn command_exists(name: &str) -> bool {
     Command::new("which")
         .arg(name)
         .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|output| output.status.success())
 }
 
 pub(crate) fn write_temp_text_file(
@@ -5705,7 +5701,7 @@ pub(crate) fn render_prompt_history_report(entries: &[PromptHistoryEntry], limit
         "Prompt history".to_string(),
         format!("  Total            {total}"),
         format!("  Showing          {} most recent", shown.len()),
-        format!("  Reverse search   Ctrl-R in the REPL"),
+        "  Reverse search   Ctrl-R in the REPL".to_string(),
         String::new(),
     ];
     for (offset, entry) in shown.iter().enumerate() {
@@ -10985,7 +10981,7 @@ UU conflicted.rs",
         )
         .expect("tool block should accumulate");
 
-        assert!(events.is_empty());
+        assert!(events.is_empty(), "{events:?} should be empty");
         assert_eq!(
             pending_tool,
             Some(("tool-1".to_string(), "read_file".to_string(), String::new(),))
@@ -11124,7 +11120,7 @@ UU conflicted.rs",
         )
         .expect("browser warning should render");
 
-        assert!(stdout.is_empty());
+        assert!(stdout.is_empty(), "{stdout:?} should be empty");
         let stderr = String::from_utf8(stderr).expect("utf8");
         assert!(stderr.contains("failed to open browser automatically"));
         assert!(stderr.contains("Open this URL manually:"));
