@@ -134,7 +134,7 @@ pub fn render_status_bar_text(
     };
     let mut text = format!(
         "{} {} {} ∥ Persona: {} ∥ Auth: {} ∥ Threads: {} ∥ TARGET: {} ∥ Session: {} ∥ Tokens: In {}, Out {} ∥ Cache Hit: {:.1}% ∥ Cost: ${:.4}{} ∥ Latency: ⚡ {}ms",
-        connectivity_indicator, edge_health_indicator, edge_conn_str, brand_str, identity_str, std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1), active_provider, session_id, usage.input_tokens, usage.output_tokens, if usage.input_tokens > 0 { (f64::from(usage.cache_read_input_tokens) / f64::from(usage.input_tokens)) * 100.0 } else { 0.0 }, cost, worker_state_str, latency_str
+        connectivity_indicator, edge_health_indicator, edge_conn_str, brand_str, identity_str, std::thread::available_parallelism().map_or(1, std::num::NonZero::get), active_provider, session_id, usage.input_tokens, usage.output_tokens, if usage.input_tokens > 0 { (f64::from(usage.cache_read_input_tokens) / f64::from(usage.input_tokens)) * 100.0 } else { 0.0 }, cost, worker_state_str, latency_str
     );
 
     if let Ok((cols, _)) = size() {
@@ -417,8 +417,7 @@ pub fn draw_status_bar(
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let blocked_ingress = telemetry::metrics::EDGE_AUTH_MISMATCH_TOTAL
         .get_metric_with_label_values(&["rejected"])
-        .map(|m| m.get())
-        .unwrap_or(0.0) as usize;
+        .map_or(0.0, |m| m.get()) as usize;
 
     let cmds = telemetry::metrics::get_command_execution_total();
 
