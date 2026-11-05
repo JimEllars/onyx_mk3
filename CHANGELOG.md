@@ -3,6 +3,90 @@
 All notable changes to the Onyx Mk3 workspace. Newest first. Entries are
 prepended; dates are the date the branch was verified, in America/Chicago.
 
+## 2026-11-04 — The daemon daily-run dispatch is removed, not built out
+
+Branch `chore/remove-dead-daily-run-dispatch`, base `88c5468`.
+
+### The question
+
+`CRON_SECRET_KEY` was bound nowhere — not in `wrangler.jsonc` `vars`, not in
+`.dev.vars.example`, not in the repository secrets — while the scheduled handler
+POSTed to the Rust daemon's `/api/v1/internal/cron/daily-run` with
+`Bearer ${cronSecret}`. The choice was to build the missing half or to remove the
+dead half. The answer is removal, for four independent reasons.
+
+### 1. The handler it called was a stub
+
+`handle_daily_cron` in `rust/crates/api/src/router.rs`:
+
+```rust
+tokio::spawn(async move {
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    DAILY_CRON_RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    println!("[Onyx Automation] Daily cron task executed successfully.");
+});
+```
+
+It sleeps, increments a process-local `AtomicU64`, prints a line. The source
+comment reads `// Simulate an automation run`. `DAILY_CRON_RUNS` is read back in
+exactly two places — `/api/v1/telemetry/health` and the daemon's own summary — as
+display-only `daily_cron_runs` telemetry. **It drives no behaviour.** Wiring a
+secret to it would have made a counter increment reliably.
+
+### 2. The daemon is not deployed, and the edge cannot reach it
+
+`onyx-edge.axim.us.com` is a Cloudflare Worker. The only backend URL the worker
+can name is `http://localhost:3000`, which an edge isolate cannot reach. No env
+var in `wrangler.jsonc` points at a daemon host.
+
+### 3. The URL was derived from a host with no such route
+
+`resolveCronUrl(CORE_INGEST_URL)` built the endpoint from a *Supabase* project
+URL. Supabase has no `/api/v1/internal/cron/daily-run`. Against a live host it
+would 404; against the old value it 302'd to `/404.html`.
+
+### 4. Real scheduled work already exists, in the right place
+
+Six `pg_cron` jobs run inside Postgres in axim-core — `axim-content-engine`,
+`cognitive-compression`, `engagement-guard`, `executive-report`,
+`gateway-heartbeat`, `telemetry-archiver` — plus two GitHub scheduled workflows.
+`pg_cron` runs in the database, which is always up and never has to guess at a
+hostname. A fourth scheduler reaching across a network boundary to ring a counter
+would be strictly worse than what already works.
+
+### Removed
+
+- The dispatch block in `scheduled()`.
+- `resolveCronUrl()` — a URL builder for an endpoint nothing calls is the kind of
+dormant code that gets revived by accident.
+- `CRON_SECRET_KEY` from the `Env` type.
+
+The reasoning is recorded **at the removal site**, not only here, so a future
+maintainer finds it without git archaeology.
+
+### Both earlier fixes were still worth making
+
+The silent `.then(() => void 0).catch(() => void 0)` and the no-op `.replace()`
+from #305 were real defects. Had the dispatch been correct from the start, it
+would have rung a stub counter nightly and reported success, and the question
+"what does this actually do" would never have been asked. Fixing the visibility
+is what made the hollowness visible.
+
+### Tests
+
+`test/cron-dispatch-visibility.test.ts` is rewritten from "the dispatch handles
+errors" to **"the dispatch stays removed"** — 10 tests, six of which strip
+comments before asserting so the removal notes cannot satisfy them. It also
+asserts the work that *should* remain: the five-minute DLQ drain, the daily
+retention batch, the HITL digest, and the `isDailyCron` distinction.
+
+If this dispatch ever comes back, it comes back with a real endpoint, a bound
+secret and real error handling — not by quietly restoring dead code.
+
+### Verified
+
+`npx tsc --noEmit` → exit 0; `npx vitest run` → 13 files, **161 tests**.
+
 ## 2026-11-04 — Telemetry reaches a host that exists; CORS admits what the dashboard sends; signatures move to v2
 
 Branch `fix/core-ingest-url-and-cors`, base `22591e2` (main).

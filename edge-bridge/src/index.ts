@@ -35,7 +35,10 @@ export interface Env extends __BaseEnv_Env {
   /** Service-role key for the Core project; required to apply a decision */
   CORE_SERVICE_ROLE_KEY?: string;
   CHAT_MODEL?: string;
-  CRON_SECRET_KEY?: string;
+  // CRON_SECRET_KEY was removed on 2026-11-04 with the daemon daily-run
+  // dispatch it authenticated. It was never bound anywhere — not in
+  // wrangler.jsonc `vars`, not in .dev.vars.example, not in the repository
+  // secrets — so the header it produced was the literal `Bearer undefined`.
   /** ISO date after which the body-only (legacy) signature form is refused. */
   SIGNATURE_LEGACY_SUNSET?: string;
   PUBLIC_BASE_URL?: string;
@@ -339,40 +342,14 @@ function resolveIngestUrl(base: string): string {
   return `${trimmed}/telemetry`;
 }
 
-/**
- * Resolve the Core daily-run cron endpoint from the same base that supplies the
- * ingest URL.
- *
- * The previous code called `.replace("/v1/functions/telemetry-ingest", ...)` on
- * the configured value. When `CORE_INGEST_URL` did not contain that exact
- * substring — a bare origin, or the `/telemetry` suffix wrangler.jsonc actually
- * deploys — the replace was a silent no-op and the cron POST went to the ingest
- * path instead of the cron path. Nobody noticed because the caller discarded the
- * response.
- */
-export function resolveCronUrl(base: string | undefined): string {
-  const cronPath = "/api/v1/internal/cron/daily-run";
-  if (!base) return `http://localhost:3000${cronPath}`;
-
-  const trimmed = base.replace(/\/+$/, "");
-
-  // Strip a known terminal API path so we can re-root.
-  //
-  // Two shapes have to be handled, and only the first was, which is why this
-  // produced `/functions/v1/api/v1/...` after the ingest URL moved to a Supabase
-  // Edge Function:
-  //   https://host/v1/functions/telemetry-ingest  -> https://host
-  //   https://host/functions/v1/telemetry-ingress -> https://host
-  //   https://host/telemetry-ingress              -> https://host
-  //   https://host/telemetry                      -> https://host
-  //   https://host                                -> https://host
-  const origin = trimmed.replace(
-    /\/(?:(?:v1\/functions|functions\/v1)\/(?:telemetry-ingress|telemetry-ingest)|(?:telemetry-ingress|telemetry-ingest)|telemetry)$/,
-    "",
-  );
-
-  return `${origin}${cronPath}`;
-}
+// REMOVED: resolveCronUrl().
+//
+// It existed only to derive the Rust daemon's /api/v1/internal/cron/daily-run
+// endpoint from CORE_INGEST_URL, and that dispatch has been removed — the handler
+// it called was a stub, the daemon is not deployed, and real scheduled work
+// already runs on pg_cron in axim-core. Keeping a URL builder for an endpoint
+// nothing calls is the kind of dormant code that gets revived by accident. The
+// reasoning is recorded at the removal site in the scheduled() handler.
 
 /**
  * Fail loudly when a KV binding the handler depends on is absent.
@@ -1247,47 +1224,37 @@ const onyx_handler: any = {
         );
       }
 
-      // Execute the Rust backend daily cron endpoint
-      const backendCronUrl = resolveCronUrl(env.CORE_INGEST_URL);
-      const cronSecret = env.CRON_SECRET_KEY;
-
-      if (!cronSecret) {
-        logError("edge.cron.daily_run_unauthenticated", undefined, {
-          reason: "CRON_SECRET_KEY is not bound; the backend will reject this call",
-          url: backendCronUrl,
-        });
-      }
-
-      // This dispatch used to end in `.then(() => void 0).catch(() => void 0)`,
-      // which discarded the status and swallowed the throw. A 302 to a 404 page
-      // is a *successful* fetch, so a dead CORE_INGEST_URL produced no log, no
-      // DLQ entry and no signal of any kind: the daily run simply never
-      // happened and nothing said so. Surface both outcomes.
-      ctx?.waitUntil?.(
-        fetch(backendCronUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${cronSecret}`,
-          },
-        })
-          .then((res) => {
-            if (!res.ok) {
-              logError("edge.cron.daily_run_failed", undefined, {
-                status: res.status,
-                url: backendCronUrl,
-              });
-            } else {
-              logRequest("edge.cron.daily_run_completed", {
-                status: res.status,
-                url: backendCronUrl,
-              });
-            }
-          })
-          .catch((e) =>
-            logError("edge.cron.daily_run_threw", e, { url: backendCronUrl }),
-          ),
-      );
+      // REMOVED: dispatch to the Rust daemon's /api/v1/internal/cron/daily-run.
+      //
+      // The handler it called was a stub. `handle_daily_cron` in
+      // rust/crates/api/src/router.rs slept one second, incremented a
+      // process-local AtomicU64, and printed a line — the comment in the source
+      // says `// Simulate an automation run`. Nothing read that counter except
+      // `/api/v1/telemetry/health`, where it surfaced as display-only
+      // `daily_cron_runs` telemetry. It drove no behaviour whatsoever.
+      //
+      // Three further reasons it could never have worked from here:
+      //   1. The daemon is not deployed in production. `onyx-edge.axim.us.com` is
+      //      a Cloudflare Worker; the only backend URL the worker can name is
+      //      `http://localhost:3000`, which an edge isolate cannot reach.
+      //   2. The URL was derived from CORE_INGEST_URL, which names a Supabase
+      //      project — a host that has no `/api/v1/internal/cron/daily-run`
+      //      route at all. The request would 404 against a live host.
+      //   3. CRON_SECRET_KEY was bound nowhere: not in wrangler.jsonc `vars`,
+      //      not in .dev.vars.example, not in the repository secrets. The header
+      //      would have been the literal `Bearer undefined`.
+      //
+      // Real scheduled work already lives where it belongs: six pg_cron jobs in
+      // axim-core (axim-content-engine, cognitive-compression, engagement-guard,
+      // executive-report, gateway-heartbeat, telemetry-archiver) plus two GitHub
+      // scheduled workflows. pg_cron runs inside Postgres, which is always up
+      // and never guesses at a hostname. Adding a fourth scheduler that reaches
+      // across a network boundary to ring a counter would be strictly worse.
+      //
+      // If a daemon-hosted nightly job is ever genuinely needed, it should be
+      // triggered by the daemon's own scheduler or a pg_cron job that calls a
+      // real endpoint — not resurrected here. See the CHANGELOG entry for
+      // 2026-11-04.
 
       // Pulse Sync: Fetch external social data and forward to Rust backend
       const secret = env.GITHUB_WEBHOOK_SECRET;
