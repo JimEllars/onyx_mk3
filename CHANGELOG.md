@@ -3,6 +3,89 @@
 All notable changes to the Onyx Mk3 workspace. Newest first. Entries are
 prepended; dates are the date the branch was verified, in America/Chicago.
 
+## 2026-11-06 — Routes that could not work, and a bundle the daemon could not serve
+
+Branch `fix/onyx-unreachable-routes-and-bundle-drift`, base `05749b8`.
+
+Three defects with one shape: source that reads correctly, passes its tests, and
+cannot work at runtime. All three were found by driving the worker rather than
+reading it.
+
+### 1. The Approve/Reject buttons were dead, and so was the playbook trigger
+
+The global gate in `_fetch` requires `X-Axim-Signature` — an HMAC over the raw
+body keyed with `AXIM_INTERNAL_KEY`, a server-only secret. It sits mid-chain,
+ahead of the `/api/v1/hitl/action` and `/api/v1/playbook/trigger` handlers, and
+nothing exempted them. The cockpit sends an operator Passport bearer, so:
+
+```
+POST /api/v1/hitl/action       → 401 Missing x-axim-signature header
+POST /api/v1/playbook/trigger  → 401 Missing x-axim-signature header
+```
+
+The handler tests passed throughout because they sign with
+`AXIM_INTERNAL_KEY` — they test the server-to-server caller, and the browser
+caller had no test at all.
+
+`edge-bridge/src/operatorAuthRoutes.ts` registers the mutating routes whose
+handler authenticates the caller itself. The gate consults it when the
+signature check fails: a registered route is authenticated with `checkAuth()` at
+the gate and re-checked by the handler; everything else stays HMAC-only.
+Lookup is exact path + method, so nothing nested inherits the exemption. The
+registry carries the `checkAuth` snippet each entry depends on and a test fails
+if that call disappears.
+
+### 2. Two dispatch routes demanded two signatures inside one header
+
+`/api/v1/tasks/dispatch` and `/api/v1/commands/dispatch` re-verified the same
+header against `AXIM_ONYX_SECRET` after the gate had verified it against
+`AXIM_INTERNAL_KEY`. One digest cannot match both keys, so both routes answered
+401 for every caller — including a caller holding both secrets. This is the
+defect `/api/v1/ecosystem/event` had before 2026-11-03; the fix is the same:
+the gate's credential is the credential, and `/commands/dispatch` keeps its
+super-admin bearer check.
+
+### 3. `/tasks/dispatch` called a URL that does not exist
+
+It stripped a `/v1/commands/dispatch` suffix from `CORE_INGEST_URL` (a suffix
+that value never has) and appended `/api/v1/tasks/execute`, producing
+`.../functions/v1/telemetry-ingress/api/v1/tasks/execute`. All three dispatch
+handlers now share `coreTaskExecuteUrl()`, which uses the origin.
+
+### 4. The embedded HUD bundle was a different build from `src/`
+
+A fresh `vite build` replaced the committed
+`assets/index-CllMSb_c.js` (481,695 B, 258 lines, unminified) with
+`assets/index-Cz7yW5cY.js` (263,143 B, 24 lines, minified) — same features,
+same markers, different build mode. `onyx daemon` serves that directory from
+inside the binary, so it was serving a bundle `src/` does not produce.
+Regenerated, and `web-ci.yml` now fails the build when `vite build` leaves
+`rust/crates/onyx/static` dirty. The plan said the check was only worth having
+together with the regeneration; they land together.
+
+### 5. Two build chores
+
+- `@tailwindcss/postcss` ^4.3.3 was a devDependency nothing referenced
+  (`postcss.config.js` drives v3 `tailwindcss`). Removed; the rebuilt bundle is
+  byte-identical (`af10f8a7…` JS, `b1a211ae…` CSS), which is the proof it was
+  inert. Closes the version-skew item in `WEB_APP_DEVELOPMENT_PLAN.md`.
+- `npm run build` runs `npm ci`, which skips devDependencies when
+  `NODE_ENV=production` is set and then dies with `vite: not found`. Both
+  installs now pass `--include=dev`.
+
+### Verification
+
+Edge bridge: `tsc --noEmit` clean, `vitest run` **15 files / 177 tests** pass,
+`wrangler deploy --dry-run` exit 0. HUD: **7 files / 49 tests**, `vite build`
+clean. Six new tests fail on the pre-fix tree (`6 failed | 10 passed`) and pass
+after (`16 passed`). `cargo fmt --check` clean; no Rust source changed, and this
+sandbox has no C toolchain, so `rust-ci.yml` carries clippy and the workspace
+tests for this branch.
+
+Details: [`AGENTS_VERIFICATION.d/2026-11-06-unreachable-routes-and-bundle-drift.md`](AGENTS_VERIFICATION.d/2026-11-06-unreachable-routes-and-bundle-drift.md).
+
+---
+
 ## 2026-11-04 — The daemon daily-run dispatch is removed, not built out
 
 Branch `chore/remove-dead-daily-run-dispatch`, base `88c5468`.

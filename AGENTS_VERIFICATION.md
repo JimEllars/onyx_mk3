@@ -1,3 +1,36 @@
+# Verification Log — 2026-11-06: routes no caller could reach, stale embedded HUD
+
+Branch `fix/onyx-unreachable-routes-and-bundle-drift`, base `05749b8`. Full write-up:
+[`AGENTS_VERIFICATION.d/2026-11-06-unreachable-routes-and-bundle-drift.md`](AGENTS_VERIFICATION.d/2026-11-06-unreachable-routes-and-bundle-drift.md).
+
+Three runtime-dead paths fixed, all proven by tests that fail on the pre-fix tree:
+
+- **Cockpit POSTs were answered by the HMAC gate, not the handler.** `POST /api/v1/hitl/action`
+  and `POST /api/v1/playbook/trigger` sent from the HUD carry an operator bearer and no
+  `X-Axim-Signature` (a browser cannot produce one), so both 401'd before `checkAuth()` ran.
+  New `edge-bridge/src/operatorAuthRoutes.ts` registry, consulted by the gate; handlers still
+  re-check. `test/operator-auth-routes.test.ts`, 11 tests.
+- **`/tasks/dispatch` and `/commands/dispatch` required two signatures from one header.**
+  Handlers re-verified `X-Axim-Signature` against `AXIM_ONYX_SECRET` after the gate verified it
+  against `AXIM_INTERNAL_KEY`; no request could satisfy both. Redundant re-check removed (same
+  fix as `/ecosystem/event` on 2026-11-03). `test/single-credential.test.ts`, 5 tests.
+- **`/tasks/dispatch` targeted a URL that does not exist** — it appended the task path to the
+  configured ingest path. All three dispatch handlers now share `coreTaskExecuteUrl()`.
+
+Plus: the committed embedded HUD bundle was an unminified build from a different mode
+(481,695 B / 258 lines → 263,143 B / 24 lines after a real `vite build`), so `onyx daemon`
+served something `src/` does not build. Regenerated, and `web-ci.yml` now fails when the bundle
+is stale. Dropped the unused `@tailwindcss/postcss` v4 plugin (rebuild hash identical without
+it) and made `npm run build` pass `--include=dev` so it works under `NODE_ENV=production`.
+
+Local proof: edge-bridge `typecheck` exit 0, `vitest run` 15 files / **177 tests**, `deploy:dry-run`
+exit 0; HUD `vitest run` 7 files / **49 tests**, `vite build` clean; `cargo fmt --check` exit 0.
+`cargo clippy`/`cargo test` cannot run in this sandbox (no C toolchain, no `pkg-config`, no
+`libssl-dev` — `openssl-sys` fails at build-script time) and no Rust source changed, so
+`rust-ci.yml` is the compiler of record for this branch.
+
+---
+
 # Verification Log — 2026-11-04: `cargo clippy -D warnings` clean, gate enforced in CI
 
 Branch `fix/onyx-clippy-strict-gate`. Full write-up:

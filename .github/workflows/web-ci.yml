@@ -38,6 +38,19 @@ jobs:
         run: |
           npm ci
           npx vite build
+      - name: Embedded HUD bundle is committed and current
+        # `onyx daemon` serves rust/crates/onyx/static from inside the binary, so
+        # that directory is the only copy of the HUD the daemon can see. It went
+        # stale by one React bump and nobody noticed until the served bundle was
+        # compared with a fresh build. Fail here instead of shipping the drift.
+        run: |
+          if [ -n "$(git status --porcelain rust/crates/onyx/static)" ]; then
+            echo "::error::rust/crates/onyx/static is stale. Run 'npx vite build' and commit the output."
+            git --no-pager diff --stat rust/crates/onyx/static
+            git status --porcelain rust/crates/onyx/static
+            exit 1
+          fi
+          echo "Embedded HUD bundle matches a fresh build of src/."
       - name: Typecheck and build edge-bridge
         working-directory: edge-bridge
         run: |

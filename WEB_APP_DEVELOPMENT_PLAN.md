@@ -1,7 +1,13 @@
 # AXiM Onyx Mk3 Web App - Continued Development Plan
 
-Status as of 2026-11-03 (post-merge of #295-#303). Each item records where it stands and
+Status as of 2026-11-06 (post-merge of #295-#309). Each item records where it stands and
 which file proves it, because "planned" and "shipped" kept being confused.
+
+**2026-11-06 status note.** Phases 1-4 remain done and unchanged. This cycle went back over the
+phase work and found that three of its endpoints could not be called: the cockpit's HITL and
+playbook POSTs were refused by the HMAC gate, and both dispatch routes demanded two signatures
+from one header. See "Fixed on 2026-11-06" under Standing defects. The remaining roadmap work
+is Phase 4b (Web3/billing polish) and the four open defects listed at the end.
 
 **Merged to `main` this cycle (PRs #288-#294).**
 
@@ -79,6 +85,26 @@ The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as 
 
 ## Standing defects
 
+### Fixed on 2026-11-06 (`fix/onyx-unreachable-routes-and-bundle-drift`)
+
+1. **Every cockpit POST was answered by the HMAC gate, not the handler.** The gate demands an
+   HMAC keyed with `AXIM_INTERNAL_KEY`, which a browser can neither compute nor be given, and it
+   sits ahead of the handlers. `POST /api/v1/hitl/action` (the Approve/Reject buttons) and
+   `POST /api/v1/playbook/trigger` both answered 401 "Missing x-axim-signature header". The
+   handler tests never noticed because they sign with `AXIM_INTERNAL_KEY` — the server path.
+   `edge-bridge/src/operatorAuthRoutes.ts` now registers the mutating routes whose handler calls
+   `checkAuth()`; the gate authenticates those with the operator credential and the handler
+   re-checks. Everything else stays HMAC-only, pinned by `test/operator-auth-routes.test.ts`.
+2. **`/api/v1/tasks/dispatch` and `/api/v1/commands/dispatch` required one header to hold two
+   signatures.** Handlers re-verified `X-Axim-Signature` against `AXIM_ONYX_SECRET` after the gate
+   verified it against `AXIM_INTERNAL_KEY`, so no request could pass — a caller holding both keys
+   still had one header. Redundant re-check removed; `/commands/dispatch` keeps its super-admin
+   bearer. Same defect `/ecosystem/event` had before 2026-11-03. `test/single-credential.test.ts`.
+3. **`/api/v1/tasks/dispatch` called a URL that does not exist** — it appended the task path to
+   the configured ingest path. All three dispatch handlers now share `coreTaskExecuteUrl()`.
+4. **`npm run build` failed under `NODE_ENV=production`** because its `npm ci` omits
+   devDependencies; both installs now pass `--include=dev`.
+
 ### Fixed on 2026-11-03 (`fix/onyx-pregate-route-invariant`)
 
 1. **The pre-gate route surface is now enumerated and guarded.** `edge-bridge/src/preGateRoutes.ts`
@@ -148,20 +174,12 @@ The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as 
    `classifyPreGateRoute(method, pathname)` in `src/preGateRoutes.ts` — the gate should
    consult it instead of the declaration order. That is a router change, not a checklist
    change, and it needs its own PR and a full edge-bridge run.
-5. **Nothing regenerates `rust/crates/onyx/static` in CI.** `web-ci.yml` runs `vite build`
-   and throws the output away, and `rust-ci.yml` embeds whatever is committed, so the
-   bundled HUD can drift from `src/` until someone notices (it did, by one React bump —
-   fixed 2026-11-03). Either commit the build output as part of every HUD change (a check
-   that fails when `vite build` produces a different hash would do it) or build the bundle
-   before `cargo build` in `rust-ci.yml`. Until then, treat `onyx daemon`'s HUD as a
-   snapshot, not as the current UI.
-
-   **Confirmed live drift on 2026-11-04:** a fresh `npx vite build` on `22591e2` emits
-   `assets/index-Cz7yW5cY.js` (263 KB) while the committed bundle is
-   `assets/index-CllMSb_c.js` (481 KB) — different content, not just a different hash. So
-   the daemon currently serves something other than what `src/` builds, and the CSS
-   (`index-BKVYMyrj.css`) *is* reproducible, which makes the JS the odd one out. The check
-   is worth building only together with the regeneration, otherwise it fails on day one.
+5. ~~**Nothing regenerates `rust/crates/onyx/static` in CI.**~~ **Fixed 2026-11-06**
+   (`fix/onyx-unreachable-routes-and-bundle-drift`). The bundle was regenerated — the committed
+   `index-CllMSb_c.js` was an unminified build from a different mode (481,695 B / 258 lines) and
+   the fresh build is `index-Cz7yW5cY.js` (263,143 B / 24 lines) — and `web-ci.yml` now fails
+   when `vite build` leaves `rust/crates/onyx/static` dirty, so the check and the regeneration
+   landed together. `onyx daemon`'s HUD is the current UI again, and stays that way.
 6. **Tailwind 4 migration.** PR #263 proposed jumping `tailwindcss` 3.4 → 4.3; it was closed
    because Tailwind 4 drops the v3 config model this repo uses and the worker build failed on
    it. Needs a dedicated PR with a visual check of the HUD.
@@ -170,9 +188,8 @@ The Onyx Mk3 Web App currently features a React/Vite-based frontend, serving as 
    `rand`, `lru` in `rust/Cargo.lock`. The node ones are transitive under
    `wrangler`/`miniflare`. The Rust ones need `cargo update` in an environment with a C
    toolchain, or a hand-edited `Cargo.lock` proven by `rust-ci.yml` on a PR.
-8. **Tailwind/`@tailwindcss/postcss` version skew** (new, noticed 2026-11-03): root
-   `package.json` pins `tailwindcss` ^3.4.19 (the v3 build `postcss.config.js` drives) while
-   also depending on `@tailwindcss/postcss` ^4.3.3, which is the v4 plugin this repo does not
-   use. The build is green because only the v3 path is wired up, but the v4 plugin is a
-   migration half-installed. Resolve together with item 6 — either migrate to 4 and delete
-   the v3 config, or drop `@tailwindcss/postcss`.
+8. ~~**Tailwind/`@tailwindcss/postcss` version skew.**~~ **Fixed 2026-11-06**: the v4 plugin was
+   referenced nowhere (`postcss.config.js` drives the v3 `tailwindcss` + `autoprefixer` path), so
+   it was dropped from `package.json` rather than migrating the build. Rebuilding afterwards
+   produced a byte-identical bundle, which is the proof it was inert. Item 6 is still open on its
+   own terms — this only removes the half-installed migration.

@@ -15,6 +15,7 @@ import {
 import { z } from "zod";
 
 import { logError, logRequest } from "./logging";
+import { findOperatorAuthRoute, requiresSuperUser } from "./operatorAuthRoutes";
 
 export interface Env extends __BaseEnv_Env {
   AXIM_SERVICE_KEY?: string;
@@ -340,6 +341,20 @@ function resolveIngestUrl(base: string): string {
     return trimmed;
   }
   return `${trimmed}/telemetry`;
+}
+
+/**
+ * Absolute URL of Core's task executor.
+ *
+ * Derived from the *origin* of CORE_INGEST_URL, because the configured value
+ * names an ingest path (`.../functions/v1/telemetry-ingress`), not a host. The
+ * three dispatch handlers each built this URL by hand; `/api/v1/tasks/dispatch`
+ * stripped a `/v1/commands/dispatch` suffix the value never has and then appended
+ * the task path to it, so it asked Core for
+ * `.../telemetry-ingress/api/v1/tasks/execute` — a URL that does not exist.
+ */
+function coreTaskExecuteUrl(base: string): string {
+  return `${new URL(base).origin}/api/v1/tasks/execute`;
 }
 
 // REMOVED: resolveCronUrl().
@@ -2306,15 +2321,34 @@ const onyx_handler: any = {
             env.AXIM_INTERNAL_KEY,
           );
           if (!sigOk) {
-            return new Response(
-              request.headers.get("x-axim-signature")
-                ? "Invalid HMAC signature"
-                : "Missing x-axim-signature header",
-              {
-                status: request.headers.get("x-axim-signature") ? 403 : 401,
-                headers: getCorsHeaders(request, env),
-              },
+            // A browser cannot produce an AXIM_INTERNAL_KEY signature and must not
+            // be given the key, so routes that authenticate with an operator
+            // credential are registered in src/operatorAuthRoutes.ts and accept it
+            // here instead. Their handlers call checkAuth() again — the gate lets
+            // the request reach that check, it does not replace it. Every other
+            // mutating route stays HMAC-only, exactly as before.
+            const operatorRoute = findOperatorAuthRoute(
+              request.method,
+              url.pathname,
             );
+            if (operatorRoute) {
+              const authError = await checkAuth(
+                request,
+                env,
+                requiresSuperUser(operatorRoute),
+              );
+              if (authError) return authError;
+            } else {
+              return new Response(
+                request.headers.get("x-axim-signature")
+                  ? "Invalid HMAC signature"
+                  : "Missing x-axim-signature header",
+                {
+                  status: request.headers.get("x-axim-signature") ? 403 : 401,
+                  headers: getCorsHeaders(request, env),
+                },
+              );
+            }
           }
         }
         if (rawBodyText) {
@@ -2693,11 +2727,12 @@ const onyx_handler: any = {
         request.method === "POST" &&
         url.pathname === "/api/v1/tasks/dispatch"
       ) {
-        const rawBody = await request.clone().text();
-        const isValidHmac = await verifyHmacSignature(request, rawBody, env.AXIM_ONYX_SECRET);
-        if (!isValidHmac) {
-          return new Response(JSON.stringify({ error: "Unauthorized Signature" }), { status: 401, headers: { "Content-Type": "application/json" } });
-        }
+        // The gate above already verified X-Axim-Signature over these exact bytes
+        // with AXIM_INTERNAL_KEY. This route re-verified the same header against
+        // AXIM_ONYX_SECRET, which no caller can satisfy: one header, one digest, two
+        // different keys. Every dispatch answered 401 "Unauthorized Signature" —
+        // the route was unreachable, not protected. Same defect as /ecosystem/event,
+        // fixed there on 2026-11-03 and here now. The credential is the gate's.
 
         let payload = parsedBody || {};
 
@@ -2709,8 +2744,9 @@ const onyx_handler: any = {
           timestamp: payload.timestamp || new Date().toISOString()
         };
 
-        const coreUrl = env.CORE_INGEST_URL ? env.CORE_INGEST_URL.replace(/\/v1\/commands\/dispatch$/, "") : "http://127.0.0.1:3141";
-        const rustCoreEndpoint = `${coreUrl}/api/v1/tasks/execute`;
+        const rustCoreEndpoint = coreTaskExecuteUrl(
+          env.CORE_INGEST_URL || DEFAULT_CORE_INGEST_URL,
+        );
 
         try {
           const coreRes = await fetch(rustCoreEndpoint, {
@@ -2752,7 +2788,7 @@ const onyx_handler: any = {
           return new Response(JSON.stringify({ error: "CORE_INGEST_URL is not configured" }), { status: 503, headers: jsonHeaders });
         }
 
-        const triggerEndpoint = `${new URL(env.CORE_INGEST_URL).origin}/api/v1/tasks/execute`;
+        const triggerEndpoint = coreTaskExecuteUrl(env.CORE_INGEST_URL);
         try {
           const coreRes = await fetch(triggerEndpoint, {
             method: "POST",
@@ -2776,12 +2812,10 @@ const onyx_handler: any = {
         request.method === "POST" &&
         url.pathname === "/api/v1/commands/dispatch"
       ) {
-      const rawBody = await request.clone().text();
-      const isValidHmac = await verifyHmacSignature(request, rawBody, env.AXIM_ONYX_SECRET);
-      if (!isValidHmac) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
-      }
-
+        // Same shape as /tasks/dispatch above: the gate already verified the body
+        // signature with AXIM_INTERNAL_KEY, so re-checking the one header against
+        // AXIM_ONYX_SECRET only made the route unreachable. The operator credential
+        // below is what actually distinguishes callers here.
         const authError = await checkAuth(request, env, true);
         if (authError) return authError;
 
@@ -2801,7 +2835,7 @@ const onyx_handler: any = {
           });
         }
         try {
-          const dispatchRes = await fetch(`${new URL(env.CORE_INGEST_URL).origin}/api/v1/tasks/execute`, {
+          const dispatchRes = await fetch(coreTaskExecuteUrl(env.CORE_INGEST_URL), {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
