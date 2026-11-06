@@ -225,3 +225,39 @@ When adding cross-service telemetry and resilient fallback states, ensuring deep
     Freeing the toolchain's `share/doc` (926 MB) and stale duplicate `build/` dirs buys a
     clippy run but not a link. Budget for it: run `cargo clippy` with
     `CARGO_INCREMENTAL=0` so a re-run does not double the disk.
+
+## Additions — 2026-11-06 session (edge reachability, embedded bundle)
+
+18. **A handler test that signs like a server does not test the browser.** `POST
+    /api/v1/hitl/action` was covered by four tests that all attached
+    `x-axim-signature: HMAC(AXIM_INTERNAL_KEY, body)`. The cockpit sends an operator
+    bearer and no signature — a browser cannot compute an HMAC over a key it must never
+    hold — and the global gate answered 401 before the handler's `checkAuth()`. The suite
+    was green the whole time. For every route a UI calls, test the credential the UI can
+    actually produce, and treat "signature" in a test header as a claim that the caller is
+    a server.
+
+19. **One signature header cannot satisfy two key checks.** `/tasks/dispatch` and
+    `/commands/dispatch` re-verified `X-Axim-Signature` against `AXIM_ONYX_SECRET` after
+    the gate verified the same header against `AXIM_INTERNAL_KEY`. That is not defence in
+    depth, it is a route nobody can call: a digest matches one key. `/ecosystem/event` was
+    fixed for this on 2026-11-03 and the fix was not swept across the other handlers.
+    When a redundant-looking second check appears, ask which single credential can pass
+    both — if the answer is "none", the route is dead, not hardened. Sweep every
+    `verifyHmacSignature` call site for the key it names.
+
+20. **A committed build artefact with no CI check drifts, and its build mode drifts too.**
+    The committed `rust/crates/onyx/static/assets/index-CllMSb_c.js` was 481 KB in 258
+    lines; a fresh `vite build` produced 263 KB in 24 lines — unminified output from a
+    different build, serving the same features, so no test could see the difference.
+    Compare a fresh build's `git status` in CI, and regenerate in the same PR that adds
+    the check (the plan had this right: a check added alone fails on day one).
+
+21. **This sandbox cannot reach the Rust build stage, and the failure has moved.** `cargo
+    fmt --all -- --check` works. `cargo clippy --workspace --all-targets` now stops in
+    `openssl-sys`'s build script (`pkg-config` not found, no OpenSSL headers) rather than
+    at link time, so items 11/16/17 do not apply as written to this image. Do not spend
+    the session reconstructing a C toolchain for a change that touches no Rust: say so in
+    the verification log and let `rust-ci.yml` be the compiler of record. Note also that
+    `rust/**` is a CI path trigger, so a PR that only regenerates the embedded bundle
+    still gets the full Rust suite.

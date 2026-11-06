@@ -17,6 +17,12 @@
  * Keep this list in step with `_fetch`. It is documentation with teeth, not a
  * dispatch table (yet) — the next step is to feed `classifyPreGateRoute()` into
  * the request path so the gate consults it instead of positional ordering.
+ *
+ * Not to be confused with `src/operatorAuthRoutes.ts`: that registry is consulted
+ * by the gate at request time for routes *below* the marker whose handler
+ * authenticates with an operator credential (a browser cannot produce the HMAC
+ * the gate asks for). This file still describes the routes that never reach the
+ * gate at all.
  */
 
 export type PreGateAuthMode =

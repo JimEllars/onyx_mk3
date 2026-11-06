@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "npm ci && vite build && npm --prefix edge-bridge ci --legacy-peer-deps && npm --prefix edge-bridge run build",
+    "build": "npm ci --include=dev && vite build && npm --prefix edge-bridge ci --legacy-peer-deps --include=dev && npm --prefix edge-bridge run build",
     "deploy": "npm run build && npm --prefix edge-bridge run deploy",
     "deploy:dry-run": "npm run build && npm --prefix edge-bridge run deploy:dry-run",
     "test": "vitest run"
@@ -14,7 +14,6 @@
     "zustand": "^5.0.16"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@vitejs/plugin-react": "^6.1.2",
